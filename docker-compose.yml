@@ -14,31 +14,62 @@
 
 services:
   # ============================================
+  # Base de Datos — MySQL 8
+  # ============================================
+  db:
+    image: mysql:8
+    container_name: suitchase-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root123}
+      MYSQL_DATABASE: suitchase
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 1. El schema crea las tablas
+      - ./Backend/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
+      # 2. El data inserta los datos (asegúrate de que la ruta sea correcta)
+      - ./Backend/data.sql:/docker-entrypoint-initdb.d/2-data.sql
+    networks:
+      - suitchase-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
   # Backend — Spring Boot (JDK 21)
   # ============================================
   backend:
     build:
       context: ./Backend
       dockerfile: Dockerfile
+      target: dev
     container_name: suitchase-backend
     restart: unless-stopped
     ports:
       - "8090:8090"
+    volumes:
+      - ./Backend:/app             # Sincroniza tu código Java
+      - ~/.m2:/root/.m2            # Cache de Maven para que no descargue todo cada vez
     environment:
       # Sobreescribir las propiedades de Spring Boot
-      SPRING_DATASOURCE_URL: jdbc:mysql://host.docker.internal:3306/suitchase?useSSL=false&serverTimezone=UTC
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/suitchase?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
       SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-root}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-}
-      JAVA_OPTS: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
-    extra_hosts:
-      # Permite que el contenedor acceda al MySQL nativo del host
-      - "host.docker.internal:host-gateway"
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-root123}
+      SPRING_DEVTOOLS_RESTART_ENABLED: "true"
+      JAVA_OPTS: "-Dspring.devtools.restart.enabled=true -Xms512m -Xmx1024m"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8090/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - suitchase-net
 
@@ -49,19 +80,25 @@ services:
     build:
       context: ./Frontend
       dockerfile: Dockerfile
+      target: dev
     container_name: suitchase-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3000:3000"
+    volumes:
+      - ./Frontend:/app            # Sincroniza tu código local con el contenedor
+      - /app/node_modules          # Protege las librerías internas del contenedor
+    environment:
+      - CHOKIDAR_USEPOLLING=true   # Obligatorio para que WSL detecte cambios en Windows
+      - VITE_API_URL=http://localhost:8090 # URL de tu backend
     depends_on:
       - backend
-    deploy:
-      resources:
-        limits:
-          memory: 128M
     networks:
-      - suitchase-net
+      - suitchase-net 
 
 networks:
   suitchase-net:
     driver: bridge
+
+volumes:
+  mysql-data:
