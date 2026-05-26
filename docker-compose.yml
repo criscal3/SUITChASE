@@ -22,7 +22,8 @@ services:
       MYSQL_DATABASE: suitchase
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./Backend/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./Backend/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
+      - ./Backend/data.sql:/docker-entrypoint-initdb.d/2-data.sql
     networks:
       - suitchase-net
     healthcheck:
@@ -42,11 +43,14 @@ services:
     restart: unless-stopped
     ports:
       - "8090:8090"
+    volumes:
+      - ./Planificador:/Planificador
     environment:
       # Conectar al contenedor de la base de datos
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/suitchase?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
       SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-root}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-root123}
+      SUITCHASE_ENVIOS_PATH: /Planificador/_envios_preliminar_
       JAVA_OPTS: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200"
     depends_on:
       db:

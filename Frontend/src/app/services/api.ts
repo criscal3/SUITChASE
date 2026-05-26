@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://localhost:8090/api";
+const API_BASE_URL = "/api";
 
 interface RequestOptions extends RequestInit {
   auth?: boolean;

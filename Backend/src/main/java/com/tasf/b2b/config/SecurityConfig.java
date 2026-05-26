@@ -39,6 +39,7 @@ public class SecurityConfig {
                 // --- Públicos ---
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/ws/**").permitAll()   // WebSocket handshake
+                .requestMatchers("/actuator/health").permitAll()
 
                 // --- ADMIN solamente ---
                 .requestMatchers("/api/auth/registro").hasRole("ADMIN")
