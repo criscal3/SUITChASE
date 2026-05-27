@@ -205,6 +205,13 @@ export function useSimulation() {
   }, []);
 
   const start = useCallback(async (fechaInicio?: Date) => {
+    // Disconnect any previous WebSocket connection before starting fresh
+    if (wsClientRef.current) {
+      wsClientRef.current.disconnect();
+      wsClientRef.current = null;
+    }
+    activeSimIdRef.current = null;
+
     const startDate = fechaInicio || SIM_BASE_DATE;
     const endDate = new Date(startDate);
     endDate.setDate(startDate.getDate() + 5); // 5 days
@@ -271,12 +278,18 @@ export function useSimulation() {
     if (activeSimIdRef.current) {
       try {
         await api.cancelarSimulacion(activeSimIdRef.current);
-        setState(prev => ({ ...prev, running: false, stopped: true }));
-        if (wsClientRef.current) wsClientRef.current.disconnect();
       } catch (error: any) {
-        toast.error(`Error cancelando: ${error.message}`);
+        // Ignore errors when cancelling (e.g. already cancelled/finished)
+        console.warn("Error cancelando simulación:", error.message);
       }
     }
+    // Always clean up local state regardless of API success
+    if (wsClientRef.current) {
+      wsClientRef.current.disconnect();
+      wsClientRef.current = null;
+    }
+    activeSimIdRef.current = null;
+    setState(prev => ({ ...prev, running: false, stopped: true, hasStarted: false }));
   }, []);
 
   const togglePause = useCallback(async () => {

@@ -51,44 +51,60 @@ export function mapBlockResultToBaggageGroups(
   }
 
   const updatedGroups: BaggageGroup[] = (rutasResumen || []).map((resumen) => {
-    const route = [];
-    if (resumen.estado === "CON_RUTA" && resumen.primerTramo && resumen.ultimoTramo) {
-      const split1 = splitTramo(resumen.primerTramo);
-      if (split1) {
-        const [from1, to1] = split1;
-        // First leg: departs at salidaPrimer, arrives at llegadaPrimer (if available) or estimate
-        const dep1 = parseLocalDate(resumen.salidaPrimer, currentTime);
-        // Use llegadaPrimer if provided, otherwise estimate from llegadaFinal minus 1h if multi-leg
-        const hasSecondLeg = resumen.primerTramo !== resumen.ultimoTramo;
-        const arr1 = hasSecondLeg
-          ? parseLocalDate(resumen.llegadaPrimer ?? null, dep1 + 3600000)
-          : parseLocalDate(resumen.llegadaFinal, dep1 + 3600000);
-        route.push({
-          from: from1,
-          to: to1,
-          departureTime: dep1,
-          arrivalTime: arr1,
-          flightId: `FLIGHT-${resumen.envioId}-1`,
-          transitHours: 0,
-        });
-      }
+    const route: BaggageGroup["route"] = [];
 
-      if (resumen.primerTramo !== resumen.ultimoTramo) {
-        const split2 = splitTramo(resumen.ultimoTramo);
-        if (split2) {
-          const [from2, to2] = split2;
-          const arrival2 = parseLocalDate(resumen.llegadaFinal, currentTime);
-          // Second leg departs from llegadaPrimer + turnaround, or estimate
-          const prevRoute = route[route.length - 1];
-          const dep2 = prevRoute ? prevRoute.arrivalTime + 1800000 : arrival2 - 3600000;
+    if (resumen.estado === "CON_RUTA") {
+      // Prefer the new `tramos` array with exact per-leg times
+      if (resumen.tramos && Array.isArray(resumen.tramos) && resumen.tramos.length > 0) {
+        for (let i = 0; i < resumen.tramos.length; i++) {
+          const tramo = resumen.tramos[i];
+          const dep = parseLocalDate(tramo.salida, currentTime);
+          const arr = parseLocalDate(tramo.llegada, dep + 3600000);
           route.push({
-            from: from2,
-            to: to2,
-            departureTime: dep2,
-            arrivalTime: arrival2,
-            flightId: `FLIGHT-${resumen.envioId}-2`,
+            from: String(tramo.origen).toUpperCase(),
+            to: String(tramo.destino).toUpperCase(),
+            departureTime: dep,
+            arrivalTime: arr,
+            flightId: `FLIGHT-${resumen.envioId}-${i + 1}`,
             transitHours: 0,
           });
+        }
+      } else if (resumen.primerTramo && resumen.ultimoTramo) {
+        // Legacy fallback: only first and last leg summaries
+        const split1 = splitTramo(resumen.primerTramo);
+        if (split1) {
+          const [from1, to1] = split1;
+          const dep1 = parseLocalDate(resumen.salidaPrimer, currentTime);
+          const hasSecondLeg = resumen.primerTramo !== resumen.ultimoTramo;
+          const arr1 = hasSecondLeg
+            ? dep1 + 3600000 // estimate 1h for first leg
+            : parseLocalDate(resumen.llegadaFinal, dep1 + 3600000);
+          route.push({
+            from: from1,
+            to: to1,
+            departureTime: dep1,
+            arrivalTime: arr1,
+            flightId: `FLIGHT-${resumen.envioId}-1`,
+            transitHours: 0,
+          });
+        }
+
+        if (resumen.primerTramo !== resumen.ultimoTramo) {
+          const split2 = splitTramo(resumen.ultimoTramo);
+          if (split2) {
+            const [from2, to2] = split2;
+            const arrival2 = parseLocalDate(resumen.llegadaFinal, currentTime);
+            const prevRoute = route[route.length - 1];
+            const dep2 = prevRoute ? prevRoute.arrivalTime + 1800000 : arrival2 - 3600000;
+            route.push({
+              from: from2,
+              to: to2,
+              departureTime: dep2,
+              arrivalTime: arrival2,
+              flightId: `FLIGHT-${resumen.envioId}-2`,
+              transitHours: 0,
+            });
+          }
         }
       }
     }
@@ -103,17 +119,22 @@ export function mapBlockResultToBaggageGroups(
       }
     }
 
+    const firstDep = route.length > 0 ? route[0].departureTime : currentTime;
+    const lastArr = route.length > 0
+      ? route[route.length - 1].arrivalTime
+      : parseLocalDate(resumen.llegadaFinal, currentTime + 48 * 3600 * 1000);
+
     return {
-      id: resumen.envioId,
+      id: String(resumen.envioId),
       airline: "BackendAirline",
       origin: resumen.origen,
       destination: resumen.destino,
       quantity: resumen.maletas,
-      registeredAt: parseLocalDate(resumen.salidaPrimer, currentTime),
-      deadlineAt: parseLocalDate(resumen.llegadaFinal, currentTime + 48 * 3600 * 1000),
+      registeredAt: firstDep,
+      deadlineAt: lastArr,
       currentLocation: resumen.origen,
       status: resumen.estado === "CON_RUTA" ? "in_transit" : "failed",
-      route: route,
+      route,
       currentLegIndex,
     } as BaggageGroup;
   });

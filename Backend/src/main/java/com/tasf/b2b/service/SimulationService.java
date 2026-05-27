@@ -321,7 +321,26 @@ public class SimulationService {
             if (ruta != null && ruta.vuelosUsados != null && !ruta.vuelosUsados.isEmpty()) {
                 envioResumen.put("estado", "CON_RUTA");
                 envioResumen.put("numTramos", ruta.vuelosUsados.size());
-                // Solo incluir el primer y último tramo como resumen
+
+                // Build full list of legs with exact times
+                List<Map<String, Object>> tramos = new ArrayList<>();
+                for (int i = 0; i < ruta.vuelosUsados.size(); i++) {
+                    VueloAlgoritmo vuelo = ruta.vuelosUsados.get(i);
+                    LocalDateTime salida = ruta.fechasVuelo.get(i);
+                    LocalDateTime llegada = salida.with(vuelo.getHoraLlegada());
+                    if (llegada.isBefore(salida)) {
+                        llegada = llegada.plusDays(1);
+                    }
+                    Map<String, Object> tramo = new LinkedHashMap<>();
+                    tramo.put("origen", vuelo.getOrigenOaci());
+                    tramo.put("destino", vuelo.getDestinoOaci());
+                    tramo.put("salida", salida.toString());
+                    tramo.put("llegada", llegada.toString());
+                    tramos.add(tramo);
+                }
+                envioResumen.put("tramos", tramos);
+
+                // Keep legacy fields for backward compatibility
                 VueloAlgoritmo primerVuelo = ruta.vuelosUsados.get(0);
                 VueloAlgoritmo ultimoVuelo = ruta.vuelosUsados.get(ruta.vuelosUsados.size() - 1);
                 envioResumen.put("primerTramo", primerVuelo.getOrigenOaci() + "→" + primerVuelo.getDestinoOaci());

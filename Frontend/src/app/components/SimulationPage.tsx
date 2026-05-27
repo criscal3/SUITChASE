@@ -7,17 +7,11 @@ import { TrackingPage } from "./TrackingPage";
 import type { BaggageGroup } from "../engine/types";
 import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse } from "lucide-react";
 
-const SIM_BASE_DATE = new Date(2026, 3, 2, 0, 0, 0);
 
-function formatTime(hours: number): string {
-  const h = Math.floor(hours % 24);
-  const m = Math.round((hours % 1) * 60);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
 
-function dayToDateStr(day: number): string {
-  const d = new Date(SIM_BASE_DATE);
-  d.setDate(d.getDate() + (day - 1));
+function formatTimestampShort(ts: number): string {
+  if (!ts || isNaN(ts)) return "";
+  const d = new Date(ts);
   return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
 }
 
@@ -61,10 +55,14 @@ export function SimulationPage() {
     return () => window.removeEventListener("resize", checkScroll);
   }, [checkScroll]);
 
-  // Timeline days anchored to startTime (the date the user chose)
-  const simStartDay = Math.floor((state.startTime || 0) / 24) + 1;
-  const totalDays = state.scenario === "weekly" ? 5 : state.scenario === "daily" ? 1 : Math.max(5, state.day - simStartDay + 1);
-  const days = Array.from({ length: totalDays }, (_, i) => simStartDay + i);
+  // Timeline: days 1..5 anchored to state.startTime
+  const totalDays = 5;
+  // current elapsed days from simulation start
+  const elapsedMs = state.hasStarted ? Math.max(0, state.currentTime - state.startTime) : 0;
+  const elapsedDays = elapsedMs / 86400000; // ms → days
+  const currentSimDay = Math.floor(elapsedDays) + 1; // 1-based day number
+  const currentSimHour = (elapsedDays % 1) * 24;    // fractional hour within the day
+  const days = Array.from({ length: totalDays }, (_, i) => i + 1);
 
   // Theme-aware class helpers
   const panelBg = isDark
@@ -165,18 +163,23 @@ export function SimulationPage() {
               </div>
               <div className="space-y-1">
                 {days.map(d => {
-                  const isActive = state.day === d;
-                  const isPast = state.day > d;
+                  const isActive = state.hasStarted && currentSimDay === d;
+                  const isPast = state.hasStarted && currentSimDay > d;
+                  // timestamp for this day's label
+                  const dayTs = state.startTime + (d - 1) * 86400000;
+                  const timeStr = isActive
+                    ? ` ${String(Math.floor(currentSimHour)).padStart(2,"0")}:${String(Math.round((currentSimHour%1)*60)).padStart(2,"0")}`
+                    : "";
                   return (
                     <div key={d} className="flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full shrink-0 ${
                         isActive ? (isDark ? "bg-cyan-400 animate-pulse" : "bg-blue-600 animate-pulse") : isPast ? (isDark ? "bg-cyan-400" : "bg-blue-600") : isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"
                       }`} />
                       <div className={`flex-1 h-[1px] ${isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"}`}>
-                        {(isActive || isPast) && <div className={`h-full ${isDark ? "bg-cyan-400/30" : "bg-blue-600/30"}`} style={{ width: isActive ? `${((state.hour) / 24) * 100}%` : "100%" }} />}
+                        {(isActive || isPast) && <div className={`h-full ${isDark ? "bg-cyan-400/30" : "bg-blue-600/30"}`} style={{ width: isActive ? `${(currentSimHour / 24) * 100}%` : "100%" }} />}
                       </div>
                       <span className={`text-[10px] ${isActive ? (isDark ? "text-cyan-400" : "text-blue-700") : isPast ? isDark ? "text-white/60" : "text-[#475569]" : mutedText}`}>
-                        {dayToDateStr(d)}{isActive ? ` ${formatTime(state.hour)}` : ""}
+                        {formatTimestampShort(dayTs)}{timeStr}
                       </span>
                     </div>
                   );
@@ -196,7 +199,7 @@ export function SimulationPage() {
               <div className="flex items-center gap-2 mb-2">
                 <button
                   onClick={() => {
-                    if (!state.hasStarted) {
+                    if (!state.hasStarted || (state as any).stopped) {
                        const dateStr = (document.getElementById("sim-start-date") as HTMLInputElement)?.value;
                        const d = dateStr ? new Date(dateStr) : undefined;
                        start(d);
@@ -243,17 +246,9 @@ export function SimulationPage() {
                 <label className={`text-[10px] ${subText}`}>Fecha de inicio:</label>
                 <input
                   type="datetime-local"
-                  disabled={state.running || state.currentTime > state.startTime}
-                  className={`w-full px-2 py-1 text-[11px] rounded border ${isDark ? "bg-[#1a2340] border-[#1a2744] text-white" : "bg-white border-[#cbd5e1] text-[#0f172a]"}`}
+                  disabled={state.running}
+                  className={`w-full px-2 py-1 text-[11px] rounded border ${isDark ? "bg-[#1a2340] border-[#1a2744] text-white" : "bg-white border-[#cbd5e1] text-[#0f172a]"} disabled:opacity-50`}
                   defaultValue="2026-01-02T00:00"
-                  onChange={(e) => {
-                    const date = new Date(e.target.value);
-                    if (!isNaN(date.getTime())) {
-                      // We could store it in local state and pass it to start()
-                      // But for now, let's just pass it when play is clicked
-                      // To do that, we need to add a ref or state for the date
-                    }
-                  }}
                   id="sim-start-date"
                 />
               </div>
