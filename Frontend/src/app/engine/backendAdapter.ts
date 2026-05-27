@@ -1,26 +1,28 @@
 import { BaggageGroup, FlightState, SimStats, AirportState } from "./types";
-import { AIRPORTS } from "../data/airports";
-import { FLIGHT_SCHEDULES } from "../data/flights";
 
-function parseLocalDate(dateStr: any, fallbackTime: number): number {
+/**
+ * Parses a LocalDateTime string from the backend (e.g. "2026-01-01T03:34:00")
+ * as a UTC epoch millisecond value. No timezone offset is applied because the
+ * backend uses pure LocalDateTime — cursor times and flight departure/arrival
+ * times are all in the same simulation-local reference frame.
+ */
+function parseSimDate(dateStr: any, fallbackTime: number): number {
   if (!dateStr) return fallbackTime;
   try {
     const parts = String(dateStr).split(/[^0-9]/);
     if (parts.length >= 5) {
-      const year = parseInt(parts[0], 10);
+      const year  = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1; // 0-based
-      const day = parseInt(parts[2], 10);
-      const hour = parseInt(parts[3], 10);
-      const minute = parseInt(parts[4], 10);
-      const second = parts[5] ? parseInt(parts[5], 10) : 0;
-      const parsedDate = new Date(year, month, day, hour, minute, second);
-      if (!isNaN(parsedDate.getTime())) {
-        return parsedDate.getTime();
-      }
+      const day   = parseInt(parts[2], 10);
+      const hour  = parseInt(parts[3], 10);
+      const min   = parseInt(parts[4], 10);
+      const sec   = parts[5] ? parseInt(parts[5], 10) : 0;
+      return Date.UTC(year, month, day, hour, min, sec);
     }
+    // Fallback for ISO strings that JavaScript can parse
     const d = new Date(dateStr);
     return isNaN(d.getTime()) ? fallbackTime : d.getTime();
-  } catch (e) {
+  } catch {
     return fallbackTime;
   }
 }
@@ -41,15 +43,9 @@ function splitTramo(tramoStr: string): [string, string] | null {
 
 export function mapBlockResultToBaggageGroups(
   rutasResumen: any[],
-  currentTime: number,
+  cursorTime: number,
   currentBaggageGroups: BaggageGroup[]
 ): BaggageGroup[] {
-  // Build a map of existing groups keyed by envioId for merging
-  const existingById = new Map<string | number, BaggageGroup>();
-  for (const bg of currentBaggageGroups) {
-    existingById.set(bg.id, bg);
-  }
-
   const updatedGroups: BaggageGroup[] = (rutasResumen || []).map((resumen) => {
     const route: BaggageGroup["route"] = [];
 
@@ -58,8 +54,8 @@ export function mapBlockResultToBaggageGroups(
       if (resumen.tramos && Array.isArray(resumen.tramos) && resumen.tramos.length > 0) {
         for (let i = 0; i < resumen.tramos.length; i++) {
           const tramo = resumen.tramos[i];
-          const dep = parseLocalDate(tramo.salida, currentTime);
-          const arr = parseLocalDate(tramo.llegada, dep + 3600000);
+          const dep = parseSimDate(tramo.salida, cursorTime);
+          const arr = parseSimDate(tramo.llegada, dep + 3600000);
           route.push({
             from: String(tramo.origen).toUpperCase(),
             to: String(tramo.destino).toUpperCase(),
@@ -74,11 +70,11 @@ export function mapBlockResultToBaggageGroups(
         const split1 = splitTramo(resumen.primerTramo);
         if (split1) {
           const [from1, to1] = split1;
-          const dep1 = parseLocalDate(resumen.salidaPrimer, currentTime);
+          const dep1 = parseSimDate(resumen.salidaPrimer, cursorTime);
           const hasSecondLeg = resumen.primerTramo !== resumen.ultimoTramo;
           const arr1 = hasSecondLeg
-            ? dep1 + 3600000 // estimate 1h for first leg
-            : parseLocalDate(resumen.llegadaFinal, dep1 + 3600000);
+            ? dep1 + 3600000
+            : parseSimDate(resumen.llegadaFinal, dep1 + 3600000);
           route.push({
             from: from1,
             to: to1,
@@ -88,12 +84,11 @@ export function mapBlockResultToBaggageGroups(
             transitHours: 0,
           });
         }
-
         if (resumen.primerTramo !== resumen.ultimoTramo) {
           const split2 = splitTramo(resumen.ultimoTramo);
           if (split2) {
             const [from2, to2] = split2;
-            const arrival2 = parseLocalDate(resumen.llegadaFinal, currentTime);
+            const arrival2 = parseSimDate(resumen.llegadaFinal, cursorTime);
             const prevRoute = route[route.length - 1];
             const dep2 = prevRoute ? prevRoute.arrivalTime + 1800000 : arrival2 - 3600000;
             route.push({
@@ -109,20 +104,10 @@ export function mapBlockResultToBaggageGroups(
       }
     }
 
-    // Determine current leg based on simulation time
-    let currentLegIndex = 0;
-    for (let i = 0; i < route.length; i++) {
-      if (currentTime >= route[i].arrivalTime) {
-        currentLegIndex = Math.min(i + 1, route.length - 1);
-      } else {
-        break;
-      }
-    }
-
-    const firstDep = route.length > 0 ? route[0].departureTime : currentTime;
-    const lastArr = route.length > 0
+    const firstDep = route.length > 0 ? route[0].departureTime : cursorTime;
+    const lastArr  = route.length > 0
       ? route[route.length - 1].arrivalTime
-      : parseLocalDate(resumen.llegadaFinal, currentTime + 48 * 3600 * 1000);
+      : parseSimDate(resumen.llegadaFinal, cursorTime + 48 * 3600 * 1000);
 
     return {
       id: String(resumen.envioId),
@@ -135,7 +120,7 @@ export function mapBlockResultToBaggageGroups(
       currentLocation: resumen.origen,
       status: resumen.estado === "CON_RUTA" ? "in_transit" : "failed",
       route,
-      currentLegIndex,
+      currentLegIndex: 0, // SimulationMap computes the active leg from currentTime dynamically
     } as BaggageGroup;
   });
 

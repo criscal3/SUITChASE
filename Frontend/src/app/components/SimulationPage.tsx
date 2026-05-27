@@ -12,11 +12,11 @@ import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTria
 function formatTimestampShort(ts: number): string {
   if (!ts || isNaN(ts)) return "";
   const d = new Date(ts);
-  return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
 export function SimulationPage() {
-  const { state, start, stop, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward } = useSim();
+  const { state, start, stop, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate } = useSim();
   const { isDark } = useTheme();
   const [selectedBaggage, setSelectedBaggage] = useState<BaggageGroup | null>(null);
   const [showTracking, setShowTracking] = useState(true);
@@ -165,8 +165,13 @@ export function SimulationPage() {
                 {days.map(d => {
                   const isActive = state.hasStarted && currentSimDay === d;
                   const isPast = state.hasStarted && currentSimDay > d;
+                  // Base start time for the timeline
+                  const baseStartTime = state.hasStarted
+                    ? state.startTime
+                    : (pendingStartDate ? pendingStartDate.getTime() : (() => { const td = new Date(); td.setHours(0,0,0,0); return td.getTime(); })());
+                  
                   // timestamp for this day's label
-                  const dayTs = state.startTime + (d - 1) * 86400000;
+                  const dayTs = baseStartTime + (d - 1) * 86400000;
                   const timeStr = isActive
                     ? ` ${String(Math.floor(currentSimHour)).padStart(2,"0")}:${String(Math.round((currentSimHour%1)*60)).padStart(2,"0")}`
                     : "";
@@ -200,9 +205,7 @@ export function SimulationPage() {
                 <button
                   onClick={() => {
                     if (!state.hasStarted || (state as any).stopped) {
-                       const dateStr = (document.getElementById("sim-start-date") as HTMLInputElement)?.value;
-                       const d = dateStr ? new Date(dateStr) : undefined;
-                       start(d);
+                       start(pendingStartDate);
                     } else {
                        togglePause();
                     }
@@ -237,21 +240,6 @@ export function SimulationPage() {
               </div>
               {/* Control de velocidad */}
               <SpeedSlider speed={state.speed} onChange={updateSpeed} isDark={isDark} />
-            </div>
-
-            {/* Configuración */}
-            <div className={`border rounded-xl p-3 backdrop-blur-sm space-y-2 ${panelBg}`}>
-              <h4 className={`text-[12px] ${panelText}`}>Configuración</h4>
-              <div className="flex flex-col gap-1">
-                <label className={`text-[10px] ${subText}`}>Fecha de inicio:</label>
-                <input
-                  type="datetime-local"
-                  disabled={state.running}
-                  className={`w-full px-2 py-1 text-[11px] rounded border ${isDark ? "bg-[#1a2340] border-[#1a2744] text-white" : "bg-white border-[#cbd5e1] text-[#0f172a]"} disabled:opacity-50`}
-                  defaultValue="2026-01-02T00:00"
-                  id="sim-start-date"
-                />
-              </div>
             </div>
 
             {/* Spacer bottom for centering */}

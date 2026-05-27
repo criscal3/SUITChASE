@@ -219,6 +219,13 @@ public class SimulationService {
                 long tiempoMs = (long) ta * 1000L;
                 PlanificationSolutionOutput solucion = ACSAdapter.planificar(subInput, tiempoMs);
 
+                // ¿Se pidió pausa o cancelación durante la ejecución del algoritmo?
+                paused = pauseFlags.get(simulacionId);
+                if (paused == null || paused) {
+                    log.info("Simulación {} pausada/cancelada tras la planificación en el bloque {}. Descartando guardado.", simulacionId, bloqueActual);
+                    return;
+                }
+
                 long duracion = System.currentTimeMillis() - t0;
 
                 // 4. Guardar métricas del bloque
@@ -242,6 +249,12 @@ public class SimulationService {
                         k, sc, enviosBloque.size(), solucion.enviosConRuta(),
                         String.format("%.2f", solucion.getPromedioConsumoSLA()), duracion);
             } else {
+                // ¿Se pidió pausa o cancelación antes de guardar el bloque vacío?
+                paused = pauseFlags.get(simulacionId);
+                if (paused == null || paused) {
+                    log.info("Simulación {} pausada/cancelada en el bloque {} (vacío). Descartando guardado.", simulacionId, bloqueActual);
+                    return;
+                }
                 bloqueRes.setDuracionMs(System.currentTimeMillis() - t0);
                 bloqueResultadoRepository.save(bloqueRes);
                 log.info("Bloque {}/{} — sin envíos (K={}, Sc={}min)",

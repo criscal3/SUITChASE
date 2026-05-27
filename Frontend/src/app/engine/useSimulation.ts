@@ -18,8 +18,8 @@ export function useSimulation() {
     return {
       scenario: "weekly",
       turnaroundHours: 1,
-      currentTime: SIM_BASE_DATE.getTime(),
-      startTime: SIM_BASE_DATE.getTime(),
+      currentTime: 0,
+      startTime: 0,
       day: 1,
       hour: 0,
       airports: {},
@@ -39,10 +39,16 @@ export function useSimulation() {
   const [speed, setSpeed] = useState(4); // Default K=4
   const [airportsList, setAirportsList] = useState<Airport[]>(DEFAULT_AIRPORTS);
   const [airlines, setAirlines] = useState<Airline[]>(DEFAULT_AIRLINES);
-  
+
   const wsClientRef = useRef<SimulationWebSocketClient | null>(null);
   const activeSimIdRef = useRef<number | null>(null);
   const prevCollapsed = useRef(false);
+  const [pendingStartDate, setPendingStartDate] = useState<Date | undefined>(undefined);
+  const airportsListRef = useRef<Airport[]>(airportsList);
+
+  useEffect(() => {
+    airportsListRef.current = airportsList;
+  }, [airportsList]);
 
   const fetchAirports = useCallback(async () => {
     try {
@@ -72,13 +78,6 @@ export function useSimulation() {
 
   const targetTimeRef = useRef<number>(state.currentTime);
 
-  // Keep targetTimeRef updated when simulation currentTime changes from WebSocket
-  useEffect(() => {
-    if (state.running) {
-      targetTimeRef.current = state.currentTime;
-    }
-  }, [state.currentTime, state.running]);
-
   // Smooth clock ticker for real-time visualization interpolation
   useEffect(() => {
     if (!state.running) return;
@@ -86,27 +85,22 @@ export function useSimulation() {
     const intervalId = setInterval(() => {
       setState(prev => {
         if (!prev.running) return prev;
-        
+
         // sa = 30 mins, ta = 15 seconds, K = prev.speed
         // ClockSpeed = (sa * 60 * K) / ta
         const sa = 30;
         const ta = 15;
         const k = prev.speed || 4;
-        
+
         // simulated ms to advance in 50ms of real time
         const deltaMs = 50 * (sa * 60 * k) / ta;
-        
+
         const nextTime = prev.currentTime + deltaMs;
-        // Limit drifting too far ahead of the backend's current block
-        const limitTime = targetTimeRef.current + (sa * 60 * 1000); 
-        
-        const clampedTime = Math.min(nextTime, limitTime);
-        const startDay = new Date(prev.startTime).getTime();
-        const diffHours = (clampedTime - startDay) / 3600000;
+        const diffHours = (nextTime - prev.startTime) / 3600000;
 
         return {
           ...prev,
-          currentTime: clampedTime,
+          currentTime: nextTime,
           day: Math.floor(diffHours / 24) + 1,
           hour: diffHours % 24,
         };
@@ -121,72 +115,86 @@ export function useSimulation() {
       wsClientRef.current.disconnect();
     }
     const ws = new SimulationWebSocketClient(simId);
-    
+
     ws.onMessage((msg) => {
+      // Discard updates if paused (not finalized/cancelled)
+      if (!msg) return;
+
       setState(prev => {
-        let cursorTime = prev.currentTime;
+        if (!prev.running && msg.estado !== "FINALIZADA" && msg.estado !== "CANCELADA") {
+          return prev;
+        }
+
+        // Parse cursor from the backend (pure LocalDateTime → same UTC reference frame as flight times)
+        let cursorTime = targetTimeRef.current;
         if (msg.cursor) {
           try {
             const parts = String(msg.cursor).split(/[^0-9]/);
             if (parts.length >= 5) {
-              const year = parseInt(parts[0], 10);
-              const month = parseInt(parts[1], 10) - 1; // 0-based
-              const day = parseInt(parts[2], 10);
-              const hour = parseInt(parts[3], 10);
-              const minute = parseInt(parts[4], 10);
-              const second = parts[5] ? parseInt(parts[5], 10) : 0;
-              const parsedDate = new Date(year, month, day, hour, minute, second);
-              if (!isNaN(parsedDate.getTime())) {
-                cursorTime = parsedDate.getTime();
-              }
+              const year  = parseInt(parts[0], 10);
+              const month = parseInt(parts[1], 10) - 1;
+              const day   = parseInt(parts[2], 10);
+              const hour  = parseInt(parts[3], 10);
+              const min   = parseInt(parts[4], 10);
+              const sec   = parts[5] ? parseInt(parts[5], 10) : 0;
+              const parsed = Date.UTC(year, month, day, hour, min, sec);
+              if (!isNaN(parsed)) cursorTime = parsed;
             } else {
               const d = new Date(msg.cursor);
               if (!isNaN(d.getTime())) cursorTime = d.getTime();
             }
           } catch (e) {
-            console.error("Error parsing cursor date:", e);
+            console.error("Error parsing cursor:", e);
           }
         }
-        
-        const startDay = new Date(prev.startTime).getTime();
-        const diffHours = (cursorTime - startDay) / 3600000;
-        
+
+        // Advance the smooth clock target — the interval ticker interpolates toward this
+        targetTimeRef.current = Math.max(targetTimeRef.current, cursorTime);
+
         let newGroups = prev.baggageGroups;
-        let newStats = prev.stats;
+        let newStats  = prev.stats;
         let newAirports = { ...prev.airports };
-        
+
         if (msg.rutasResumen && msg.metricas) {
-          // Get the updated/new groups from this block
-          const blockGroups = mapBlockResultToBaggageGroups(msg.rutasResumen, cursorTime, prev.baggageGroups);
-          
-          // Merge by ID: update existing ones, add new ones
+          const blockGroups = mapBlockResultToBaggageGroups(
+            msg.rutasResumen,
+            cursorTime,
+            prev.baggageGroups
+          );
+
+          // Merge: start with ALL existing groups so nothing is deleted
           const mergedMap = new Map<string | number, any>();
-          // Start with all existing groups
           for (const bg of prev.baggageGroups) {
             mergedMap.set(bg.id, bg);
           }
-          // Overwrite/add groups that arrived in this block
+          // Only overwrite a group if it has NO active flight leg right now
+          const smoothTime = prev.currentTime;
           for (const bg of blockGroups) {
+            const existing = mergedMap.get(bg.id);
+            if (existing) {
+              const isFlying = existing.route?.some(
+                (leg: any) => smoothTime >= leg.departureTime && smoothTime < leg.arrivalTime
+              );
+              if (isFlying) continue; // keep the current in-transit animation
+            }
             mergedMap.set(bg.id, bg);
           }
           newGroups = Array.from(mergedMap.values());
           newStats = updateStatsFromMetrics(msg.metricas, prev.stats);
         }
 
-        // Just fake the airport stock for now based on stats
         for (const code of Object.keys(newAirports)) {
           if (newAirports[code]) {
-            newAirports[code].currentStock = Math.floor(newAirports[code].capacity * (newStats.warehouseUtilization / 100));
+            newAirports[code].currentStock = Math.floor(
+              newAirports[code].capacity * (newStats.warehouseUtilization / 100)
+            );
           }
         }
 
         const isFinished = msg.estado === "FINALIZADA";
-        
+        // NOTE: do NOT set currentTime here — the smooth ticker drives it
         return {
           ...prev,
-          currentTime: cursorTime,
-          day: Math.floor(diffHours / 24) + 1,
-          hour: diffHours % 24,
           baggageGroups: newGroups,
           stats: newStats,
           airports: newAirports,
@@ -212,7 +220,7 @@ export function useSimulation() {
     }
     activeSimIdRef.current = null;
 
-    const startDate = fechaInicio || SIM_BASE_DATE;
+    const startDate = fechaInicio || (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
     const endDate = new Date(startDate);
     endDate.setDate(startDate.getDate() + 5); // 5 days
 
@@ -241,18 +249,21 @@ export function useSimulation() {
 
       const simId = res.simulacionId;
       activeSimIdRef.current = simId;
-      
+
       // Initialize state using airportsList
       const initialAirports: Record<string, any> = {};
       airportsList.forEach(a => {
         initialAirports[a.code] = { code: a.code, currentStock: 0, capacity: a.warehouseCapacity, incoming: 0, outgoing: 0 };
       });
 
+      const startUtcMs = Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0);
+      targetTimeRef.current = startUtcMs;
+
       setState({
         scenario: "weekly",
         turnaroundHours: 1,
-        currentTime: startDate.getTime(),
-        startTime: startDate.getTime(),
+        currentTime: startUtcMs,
+        startTime: startUtcMs,
         day: 1,
         hour: 0,
         airports: initialAirports,
@@ -272,7 +283,7 @@ export function useSimulation() {
     } catch (error: any) {
       toast.error(`Error iniciando simulación: ${error.message}`);
     }
-  }, [speed, connectWebSocket]);
+  }, [speed, connectWebSocket, airportsList]);
 
   const stop = useCallback(async () => {
     if (activeSimIdRef.current) {
@@ -321,21 +332,24 @@ export function useSimulation() {
   }, []);
 
   const reset = useCallback(async () => {
-    await stop();
-    setState(prev => ({
-      ...prev,
-      currentTime: prev.startTime,
-      day: 1,
-      hour: 0,
-      airports: {},
-      flights: [],
-      baggageGroups: [],
-      stats: createEmptyStats(),
-      collapsed: false,
-      running: false,
-      stopped: false,
-    }));
-  }, [stop]);
+     await stop();
+     setState(prev => {
+       targetTimeRef.current = prev.startTime;
+       return {
+         ...prev,
+         currentTime: prev.startTime,
+         day: 1,
+         hour: 0,
+         airports: {},
+         flights: [],
+         baggageGroups: [],
+         stats: createEmptyStats(),
+         collapsed: false,
+         running: false,
+         stopped: false,
+       };
+     });
+   }, [stop]);
 
   // Clean up on unmount
   useEffect(() => {
@@ -347,20 +361,20 @@ export function useSimulation() {
   }, []);
 
   // Mocks for compatibility with other components
-  const handleCancelFlight = useCallback((flightId: string) => {}, []);
-  const registerBaggage = useCallback(() => {}, []);
+  const handleCancelFlight = useCallback((flightId: string) => { }, []);
+  const registerBaggage = useCallback(() => { }, []);
   const batchImportBaggage = useCallback(() => 0, []);
   const batchImportFlights = useCallback(() => 0, []);
   const batchImportAirports = useCallback(() => 0, []);
-  const addAirport = useCallback(() => {}, []);
-  const updateAirport = useCallback(() => {}, []);
-  const removeAirport = useCallback(() => {}, []);
-  const addAirline = useCallback(() => {}, []);
-  const updateAirline = useCallback(() => {}, []);
-  const removeAirline = useCallback(() => {}, []);
-  const setScenario = useCallback(() => {}, []);
-  const confirmFastForward = useCallback(() => {}, []);
-  const cancelFastForward = useCallback(() => {}, []);
+  const addAirport = useCallback(() => { }, []);
+  const updateAirport = useCallback(() => { }, []);
+  const removeAirport = useCallback(() => { }, []);
+  const addAirline = useCallback(() => { }, []);
+  const updateAirline = useCallback(() => { }, []);
+  const removeAirline = useCallback(() => { }, []);
+  const setScenario = useCallback(() => { }, []);
+  const confirmFastForward = useCallback(() => { }, []);
+  const cancelFastForward = useCallback(() => { }, []);
 
   return {
     state,
@@ -386,5 +400,7 @@ export function useSimulation() {
     setScenario,
     confirmFastForward,
     cancelFastForward,
+    pendingStartDate,
+    setPendingStartDate,
   };
 }

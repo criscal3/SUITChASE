@@ -19,19 +19,17 @@ const NAV = [
   { to: "/operarios", label: "Operarios", icon: Users },
 ];
 
-const SIM_BASE_DATE = new Date(2026, 3, 2, 0, 0, 0); // April 2, 2026
 
-function simTimeToDate(day: number, hour: number): Date {
-  const d = new Date(SIM_BASE_DATE);
-  d.setDate(d.getDate() + (day - 1));
-  d.setHours(Math.floor(hour), Math.round((hour % 1) * 60), 0, 0);
-  return d;
-}
 
-function formatSimDate(day: number, hour: number): string {
-  const d = simTimeToDate(day, hour);
-  return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
-    + " • " + d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+
+function formatSimDate(ts: number): string {
+  if (!ts || isNaN(ts)) {
+    // Show today if no sim running
+    const d = new Date();
+    return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  }
+  const d = new Date(ts);
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
 
 // Synchronous migration: clean stale localStorage before any React renders
@@ -64,7 +62,7 @@ export function Layout() {
 }
 
 function LayoutInner() {
-  const { state, startFastForward } = useSim();
+  const { state, setPendingStartDate, pendingStartDate } = useSim();
   const { isDark, toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -73,7 +71,9 @@ function LayoutInner() {
   const isDashboardPage = location.pathname === "/";
   const isSimPage = location.pathname === "/simulacion";
   const [showSimDatePicker, setShowSimDatePicker] = useState(false);
-  const [pickerValue, setPickerValue] = useState("");
+  // Default picker to today at 00:00
+  const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}T00:00`; })();
+  const [pickerValue, setPickerValue] = useState(todayIso);
 
   // Role check — only admin can access admin layout
   const role = localStorage.getItem("suitchase_role");
@@ -102,17 +102,20 @@ function LayoutInner() {
   const dateStr = now.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
   const timeStr = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-  // Sync picker value with sim state
+  // When sim starts, sync picker to current sim time
   React.useEffect(() => {
-    const d = simTimeToDate(state.day, state.hour);
-    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}T${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-    setPickerValue(iso);
-  }, [state.day, state.hour]);
+    if (state.hasStarted && state.currentTime) {
+      const d = new Date(state.currentTime);
+      setPickerValue(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}T${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`);
+    }
+  }, [state.hasStarted]);
 
   const handleDateSeek = () => {
     if (!pickerValue) return;
     const target = new Date(pickerValue);
-    startFastForward(target);
+    if (!isNaN(target.getTime())) {
+      setPendingStartDate(target);
+    }
     setShowSimDatePicker(false);
   };
 
@@ -202,7 +205,7 @@ function LayoutInner() {
                     }`}
                   >
                     <CalendarDays className={`w-3.5 h-3.5 ${!isDark ? "text-blue-700" : ""}`} />
-                    {formatSimDate(state.day, state.hour)}
+                    {formatSimDate(state.hasStarted ? state.currentTime : (pendingStartDate ? pendingStartDate.getTime() : 0))}
                   </button>
                   {showSimDatePicker && (
                     <div className={`absolute top-full left-0 mt-1 border rounded-lg p-3 z-50 min-w-[240px] ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-white border-[#cbd5e1]"}`}>
