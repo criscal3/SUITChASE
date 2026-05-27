@@ -1,7 +1,7 @@
 import React from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
 import { useTheme } from "../context/ThemeContext";
-import { Briefcase, Package, Sun, Moon, LogOut } from "lucide-react";
+import { Briefcase, Package, Sun, Moon, LogOut, Map } from "lucide-react";
 
 function useCurrentTime() {
   const [now, setNow] = React.useState(new Date());
@@ -63,6 +63,22 @@ function OperatorLayoutInner() {
           >
             <Package className="w-4 h-4 shrink-0" />
             Registro
+          </NavLink>
+
+          <NavLink
+            to="/operario/mapa"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-colors ${
+                isActive
+                  ? "bg-blue-600/20 text-blue-400"
+                  : isDark
+                    ? "text-white/80 hover:bg-[#1e293b] hover:text-white"
+                    : "text-[#334155] hover:bg-[#d1dce8] hover:text-[#0f172a]"
+              }`
+            }
+          >
+            <Map className="w-4 h-4 shrink-0" />
+            Mapa
           </NavLink>
         </nav>
 

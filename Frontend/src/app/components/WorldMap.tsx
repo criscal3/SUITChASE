@@ -1,5 +1,4 @@
 import React, { useMemo } from "react";
-import { AIRPORTS } from "../data/airports";
 import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
 
@@ -22,17 +21,17 @@ const CONTINENT_COLORS: Record<string, string> = {
 };
 
 export function WorldMap() {
-  const { state } = useSim();
+  const { state, airportsList } = useSim();
   const { isDark } = useTheme();
   const W = 900;
   const H = 480;
 
   const airportPositions = useMemo(() => {
-    return AIRPORTS.map(a => ({
+    return airportsList.map(a => ({
       ...a,
       ...latLngToXY(a.lat, a.lng, W, H),
     }));
-  }, []);
+  }, [airportsList]);
 
   // Get active flight lines
   const activeFlights = useMemo(() => {

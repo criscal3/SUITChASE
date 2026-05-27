@@ -58,3 +58,4 @@ Planificador/*.class
 Planificador/log_*.txt
 Planificador/reporte_*.txt
 Planificador/_envios_preliminar_/
+.env.zip

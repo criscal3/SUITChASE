@@ -14,6 +14,7 @@ import { AirlineLayout } from "./components/AirlineLayout";
 import { AirlineTracking } from "./components/AirlineTracking";
 import { LoginPage } from "./components/LoginPage";
 import { OperariosPanel } from "./components/OperariosPanel";
+import { AirportMap } from "./components/AirportMap";
 
 function OperatorRegistration() {
   return <Registration showBatchImport={false} />;
@@ -77,6 +78,7 @@ export const router = createBrowserRouter([
         Component: OperatorLayout,
         children: [
           { index: true, Component: OperatorRegistration },
+          { path: "mapa", Component: AirportMap },
         ],
       },
       {
@@ -84,6 +86,7 @@ export const router = createBrowserRouter([
         Component: AirlineLayout,
         children: [
           { index: true, Component: AirlineTracking },
+          { path: "mapa", Component: AirportMap },
         ],
       },
     ]

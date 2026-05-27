@@ -21,7 +21,7 @@ services:
     container_name: suitchase-mysql
     restart: unless-stopped
     ports:
-      - "3306:3306"
+      - "3307:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root123}
       MYSQL_DATABASE: suitchase
@@ -54,6 +54,7 @@ services:
     volumes:
       - ./Backend:/app             # Sincroniza tu código Java
       - ~/.m2:/root/.m2            # Cache de Maven para que no descargue todo cada vez
+      - ./Planificador:/Planificador # Carpeta de envíos sintéticos
     environment:
       # Sobreescribir las propiedades de Spring Boot
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/suitchase?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC

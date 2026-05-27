@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup, Line } from "react-simple-maps";
-import { AIRPORTS } from "../data/airports";
 import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
 import type { BaggageGroup } from "../engine/types";
@@ -83,7 +82,7 @@ function Building3D({ color, util }: { color: string; util: number }) {
 }
 
 export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps) {
-  const { state } = useSim();
+  const { state, airportsList } = useSim();
   const { isDark } = useTheme();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
   const [hovered, setHovered] = useState<HoveredAirport | null>(null);
@@ -110,17 +109,17 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
     if (selectedBaggage) {
       const leg = selectedBaggage.route[selectedBaggage.currentLegIndex] || selectedBaggage.route[0];
       if (leg) {
-        const port = AIRPORTS.find((a) => a.code === leg.from);
+        const port = airportsList.find((a) => a.code === leg.from);
         if (port) {
           setPosition({ coordinates: [port.lng, port.lat], zoom: 2.5 });
         }
       }
     }
-  }, [selectedBaggage]);
+  }, [selectedBaggage, airportsList]);
 
   // Points (Airports)
   const pointsData = useMemo(() => {
-    return AIRPORTS.map((a) => {
+    return airportsList.map((a) => {
       const ap = state.airports[a.code];
       const util = ap ? (ap.currentStock / ap.capacity) * 100 : 0;
       return {
@@ -130,7 +129,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
         label: `${a.city} (${a.code}) - ${ap?.currentStock || 0}/${ap?.capacity || 0} maletas`,
       };
     });
-  }, [state.airports]);
+  }, [state.airports, airportsList]);
 
   const { arcsData, planesData } = useMemo(() => {
     const arcs: any[] = [];
@@ -140,8 +139,8 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
     if (selectedBaggage) {
       for (let i = 0; i < selectedBaggage.route.length; i++) {
         const leg = selectedBaggage.route[i];
-        const from = AIRPORTS.find((a) => a.code === leg.from);
-        const to = AIRPORTS.find((a) => a.code === leg.to);
+        const from = airportsList.find((a) => a.code === leg.from);
+        const to = airportsList.find((a) => a.code === leg.to);
         if (from && to) {
           arcs.push({
             from: [from.lng, from.lat],
@@ -155,51 +154,86 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
       }
     }
 
-    // Determine active baggage routes
-    const activeRoutesMap = new Map<string, { from: typeof AIRPORTS[0]; to: typeof AIRPORTS[0]; qty: number }>();
+    // Determine active baggage routes and failed baggage routes
+    const activeRoutesMap = new Map<string, { from: typeof airportsList[0]; to: typeof airportsList[0]; qty: number }>();
+    const failedRoutesMap = new Map<string, { from: typeof airportsList[0]; to: typeof airportsList[0]; qty: number; registeredAt: number }>();
 
     const baggagesToRender = selectedBaggage
       ? state.baggageGroups.filter(bg => bg.id === selectedBaggage.id)
       : state.baggageGroups;
 
     for (const bg of baggagesToRender) {
-      if (bg.status !== "in_transit" || bg.currentLegIndex >= bg.route.length) continue;
-      const leg = bg.route[bg.currentLegIndex];
-      const from = AIRPORTS.find((a) => a.code === leg.from);
-      const to = AIRPORTS.find((a) => a.code === leg.to);
-      if (!from || !to) continue;
+      // If the shipment has no route (failed planning)
+      if (bg.status === "failed") {
+        // Only show if the current simulation time has reached or passed the registration time
+        if (state.currentTime < bg.registeredAt) continue;
 
-      const total = leg.arrivalTime - leg.departureTime;
-      const progress = Math.min(1, Math.max(0, (state.currentTime - leg.departureTime) / total));
-      const key = `${leg.from}-${leg.to}`;
-
-      const existing = activeRoutesMap.get(key);
-      if (existing) {
-        existing.qty += bg.quantity;
-      } else {
-        activeRoutesMap.set(key, { from, to, qty: bg.quantity });
+        const from = airportsList.find((a) => a.code === bg.origin);
+        const to = airportsList.find((a) => a.code === bg.destination);
+        if (from && to) {
+          const key = `${bg.origin}-${bg.destination}`;
+          const existing = failedRoutesMap.get(key);
+          if (existing) {
+            existing.qty += bg.quantity;
+            existing.registeredAt = Math.max(existing.registeredAt, bg.registeredAt);
+          } else {
+            failedRoutesMap.set(key, { from, to, qty: bg.quantity, registeredAt: bg.registeredAt });
+          }
+        }
+        continue;
       }
 
-      const pos = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, progress);
-      // Compute heading dynamically at current position using a small delta forward
-      const delta = Math.min(0.01, 1 - progress);
-      const posAhead = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, progress + delta);
-      const heading = getHeading(pos.lat, pos.lng, posAhead.lat, posAhead.lng);
+      if (bg.status !== "in_transit" || !bg.route || bg.route.length === 0) continue;
 
-      activePlanes.push({
-        lat: pos.lat,
-        lng: pos.lng,
-        heading,
-        qty: bg.quantity,
-        flightId: leg.flightId,
-      });
+      // Check ALL legs: find the one that is currently active in the time window
+      for (let legIdx = 0; legIdx < bg.route.length; legIdx++) {
+        const leg = bg.route[legIdx];
+
+        // CRITICAL: Only display planes and lines if the current simulated time is strictly
+        // between the departure and arrival times of the flight leg!
+        if (state.currentTime < leg.departureTime || state.currentTime > leg.arrivalTime) continue;
+
+        const from = airportsList.find((a) => a.code === leg.from);
+        const to = airportsList.find((a) => a.code === leg.to);
+        if (!from || !to) continue;
+
+        const total = leg.arrivalTime - leg.departureTime;
+        if (total <= 0) continue;
+        const progress = (state.currentTime - leg.departureTime) / total;
+        const key = `${leg.from}-${leg.to}`;
+
+        const existing = activeRoutesMap.get(key);
+        if (existing) {
+          existing.qty += bg.quantity;
+        } else {
+          activeRoutesMap.set(key, { from, to, qty: bg.quantity });
+        }
+
+        const pos = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, progress);
+        // Compute heading dynamically at current position using a small delta forward
+        const delta = Math.min(0.01, 1 - progress);
+        const posAhead = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, progress + delta);
+        const heading = getHeading(pos.lat, pos.lng, posAhead.lat, posAhead.lng);
+
+        activePlanes.push({
+          lat: pos.lat,
+          lng: pos.lng,
+          heading,
+          qty: bg.quantity,
+          flightId: leg.flightId,
+        });
+        // Only one active leg per group at a time
+        break;
+      }
     }
 
     // De-duplicate planes that share the same flightId and progress
     const uniquePlanes = Array.from(new Map(activePlanes.map((p) => [p.flightId, p])).values());
 
     const activeRouteColor = isDark ? "#00e5ff" : "#1e3a8a";
+    const failedRouteColor = "#ef4444"; // Red for failures
 
+    // Draw active routes
     for (const [key, val] of Array.from(activeRoutesMap.entries())) {
       arcs.push({
         from: [val.from.lng, val.from.lat],
@@ -211,8 +245,23 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
       });
     }
 
+    // Draw failed routes (only if planned in the last 6 simulated hours)
+    for (const [key, val] of Array.from(failedRoutesMap.entries())) {
+      const ageHours = (state.currentTime - val.registeredAt) / 3600000;
+      if (ageHours > 6) continue;
+
+      arcs.push({
+        from: [val.from.lng, val.from.lat],
+        to: [val.to.lng, val.to.lat],
+        color: failedRouteColor,
+        strokeWidth: 1.5,
+        isDashed: true,
+        key: `fail-${key}`,
+      });
+    }
+
     return { arcsData: arcs, planesData: uniquePlanes };
-  }, [state.baggageGroups, state.currentTime, state.flights, selectedBaggage, isDark]);
+  }, [state.baggageGroups, state.currentTime, state.flights, selectedBaggage, isDark, airportsList]);
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative transition-colors duration-200" style={{ background: mapBg }}>

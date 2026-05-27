@@ -34,6 +34,10 @@ public class SimulationService {
     // Estado de simulaciones activas: simulacionId -> flag de pausa
     private final Map<Long, Boolean> pauseFlags = new ConcurrentHashMap<>();
 
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private SimulationService self;
+
     // ========================================================
     // INICIAR SIMULACIÓN (llamado desde controller, retorna rápido)
     // ========================================================
@@ -60,8 +64,8 @@ public class SimulationService {
         simulacionRepository.save(sim);
         pauseFlags.put(sim.getId(), false);
 
-        // Lanzar ejecución asíncrona
-        ejecutarSimulacionAsync(sim.getId());
+        // Lanzar ejecución asíncrona vía proxy Spring para habilitar @Async
+        self.ejecutarSimulacionAsync(sim.getId());
 
         return sim;
     }
@@ -85,6 +89,11 @@ public class SimulationService {
         SimulacionEntity sim = simulacionRepository.findById(simulacionId)
                 .orElseThrow(() -> new RuntimeException("Simulación no encontrada"));
 
+        if (sim.getEstado() == EstadoSimulacion.EJECUTANDO) {
+            log.info("La simulación {} ya está ejecutándose", simulacionId);
+            return;
+        }
+
         if (sim.getEstado() != EstadoSimulacion.PAUSADA) {
             throw new RuntimeException("Solo se puede reanudar una simulación PAUSADA");
         }
@@ -93,8 +102,8 @@ public class SimulationService {
         simulacionRepository.save(sim);
         pauseFlags.put(simulacionId, false);
 
-        // Relanzar el loop asíncrono desde donde se quedó
-        ejecutarSimulacionAsync(simulacionId);
+        // Relanzar el loop asíncrono desde donde se quedó vía proxy Spring para habilitar @Async
+        self.ejecutarSimulacionAsync(simulacionId);
         log.info("Simulación {} reanudada desde bloque {}", simulacionId, sim.getBloqueActual());
     }
 
@@ -341,6 +350,23 @@ public class SimulationService {
             ResultadoRuta ruta = solucion.getRuta(envio);
             if (ruta == null || ruta.vuelosUsados.isEmpty()) continue;
 
+            // --- SOLUCIÓN DE FK CONSTRAINT ---
+            // Si el envío no existe en la DB (porque se leyó de archivo sintético), lo persistimos primero
+            if (!envioRepository.existsById(envio.getId())) {
+                EnvioEntity nuevoEnvio = new EnvioEntity();
+                nuevoEnvio.setId(envio.getId());
+                nuevoEnvio.setOrigenOaci(envio.getOrigenOaci());
+                nuevoEnvio.setDestinoOaci(envio.getDestinoOaci());
+                nuevoEnvio.setFechaHoraRegistro(envio.getFechaHoraRegistro());
+                nuevoEnvio.setCantidadMaletas(envio.getCantidadMaletas());
+                nuevoEnvio.setEsSintetico(true);
+                nuevoEnvio.setSimulacionId(bloqueResultadoRepository.findById(bloqueId)
+                        .map(BloqueResultadoEntity::getSimulacionId).orElse(null));
+                nuevoEnvio.setAerolineaId(1L); // Aerolínea por defecto para datos sintéticos
+                nuevoEnvio.setEstado(EnvioEntity.EstadoEnvio.PENDIENTE);
+                envioRepository.save(nuevoEnvio);
+            }
+
             for (int i = 0; i < ruta.vuelosUsados.size(); i++) {
                 VueloAlgoritmo vuelo = ruta.vuelosUsados.get(i);
                 LocalDateTime fechaSalida = ruta.fechasVuelo.get(i);
@@ -353,7 +379,6 @@ public class SimulationService {
                 asig.setBloqueResultadoId(bloqueId);
                 asig.setEnvioId(envio.getId());
                 asig.setOrdenVuelo(i + 1);
-                // Buscar el vuelo en DB por sus datos para obtener el ID
                 asig.setVueloId(buscarVueloId(vuelo));
                 asig.setFechaSalida(fechaSalida);
                 asig.setFechaLlegada(fechaLlegada);

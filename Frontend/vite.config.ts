@@ -36,4 +36,19 @@ export default defineConfig({
   define: {
     global: 'window',
   },
+  server: {
+    host: '0.0.0.0',
+    port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://backend:8090',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'http://backend:8090',
+        ws: true,
+        changeOrigin: true,
+      }
+    }
+  }
 })
