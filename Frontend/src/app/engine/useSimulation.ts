@@ -372,7 +372,9 @@ export function useSimulation() {
   const addAirline = useCallback(() => { }, []);
   const updateAirline = useCallback(() => { }, []);
   const removeAirline = useCallback(() => { }, []);
-  const setScenario = useCallback(() => { }, []);
+  const setScenario = useCallback((sc: "weekly" | "collapse") => {
+    setState(prev => ({ ...prev, scenario: sc }));
+  }, []);
   const confirmFastForward = useCallback(() => { }, []);
   const cancelFastForward = useCallback(() => { }, []);
 

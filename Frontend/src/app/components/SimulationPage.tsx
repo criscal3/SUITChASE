@@ -242,6 +242,35 @@ export function SimulationPage() {
               <SpeedSlider speed={state.speed} onChange={updateSpeed} isDark={isDark} />
             </div>
 
+            {/* Escenarios */}
+            <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
+              <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
+              {([
+                { key: "tracking", label: "Simulación en tiempo real" },
+                { key: "weekly", label: "Simulación de 5 días" },
+                { key: "collapse", label: "Hasta el Colapso" },
+              ] as const).map(s => (
+                <button
+                  key={s.key}
+                  onClick={() => {
+                    if (s.key === "tracking") {
+                      setViewMode("tracking");
+                    } else {
+                      setViewMode("simulation");
+                      setScenario(s.key);
+                    }
+                  }}
+                  className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${
+                    (s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
+                      ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
+                      : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
             {/* Spacer bottom for centering */}
             <div className="shrink-0 mb-auto" />
           </div>
@@ -282,30 +311,31 @@ export function SimulationPage() {
 
             {/* Escenarios */}
             <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
-            {([
-              { key: "weekly", label: "Semanal (5 días)" },
-              { key: "collapse", label: "Hasta Colapso" },
-              { key: "tracking", label: "Tracking en Vivo" },
-            ] as const).map(s => (
-              <button
-                key={s.key}
-                onClick={() => {
-                  if (s.key === "tracking") {
-                    setViewMode("tracking");
-                  } else {
-                    setViewMode("simulation");
-                    setScenario(s.key);
-                  }
-                }}
-                className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${
-                  (s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
-                    ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
-                    : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
+              <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
+              {([
+                { key: "tracking", label: "Simulación en tiempo real" },
+                { key: "weekly", label: "Simulación de 5 días" },
+                { key: "collapse", label: "Hasta el Colapso" },
+              ] as const).map(s => (
+                <button
+                  key={s.key}
+                  onClick={() => {
+                    if (s.key === "tracking") {
+                      setViewMode("tracking");
+                    } else {
+                      setViewMode("simulation");
+                      setScenario(s.key);
+                    }
+                  }}
+                  className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${
+                    (s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
+                      ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
+                      : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
             </div>
             <div className="shrink-0 mb-auto" />
           </div>
