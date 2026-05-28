@@ -46,7 +46,7 @@ public class SimulationService {
                                               int sa, int k, int ta) {
         int sc = k * sa;
         long totalMinutos = ChronoUnit.MINUTES.between(fechaInicio, fechaFin);
-        int totalBloques = (int) Math.ceil((double) totalMinutos / sa);
+        int totalBloques = sc > 0 ? (int) Math.ceil((double) totalMinutos / sc) : 0;
 
         SimulacionEntity sim = new SimulacionEntity();
         sim.setNombre(nombre);
@@ -129,7 +129,8 @@ public class SimulationService {
         sim.setConstanteK(nuevoK);
         // Recalcular total de bloques estimados con el nuevo K
         long totalMinutos = ChronoUnit.MINUTES.between(sim.getCursorTemporal(), sim.getFechaFinSim());
-        int bloquesRestantes = (int) Math.ceil((double) totalMinutos / sim.getSaltoAlgoritmoSa());
+        int nuevoSc = nuevoK * sim.getSaltoAlgoritmoSa();
+        int bloquesRestantes = nuevoSc > 0 ? (int) Math.ceil((double) totalMinutos / nuevoSc) : 0;
         sim.setTotalBloquesEstimados(sim.getBloqueActual() + bloquesRestantes);
         simulacionRepository.save(sim);
         log.info("Simulación {} — K actualizado a {}. Nuevo Sc = {} min",
@@ -262,7 +263,7 @@ public class SimulationService {
             }
 
             // 7. Avanzar cursor
-            cursor = cursor.plusMinutes(sa);
+            cursor = cursor.plusMinutes(sc);
 
             // 8. Actualizar estado en DB
             simActual.setCursorTemporal(cursor);
