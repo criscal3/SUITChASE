@@ -16,7 +16,7 @@ function formatTimestampShort(ts: number): string {
 }
 
 export function SimulationPage() {
-  const { state, start, stop, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate } = useSim();
+  const { state, start, stop, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
   const { isDark } = useTheme();
   const [selectedBaggage, setSelectedBaggage] = useState<BaggageGroup | null>(null);
   const [showTracking, setShowTracking] = useState(true);
@@ -391,6 +391,71 @@ export function SimulationPage() {
           </>
         )}
       </div>
+
+      {/* Initial 90-second waiting popup — shown while backend computes first block */}
+      {state.waitingForFirstBlock && (
+        <div className="absolute inset-0 z-50 bg-black/60 flex items-center justify-center">
+          <div className={`border rounded-2xl w-full max-w-md mx-4 overflow-hidden ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-white border-[#cbd5e1]"}`}>
+            {/* Header */}
+            <div className={`flex items-center gap-3 px-6 py-4 border-b ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
+              <div className={`w-5 h-5 rounded-full border-2 border-t-transparent animate-spin ${isDark ? "border-cyan-400" : "border-blue-600"}`} />
+              <h2 className={`text-[16px] font-medium ${isDark ? "text-[#e2e8f0]" : "text-[#0f172a]"}`}>
+                Preparando simulación...
+              </h2>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-5 space-y-4">
+              <p className={`text-[13px] ${isDark ? "text-[#94a3b8]" : "text-[#475569]"}`}>
+                El sistema está calculando la planificación inicial del primer bloque de datos.
+                La simulación comenzará automáticamente cuando esté lista.
+              </p>
+
+              {/* Progress bar */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-[11px] ${isDark ? "text-[#64748b]" : "text-[#94a3b8]"}`}>
+                    Progreso de espera
+                  </span>
+                  <span className={`text-[12px] font-mono ${isDark ? "text-cyan-400" : "text-blue-600"}`}>
+                    {waitCountdown}s restantes
+                  </span>
+                </div>
+                <div className={`w-full h-3 rounded-full overflow-hidden ${isDark ? "bg-[#1e293b]" : "bg-[#e2e8f0]"}`}>
+                  <div
+                    className={`h-full rounded-full transition-all duration-1000 ease-linear ${isDark ? "bg-gradient-to-r from-cyan-600 to-cyan-400" : "bg-gradient-to-r from-blue-500 to-blue-400"}`}
+                    style={{ width: `${((90 - waitCountdown) / 90) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Info box */}
+              <div className={`rounded-xl p-3 border ${isDark ? "border-[#1e293b] bg-[#1e293b]/50" : "border-[#e2e8f0] bg-[#f8fafc]"}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Clock className={`w-3.5 h-3.5 ${isDark ? "text-cyan-400" : "text-blue-600"}`} />
+                  <span className={`text-[11px] font-medium ${isDark ? "text-[#e2e8f0]" : "text-[#0f172a]"}`}>
+                    Parámetros de simulación
+                  </span>
+                </div>
+                <div className={`text-[10px] space-y-0.5 ${isDark ? "text-[#94a3b8]" : "text-[#64748b]"}`}>
+                  <div>Ventana de consumo: 6 horas simuladas cada 3 minutos reales</div>
+                  <div>Velocidad: 2 minutos simulados por cada segundo real</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className={`flex items-center justify-end px-6 py-3 border-t ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
+              <button
+                onClick={stop}
+                className={`px-4 py-1.5 rounded-lg text-[12px] border transition-colors ${isDark ? "border-red-500/30 text-red-400 hover:bg-red-500/10" : "border-red-300 text-red-600 hover:bg-red-50"}`}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Highlights overlay (RF70) - shown on stop or collapse. Closing also resets when triggered by stop. */}
       {showHighlights && (

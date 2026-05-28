@@ -13,6 +13,17 @@ const DEFAULT_AIRLINES: Airline[] = [
   // ... (keep the same if you want, or just a few for mock)
 ];
 
+// Simulation timing constants
+const SA_MINUTES = 3;        // Sa: salto del algoritmo en minutos
+const K_DEFAULT = 120;       // K: constante de velocidad
+const TA_SECONDS = 10;       // Ta: tiempo del algoritmo en segundos
+const SC_MINUTES = K_DEFAULT * SA_MINUTES; // Sc: ventana de consumo = 360 min = 6h
+const SA_SECONDS = SA_MINUTES * 60;        // Sa en segundos = 180s = 3 min
+const INITIAL_WAIT_SECONDS = 90;           // Espera inicial antes de iniciar cronómetro
+// Clock speed: Sc minutos de simulación en Sa segundos reales
+// = 360 min sim / 180 s real = 2 min sim / 1 s real = 120 s sim / 1 s real
+const SIM_MS_PER_REAL_MS = (SC_MINUTES * 60 * 1000) / (SA_SECONDS * 1000); // = 120
+
 export function useSimulation() {
   const [state, setState] = useState<SimulationState>(() => {
     return {
@@ -31,14 +42,19 @@ export function useSimulation() {
       running: false,
       stopped: false,
       hasStarted: false,
-      speed: 4, // Represents K
+      waitingForFirstBlock: false,
+      speed: K_DEFAULT,
     };
   });
 
   const [events, setEvents] = useState<SimEvent[]>([]);
-  const [speed, setSpeed] = useState(4); // Default K=4
+  const [speed, setSpeed] = useState(K_DEFAULT);
   const [airportsList, setAirportsList] = useState<Airport[]>(DEFAULT_AIRPORTS);
   const [airlines, setAirlines] = useState<Airline[]>(DEFAULT_AIRLINES);
+  // Countdown seconds remaining for the initial 90s wait
+  const [waitCountdown, setWaitCountdown] = useState(0);
+  // Queue of received blocks waiting to be displayed
+  const blockQueueRef = useRef<any[]>([]);
 
   const wsClientRef = useRef<SimulationWebSocketClient | null>(null);
   const activeSimIdRef = useRef<number | null>(null);
@@ -77,8 +93,63 @@ export function useSimulation() {
   }, [fetchAirports]);
 
   const targetTimeRef = useRef<number>(state.currentTime);
+  // Track the real-time timestamp when the simulation clock started (after 90s wait)
+  const clockStartRealTimeRef = useRef<number>(0);
+  // Track the sim-time when the clock started
+  const clockStartSimTimeRef = useRef<number>(0);
 
-  // Smooth clock ticker for real-time visualization interpolation
+  // ─── Countdown timer for the initial 90-second wait ───
+  useEffect(() => {
+    if (!state.waitingForFirstBlock) return;
+
+    setWaitCountdown(INITIAL_WAIT_SECONDS);
+    const countdownStart = Date.now();
+
+    const countdownId = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - countdownStart) / 1000);
+      const remaining = INITIAL_WAIT_SECONDS - elapsed;
+
+      if (remaining <= 0) {
+        clearInterval(countdownId);
+        setWaitCountdown(0);
+        // Transition: stop waiting, start running the chronometer
+        setState(prev => {
+          clockStartRealTimeRef.current = Date.now();
+          clockStartSimTimeRef.current = prev.currentTime;
+          return {
+            ...prev,
+            waitingForFirstBlock: false,
+            running: true,
+          };
+        });
+        // Apply the first block from queue if available
+        const firstBlock = blockQueueRef.current.shift();
+        if (firstBlock) {
+          applyBlock(firstBlock);
+        }
+      } else {
+        setWaitCountdown(remaining);
+      }
+    }, 1000);
+
+    return () => clearInterval(countdownId);
+  }, [state.waitingForFirstBlock]);
+
+  // ─── Block consumption timer: every SA_SECONDS (180s), consume next block ───
+  useEffect(() => {
+    if (!state.running) return;
+
+    const consumeId = setInterval(() => {
+      const nextBlock = blockQueueRef.current.shift();
+      if (nextBlock) {
+        applyBlock(nextBlock);
+      }
+    }, SA_SECONDS * 1000);
+
+    return () => clearInterval(consumeId);
+  }, [state.running]);
+
+  // ─── Smooth clock ticker: 2 sim-minutes per 1 real second ───
   useEffect(() => {
     if (!state.running) return;
 
@@ -86,14 +157,8 @@ export function useSimulation() {
       setState(prev => {
         if (!prev.running) return prev;
 
-        // sa = 30 mins, ta = 15 seconds, K = prev.speed
-        // ClockSpeed = (sa * 60 * K) / ta
-        const sa = 30;
-        const ta = 15;
-        const k = prev.speed || 4;
-
-        // simulated ms to advance in 50ms of real time
-        const deltaMs = 50 * (sa * 60 * k) / ta;
+        // Advance: SIM_MS_PER_REAL_MS sim-ms per real-ms → in 50ms tick:
+        const deltaMs = 50 * SIM_MS_PER_REAL_MS;
 
         let nextTime = prev.currentTime + deltaMs;
         const maxTime = prev.startTime + 5 * 86400000;
@@ -115,6 +180,77 @@ export function useSimulation() {
     return () => clearInterval(intervalId);
   }, [state.running]);
 
+  // ─── Apply a block's data to the simulation state ───
+  const applyBlock = useCallback((msg: any) => {
+    setState(prev => {
+      let cursorTime = targetTimeRef.current;
+      if (msg.cursor) {
+        try {
+          const parts = String(msg.cursor).split(/[^0-9]/);
+          if (parts.length >= 5) {
+            const year  = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const day   = parseInt(parts[2], 10);
+            const hour  = parseInt(parts[3], 10);
+            const min   = parseInt(parts[4], 10);
+            const sec   = parts[5] ? parseInt(parts[5], 10) : 0;
+            const parsed = Date.UTC(year, month, day, hour, min, sec);
+            if (!isNaN(parsed)) cursorTime = parsed;
+          }
+        } catch (e) {
+          console.error("Error parsing cursor:", e);
+        }
+      }
+      targetTimeRef.current = Math.max(targetTimeRef.current, cursorTime);
+
+      let newGroups = prev.baggageGroups;
+      let newStats  = prev.stats;
+      let newAirports = { ...prev.airports };
+
+      if (msg.rutasResumen && msg.metricas) {
+        const blockGroups = mapBlockResultToBaggageGroups(
+          msg.rutasResumen,
+          cursorTime,
+          prev.baggageGroups,
+          airportsListRef.current
+        );
+
+        const mergedMap = new Map<string | number, any>();
+        for (const bg of prev.baggageGroups) {
+          mergedMap.set(bg.id, bg);
+        }
+        const smoothTime = prev.currentTime;
+        for (const bg of blockGroups) {
+          const existing = mergedMap.get(bg.id);
+          if (existing) {
+            const isFlying = existing.route?.some(
+              (leg: any) => smoothTime >= leg.departureTime && smoothTime < leg.arrivalTime
+            );
+            if (isFlying) continue;
+          }
+          mergedMap.set(bg.id, bg);
+        }
+        newGroups = Array.from(mergedMap.values());
+        newStats = updateStatsFromMetrics(msg.metricas, prev.stats);
+      }
+
+      for (const code of Object.keys(newAirports)) {
+        if (newAirports[code]) {
+          newAirports[code].currentStock = Math.floor(
+            newAirports[code].capacity * (newStats.warehouseUtilization / 100)
+          );
+        }
+      }
+
+      return {
+        ...prev,
+        baggageGroups: newGroups,
+        stats: newStats,
+        airports: newAirports,
+      };
+    });
+  }, []);
+
   const connectWebSocket = useCallback((simId: number) => {
     if (wsClientRef.current) {
       wsClientRef.current.disconnect();
@@ -122,94 +258,23 @@ export function useSimulation() {
     const ws = new SimulationWebSocketClient(simId);
 
     ws.onMessage((msg) => {
-      // Discard updates if paused (not finalized/cancelled)
       if (!msg) return;
 
-      setState(prev => {
-        if (!prev.running && msg.estado !== "FINALIZADA" && msg.estado !== "CANCELADA") {
-          return prev;
-        }
-
-        // Parse cursor from the backend (pure LocalDateTime → same UTC reference frame as flight times)
-        let cursorTime = targetTimeRef.current;
-        if (msg.cursor) {
-          try {
-            const parts = String(msg.cursor).split(/[^0-9]/);
-            if (parts.length >= 5) {
-              const year  = parseInt(parts[0], 10);
-              const month = parseInt(parts[1], 10) - 1;
-              const day   = parseInt(parts[2], 10);
-              const hour  = parseInt(parts[3], 10);
-              const min   = parseInt(parts[4], 10);
-              const sec   = parts[5] ? parseInt(parts[5], 10) : 0;
-              const parsed = Date.UTC(year, month, day, hour, min, sec);
-              if (!isNaN(parsed)) cursorTime = parsed;
-            } else {
-              const d = new Date(msg.cursor);
-              if (!isNaN(d.getTime())) {
-                cursorTime = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds());
-              }
-            }
-          } catch (e) {
-            console.error("Error parsing cursor:", e);
-          }
-        }
-
-        // Advance the smooth clock target — the interval ticker interpolates toward this
-        targetTimeRef.current = Math.max(targetTimeRef.current, cursorTime);
-
-        let newGroups = prev.baggageGroups;
-        let newStats  = prev.stats;
-        let newAirports = { ...prev.airports };
-
-        if (msg.rutasResumen && msg.metricas) {
-          const blockGroups = mapBlockResultToBaggageGroups(
-            msg.rutasResumen,
-            cursorTime,
-            prev.baggageGroups,
-            airportsListRef.current
-          );
-
-          // Merge: start with ALL existing groups so nothing is deleted
-          const mergedMap = new Map<string | number, any>();
-          for (const bg of prev.baggageGroups) {
-            mergedMap.set(bg.id, bg);
-          }
-          // Only overwrite a group if it has NO active flight leg right now
-          const smoothTime = prev.currentTime;
-          for (const bg of blockGroups) {
-            const existing = mergedMap.get(bg.id);
-            if (existing) {
-              const isFlying = existing.route?.some(
-                (leg: any) => smoothTime >= leg.departureTime && smoothTime < leg.arrivalTime
-              );
-              if (isFlying) continue; // keep the current in-transit animation
-            }
-            mergedMap.set(bg.id, bg);
-          }
-          newGroups = Array.from(mergedMap.values());
-          newStats = updateStatsFromMetrics(msg.metricas, prev.stats);
-        }
-
-        for (const code of Object.keys(newAirports)) {
-          if (newAirports[code]) {
-            newAirports[code].currentStock = Math.floor(
-              newAirports[code].capacity * (newStats.warehouseUtilization / 100)
-            );
-          }
-        }
-
-        const isFinished = msg.estado === "FINALIZADA";
-        // NOTE: do NOT set currentTime here — the smooth ticker drives it
-        return {
+      // Handle final/cancelled states immediately
+      if (msg.estado === "FINALIZADA" || msg.estado === "CANCELADA") {
+        setState(prev => ({
           ...prev,
-          baggageGroups: newGroups,
-          stats: newStats,
-          airports: newAirports,
-          running: msg.estado === "EJECUTANDO",
-          stopped: isFinished || msg.estado === "CANCELADA",
-        };
-      });
+          running: false,
+          stopped: true,
+          waitingForFirstBlock: false,
+        }));
+        return;
+      }
+
+      // Queue the block for consumption by the timer
+      // During the waiting phase, the first block is queued and will be consumed at t=90s
+      blockQueueRef.current.push(msg);
+      console.log(`Block ${msg.bloqueActual} queued. Queue size: ${blockQueueRef.current.length}`);
     });
 
     ws.onConnect(() => {
@@ -227,6 +292,7 @@ export function useSimulation() {
       wsClientRef.current = null;
     }
     activeSimIdRef.current = null;
+    blockQueueRef.current = [];
 
     const startDate = fechaInicio || (() => { const d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0)); })();
     const endDate = new Date(startDate.getTime());
@@ -250,9 +316,9 @@ export function useSimulation() {
         nombre: `Simulación ${fechaInicioStr}`,
         fechaInicio: fechaInicioStr,
         fechaFin: fechaFinStr,
-        sa: 30, // Fixed
-        k: speed, // Modifiable via UI
-        ta: 15 // Fixed
+        sa: SA_MINUTES,
+        k: K_DEFAULT,
+        ta: TA_SECONDS
       });
 
       const simId = res.simulacionId;
@@ -267,6 +333,7 @@ export function useSimulation() {
       const startUtcMs = startDate.getTime();
       targetTimeRef.current = startUtcMs;
 
+      // Don't start running yet — enter 90-second waiting phase
       setState({
         scenario: "weekly",
         turnaroundHours: 1,
@@ -280,10 +347,11 @@ export function useSimulation() {
         stats: createEmptyStats(),
         collapsed: false,
         collapseReason: "",
-        running: true,
+        running: false,           // NOT running yet — waiting for 90s
+        waitingForFirstBlock: true, // Show the waiting popup
         stopped: false,
         hasStarted: true,
-        speed: speed,
+        speed: K_DEFAULT,
       });
       setEvents([]);
 
@@ -308,7 +376,9 @@ export function useSimulation() {
       wsClientRef.current = null;
     }
     activeSimIdRef.current = null;
-    setState(prev => ({ ...prev, running: false, stopped: true, hasStarted: false }));
+    blockQueueRef.current = [];
+    setWaitCountdown(0);
+    setState(prev => ({ ...prev, running: false, stopped: true, hasStarted: false, waitingForFirstBlock: false }));
   }, []);
 
   const togglePause = useCallback(async () => {
@@ -341,6 +411,8 @@ export function useSimulation() {
 
   const reset = useCallback(async () => {
      await stop();
+     blockQueueRef.current = [];
+     setWaitCountdown(0);
      setState(prev => {
        targetTimeRef.current = prev.startTime;
        return {
@@ -355,6 +427,7 @@ export function useSimulation() {
          collapsed: false,
          running: false,
          stopped: false,
+         waitingForFirstBlock: false,
        };
      });
    }, [stop]);
@@ -396,6 +469,7 @@ export function useSimulation() {
     reset,
     togglePause,
     updateSpeed,
+    waitCountdown,
     handleCancelFlight,
     registerBaggage,
     batchImportBaggage,

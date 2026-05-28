@@ -35,8 +35,10 @@ export interface SimulationState {
   collapsed: boolean;
   collapseReason: string;
   running: boolean;
-  speed: number;
+  stopped?: boolean;
   hasStarted?: boolean;
+  waitingForFirstBlock?: boolean;
+  speed: number;
   scenario: "daily" | "weekly" | "collapse";
   turnaroundHours: number;
   fastForwardTarget?: number | null;

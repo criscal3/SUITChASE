@@ -294,6 +294,40 @@ public class SimulationService {
             wsMessage.put("bloqueId", bloqueRes.getId());
 
             messagingTemplate.convertAndSend("/topic/simulacion/" + simulacionId, wsMessage);
+
+            // 10. SLEEP post-planificación para sincronizar con el cronómetro del frontend.
+            //     - Primer bloque: el frontend espera 90s iniciales, así que dormimos (90s - duración_algoritmo).
+            //     - Bloques siguientes: dormimos (Sa*60s - duración_algoritmo) para que el backend
+            //       despierte justo cuando el frontend necesita el siguiente bloque.
+            long duracionAlgoritmoSeg = (System.currentTimeMillis() - t0) / 1000;
+            long sleepTargetSeg;
+            if (bloqueActual == 1) {
+                // Primer bloque: espera inicial de 90 segundos
+                sleepTargetSeg = 90 - duracionAlgoritmoSeg;
+            } else {
+                // Bloques siguientes: ciclo de Sa minutos (Sa*60 segundos)
+                sleepTargetSeg = (long) sa * 60 - duracionAlgoritmoSeg;
+            }
+
+            if (sleepTargetSeg > 0) {
+                log.info("Simulación {} — Bloque {} completado en {}s, durmiendo {}s",
+                        simulacionId, bloqueActual, duracionAlgoritmoSeg, sleepTargetSeg);
+                try {
+                    // Sleep interruptible por pausa: revisamos cada segundo
+                    for (long s = 0; s < sleepTargetSeg; s++) {
+                        Boolean pausedDuringSleep = pauseFlags.get(simulacionId);
+                        if (pausedDuringSleep == null || pausedDuringSleep) {
+                            log.info("Simulación {} interrumpida durante sleep en bloque {}", simulacionId, bloqueActual);
+                            return;
+                        }
+                        Thread.sleep(1000);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.warn("Simulación {} — sleep interrumpido en bloque {}", simulacionId, bloqueActual);
+                    return;
+                }
+            }
         }
 
         // ═══════════════════════════════════════════════════
