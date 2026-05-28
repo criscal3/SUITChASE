@@ -121,6 +121,7 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
 
           {/* Línea de tiempo de la ruta */}
           <div className="space-y-0">
+            {/* Aeropuerto origen - solo muestra salida */}
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full shrink-0 ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
               <div className="flex-1">
@@ -129,7 +130,7 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
                 </div>
                 <div className={`text-[9px] ${mutedCls}`}>
                   {selectedBaggage.route.length > 0
-                    ? `Salida: ${formatTimestamp(selectedBaggage.route[0].departureTime)} | Llegada: ${formatTimestamp(selectedBaggage.route[0].arrivalTime)}`
+                    ? `Salida: ${formatTimestamp(selectedBaggage.route[0].departureTime)}`
                     : `Registro: ${formatTimestamp(selectedBaggage.registeredAt)}`}
                 </div>
               </div>
@@ -138,6 +139,8 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
             {selectedBaggage.route.map((leg, i) => {
               const isCompleted = i < selectedBaggage.currentLegIndex;
               const isCurrent = i === selectedBaggage.currentLegIndex && selectedBaggage.status === "in_transit";
+              const isLastLeg = i === selectedBaggage.route.length - 1;
+              
               return (
                 <React.Fragment key={i}>
                   <div className={`ml-[3px] w-[2px] h-3 ${trackLineBg} relative`}>
@@ -152,7 +155,10 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
                         {getCity(leg.to)} ({leg.to})
                       </div>
                       <div className={`text-[9px] ${mutedCls}`}>
-                        Salida: {formatTimestamp(leg.departureTime)} | Llegada: {formatTimestamp(leg.arrivalTime)}
+                        {isLastLeg
+                          ? `Llegada: ${formatTimestamp(leg.arrivalTime)}`
+                          : `Llegada: ${formatTimestamp(leg.arrivalTime)} | Salida: ${formatTimestamp(leg.departureTime)}`
+                        }
                       </div>
                     </div>
                   </div>
