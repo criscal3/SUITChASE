@@ -44,8 +44,23 @@ function splitTramo(tramoStr: string): [string, string] | null {
 export function mapBlockResultToBaggageGroups(
   rutasResumen: any[],
   cursorTime: number,
-  currentBaggageGroups: BaggageGroup[]
+  currentBaggageGroups: BaggageGroup[],
+  airportsList?: any[]
 ): BaggageGroup[] {
+  const getAirportOffsetMs = (code: string): number => {
+    if (!airportsList) return 0;
+    const ap = airportsList.find((a) => a.code === String(code).toUpperCase());
+    if (!ap) return 0;
+    const tz = ap.timezone || "UTC+0";
+    const match = tz.match(/UTC([+-]\d+)(?::(\d+))?/);
+    if (!match) return 0;
+    const hours = parseInt(match[1], 10);
+    const minutes = match[2] ? parseInt(match[2], 10) : 0;
+    const sign = hours >= 0 ? 1 : -1;
+    const totalHours = hours + sign * (minutes / 60);
+    return totalHours * 3600000;
+  };
+
   const updatedGroups: BaggageGroup[] = (rutasResumen || []).map((resumen) => {
     const route: BaggageGroup["route"] = [];
 
@@ -54,13 +69,15 @@ export function mapBlockResultToBaggageGroups(
       if (resumen.tramos && Array.isArray(resumen.tramos) && resumen.tramos.length > 0) {
         for (let i = 0; i < resumen.tramos.length; i++) {
           const tramo = resumen.tramos[i];
-          const dep = parseSimDate(tramo.salida, cursorTime);
-          const arr = parseSimDate(tramo.llegada, dep + 3600000);
+          const depLocal = parseSimDate(tramo.salida, cursorTime);
+          const depUtc = depLocal - getAirportOffsetMs(tramo.origen);
+          const arrLocal = parseSimDate(tramo.llegada, depLocal + 3600000);
+          const arrUtc = arrLocal - getAirportOffsetMs(tramo.destino);
           route.push({
             from: String(tramo.origen).toUpperCase(),
             to: String(tramo.destino).toUpperCase(),
-            departureTime: dep,
-            arrivalTime: arr,
+            departureTime: depUtc,
+            arrivalTime: arrUtc,
             flightId: `FLIGHT-${resumen.envioId}-${i + 1}`,
             transitHours: 0,
           });
@@ -70,16 +87,18 @@ export function mapBlockResultToBaggageGroups(
         const split1 = splitTramo(resumen.primerTramo);
         if (split1) {
           const [from1, to1] = split1;
-          const dep1 = parseSimDate(resumen.salidaPrimer, cursorTime);
+          const dep1Local = parseSimDate(resumen.salidaPrimer, cursorTime);
+          const dep1Utc = dep1Local - getAirportOffsetMs(from1);
           const hasSecondLeg = resumen.primerTramo !== resumen.ultimoTramo;
-          const arr1 = hasSecondLeg
-            ? dep1 + 3600000
-            : parseSimDate(resumen.llegadaFinal, dep1 + 3600000);
+          const arr1Local = hasSecondLeg
+            ? dep1Local + 3600000
+            : parseSimDate(resumen.llegadaFinal, dep1Local + 3600000);
+          const arr1Utc = arr1Local - getAirportOffsetMs(to1);
           route.push({
             from: from1,
             to: to1,
-            departureTime: dep1,
-            arrivalTime: arr1,
+            departureTime: dep1Utc,
+            arrivalTime: arr1Utc,
             flightId: `FLIGHT-${resumen.envioId}-1`,
             transitHours: 0,
           });
@@ -88,14 +107,15 @@ export function mapBlockResultToBaggageGroups(
           const split2 = splitTramo(resumen.ultimoTramo);
           if (split2) {
             const [from2, to2] = split2;
-            const arrival2 = parseSimDate(resumen.llegadaFinal, cursorTime);
+            const arrival2Local = parseSimDate(resumen.llegadaFinal, cursorTime);
+            const arrival2Utc = arrival2Local - getAirportOffsetMs(to2);
             const prevRoute = route[route.length - 1];
-            const dep2 = prevRoute ? prevRoute.arrivalTime + 1800000 : arrival2 - 3600000;
+            const dep2Utc = prevRoute ? prevRoute.arrivalTime + 1800000 : arrival2Utc - 3600000;
             route.push({
               from: from2,
               to: to2,
-              departureTime: dep2,
-              arrivalTime: arrival2,
+              departureTime: dep2Utc,
+              arrivalTime: arrival2Utc,
               flightId: `FLIGHT-${resumen.envioId}-2`,
               transitHours: 0,
             });
@@ -107,7 +127,7 @@ export function mapBlockResultToBaggageGroups(
     const firstDep = route.length > 0 ? route[0].departureTime : cursorTime;
     const lastArr  = route.length > 0
       ? route[route.length - 1].arrivalTime
-      : parseSimDate(resumen.llegadaFinal, cursorTime + 48 * 3600 * 1000);
+      : parseSimDate(resumen.llegadaFinal, cursorTime + 48 * 3600 * 1000) - getAirportOffsetMs(resumen.destino);
 
     return {
       id: String(resumen.envioId),

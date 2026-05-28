@@ -161,7 +161,8 @@ export function useSimulation() {
           const blockGroups = mapBlockResultToBaggageGroups(
             msg.rutasResumen,
             cursorTime,
-            prev.baggageGroups
+            prev.baggageGroups,
+            airportsListRef.current
           );
 
           // Merge: start with ALL existing groups so nothing is deleted
