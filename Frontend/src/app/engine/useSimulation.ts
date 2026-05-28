@@ -55,6 +55,8 @@ export function useSimulation() {
   const [waitCountdown, setWaitCountdown] = useState(0);
   // Queue of received blocks waiting to be displayed
   const blockQueueRef = useRef<any[]>([]);
+  // Track how many blocks have been consumed (applied) so far
+  const blocksConsumedRef = useRef<number>(0);
 
   const wsClientRef = useRef<SimulationWebSocketClient | null>(null);
   const activeSimIdRef = useRef<number | null>(null);
@@ -97,6 +99,8 @@ export function useSimulation() {
   const clockStartRealTimeRef = useRef<number>(0);
   // Track the sim-time when the clock started
   const clockStartSimTimeRef = useRef<number>(0);
+  // Track startTime for block boundary calculations in the clock tick
+  const startTimeRef = useRef<number>(0);
 
   // ─── Countdown timer for the initial 90-second wait ───
   useEffect(() => {
@@ -116,6 +120,8 @@ export function useSimulation() {
         setState(prev => {
           clockStartRealTimeRef.current = Date.now();
           clockStartSimTimeRef.current = prev.currentTime;
+          startTimeRef.current = prev.startTime;
+          blocksConsumedRef.current = 0;
           return {
             ...prev,
             waitingForFirstBlock: false,
@@ -125,6 +131,7 @@ export function useSimulation() {
         // Apply the first block from queue if available
         const firstBlock = blockQueueRef.current.shift();
         if (firstBlock) {
+          blocksConsumedRef.current = 1;
           applyBlock(firstBlock);
         }
       } else {
@@ -135,23 +142,15 @@ export function useSimulation() {
     return () => clearInterval(countdownId);
   }, [state.waitingForFirstBlock]);
 
-  // ─── Block consumption timer: every SA_SECONDS (180s), consume next block ───
-  useEffect(() => {
-    if (!state.running) return;
-
-    const consumeId = setInterval(() => {
-      const nextBlock = blockQueueRef.current.shift();
-      if (nextBlock) {
-        applyBlock(nextBlock);
-      }
-    }, SA_SECONDS * 1000);
-
-    return () => clearInterval(consumeId);
-  }, [state.running]);
+  // ─── Block consumption is now driven by the clock ticker below (removed setInterval) ───
 
   // ─── Smooth clock ticker: 2 sim-minutes per 1 real second ───
+  // Also checks whether the simulation time has crossed the next block boundary
+  // to consume queued blocks in perfect sync with the chronometer.
   useEffect(() => {
     if (!state.running) return;
+
+    const SC_MS = SC_MINUTES * 60 * 1000; // 6 hours in ms
 
     const intervalId = setInterval(() => {
       setState(prev => {
@@ -167,6 +166,20 @@ export function useSimulation() {
         }
         
         const diffHours = (nextTime - prev.startTime) / 3600000;
+
+        // Check if we crossed a block boundary and should consume the next block.
+        // Block N should be shown when currentTime reaches startTime + N * SC_MS.
+        // blocksConsumedRef tracks how many blocks have been applied (1-indexed).
+        const nextBlockIndex = blocksConsumedRef.current + 1;
+        const nextBoundary = startTimeRef.current + nextBlockIndex * SC_MS;
+        if (nextTime >= nextBoundary) {
+          const nextBlock = blockQueueRef.current.shift();
+          if (nextBlock) {
+            blocksConsumedRef.current = nextBlockIndex;
+            // Schedule applyBlock outside setState to avoid nested updates
+            queueMicrotask(() => applyBlock(nextBlock));
+          }
+        }
 
         return {
           ...prev,
@@ -293,6 +306,7 @@ export function useSimulation() {
     }
     activeSimIdRef.current = null;
     blockQueueRef.current = [];
+    blocksConsumedRef.current = 0;
 
     const startDate = fechaInicio || (() => { const d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0)); })();
     const endDate = new Date(startDate.getTime());
@@ -332,6 +346,8 @@ export function useSimulation() {
 
       const startUtcMs = startDate.getTime();
       targetTimeRef.current = startUtcMs;
+      startTimeRef.current = startUtcMs;
+      blocksConsumedRef.current = 0;
 
       // Don't start running yet — enter 90-second waiting phase
       setState({
@@ -377,6 +393,7 @@ export function useSimulation() {
     }
     activeSimIdRef.current = null;
     blockQueueRef.current = [];
+    blocksConsumedRef.current = 0;
     setWaitCountdown(0);
     setState(prev => ({ ...prev, running: false, stopped: true, hasStarted: false, waitingForFirstBlock: false }));
   }, []);
@@ -411,7 +428,8 @@ export function useSimulation() {
 
   const reset = useCallback(async () => {
      await stop();
-     blockQueueRef.current = [];
+      blockQueueRef.current = [];
+      blocksConsumedRef.current = 0;
      setWaitCountdown(0);
      setState(prev => {
        targetTimeRef.current = prev.startTime;
