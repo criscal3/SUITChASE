@@ -47,6 +47,14 @@ export function AirlineTracking() {
   };
 
   const filtered = state.baggageGroups.filter(bg => {
+    const finalArrival = bg.route && bg.route.length > 0
+      ? bg.route[bg.route.length - 1].arrivalTime
+      : bg.deadlineAt;
+
+    if (finalArrival && finalArrival < state.currentTime) {
+      return false;
+    }
+
     if (!search) return true;
     const s = search.toLowerCase();
     return bg.id.toLowerCase().includes(s) ||
