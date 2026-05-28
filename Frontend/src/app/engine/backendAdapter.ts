@@ -1,4 +1,6 @@
-import { BaggageGroup, FlightState, SimStats, AirportState } from "./types";
+import { BaggageGroup, SimStats, AirportState } from "./types";
+
+export type OcupacionAlmacenesPorAeropuerto = Record<string, number[]>;
 
 /**
  * Parses a LocalDateTime string from the backend (e.g. "2026-01-01T03:34:00")
@@ -152,17 +154,77 @@ export function mapBlockResultToBaggageGroups(
   return updatedGroups;
 }
 
+/** Minuto simulado desde el inicio (alineado con TimeUtils.getIndiceMinuto del backend). */
+export function minuteIndexFromSimStart(startUtcMs: number, currentUtcMs: number): number {
+  return Math.max(0, Math.floor((currentUtcMs - startUtcMs) / 60000));
+}
+
+function stockAtMinute(usoPorMinuto: number[] | undefined, minuteIndex: number): number {
+  if (!usoPorMinuto || usoPorMinuto.length === 0) return 0;
+  if (minuteIndex < usoPorMinuto.length) return usoPorMinuto[minuteIndex] ?? 0;
+  return usoPorMinuto[usoPorMinuto.length - 1] ?? 0;
+}
+
+/** Actualiza currentStock de cada aeropuerto según el arreglo int[] del backend. */
+export function mapOccupancyToAirports(
+  estadoOcupacion: OcupacionAlmacenesPorAeropuerto | undefined,
+  airports: Record<string, AirportState>,
+  minuteIndex: number
+): Record<string, AirportState> {
+  if (!estadoOcupacion) return airports;
+
+  const updated: Record<string, AirportState> = { ...airports };
+  for (const code of Object.keys(updated)) {
+    const ap = updated[code];
+    if (!ap) continue;
+    updated[code] = {
+      ...ap,
+      currentStock: stockAtMinute(estadoOcupacion[code], minuteIndex),
+    };
+  }
+  return updated;
+}
+
+export function computeWarehouseUtilization(airports: Record<string, AirportState>): number {
+  let totalStock = 0;
+  let totalCap = 0;
+  for (const ap of Object.values(airports)) {
+    totalStock += ap.currentStock;
+    totalCap += ap.capacity;
+  }
+  return totalCap > 0 ? (totalStock / totalCap) * 100 : 0;
+}
+
+export function mergeOccupancyState(
+  current: OcupacionAlmacenesPorAeropuerto,
+  incoming: OcupacionAlmacenesPorAeropuerto | undefined
+): OcupacionAlmacenesPorAeropuerto {
+  if (!incoming) return current;
+  return { ...current, ...incoming };
+}
+
 export function updateStatsFromMetrics(
   metricas: any,
-  currentStats: SimStats
+  currentStats: SimStats,
+  airports?: Record<string, AirportState>
 ): SimStats {
+  const warehouseFromAirports =
+    airports != null ? computeWarehouseUtilization(airports) : undefined;
+
   return {
     ...currentStats,
     totalRegistered: currentStats.totalRegistered + metricas.totalEnvios,
     totalDelivered: currentStats.totalDelivered + metricas.enviosConRuta,
     totalFailed: currentStats.totalFailed + metricas.enviosSinRuta,
-    onTimeRate: metricas.sla || currentStats.onTimeRate,
-    warehouseUtilization: metricas.ocupacionAlmacenes || currentStats.warehouseUtilization,
-    flightUtilization: metricas.ocupacionVuelos || currentStats.flightUtilization,
+    onTimeRate: metricas.sla ?? currentStats.onTimeRate,
+    warehouseUtilization:
+      warehouseFromAirports ??
+      (metricas.ocupacionAlmacenes != null
+        ? metricas.ocupacionAlmacenes * 100
+        : currentStats.warehouseUtilization),
+    flightUtilization:
+      metricas.ocupacionVuelos != null
+        ? metricas.ocupacionVuelos * 100
+        : currentStats.flightUtilization,
   };
 }

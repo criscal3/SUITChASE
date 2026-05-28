@@ -6,7 +6,15 @@ import { SIM_BASE_DATE } from "./types";
 import { toast } from "sonner";
 import { api } from "../services/api";
 import { SimulationWebSocketClient } from "../services/websocket";
-import { mapBlockResultToBaggageGroups, updateStatsFromMetrics } from "./backendAdapter";
+import {
+  mapBlockResultToBaggageGroups,
+  updateStatsFromMetrics,
+  minuteIndexFromSimStart,
+  mapOccupancyToAirports,
+  mergeOccupancyState,
+  computeWarehouseUtilization,
+  type OcupacionAlmacenesPorAeropuerto,
+} from "./backendAdapter";
 
 const DEFAULT_AIRLINES: Airline[] = [
   { id: "AL-001", name: "AeroLatam", code: "ALT", email: "contacto@aerolatam.com", password: "aerolatam123", assignedAirports: ["GRU", "EZE", "BOG", "LIM", "SCL"] },
@@ -63,6 +71,7 @@ export function useSimulation() {
   const prevCollapsed = useRef(false);
   const [pendingStartDate, setPendingStartDate] = useState<Date | undefined>(undefined);
   const airportsListRef = useRef<Airport[]>(airportsList);
+  const occupancyByAirportRef = useRef<OcupacionAlmacenesPorAeropuerto>({});
 
   useEffect(() => {
     airportsListRef.current = airportsList;
@@ -167,6 +176,20 @@ export function useSimulation() {
         
         const diffHours = (nextTime - prev.startTime) / 3600000;
 
+        const minuteIdx = minuteIndexFromSimStart(prev.startTime, nextTime);
+        const airports = mapOccupancyToAirports(
+          occupancyByAirportRef.current,
+          prev.airports,
+          minuteIdx
+        );
+        const stats = {
+          ...prev.stats,
+          warehouseUtilization:
+            Object.keys(occupancyByAirportRef.current).length > 0
+              ? computeWarehouseUtilization(airports)
+              : prev.stats.warehouseUtilization,
+        };
+
         // Check if we crossed a block boundary and should consume the next block.
         // Block N should be shown when currentTime reaches startTime + N * SC_MS.
         // blocksConsumedRef tracks how many blocks have been applied (1-indexed).
@@ -186,6 +209,8 @@ export function useSimulation() {
           currentTime: nextTime,
           day: Math.floor(diffHours / 24) + 1,
           hour: diffHours % 24,
+          airports,
+          stats,
         };
       });
     }, 50);
@@ -244,15 +269,23 @@ export function useSimulation() {
           mergedMap.set(bg.id, bg);
         }
         newGroups = Array.from(mergedMap.values());
-        newStats = updateStatsFromMetrics(msg.metricas, prev.stats);
       }
 
-      for (const code of Object.keys(newAirports)) {
-        if (newAirports[code]) {
-          newAirports[code].currentStock = Math.floor(
-            newAirports[code].capacity * (newStats.warehouseUtilization / 100)
-          );
-        }
+      if (msg.estadoOcupacionAlmacenes) {
+        occupancyByAirportRef.current = mergeOccupancyState(
+          occupancyByAirportRef.current,
+          msg.estadoOcupacionAlmacenes as OcupacionAlmacenesPorAeropuerto
+        );
+      }
+
+      const minuteIdx = minuteIndexFromSimStart(prev.startTime, prev.currentTime);
+      newAirports = mapOccupancyToAirports(
+        occupancyByAirportRef.current,
+        newAirports,
+        minuteIdx
+      );
+      if (msg.metricas) {
+        newStats = updateStatsFromMetrics(msg.metricas, prev.stats, newAirports);
       }
 
       return {
@@ -307,6 +340,7 @@ export function useSimulation() {
     activeSimIdRef.current = null;
     blockQueueRef.current = [];
     blocksConsumedRef.current = 0;
+    occupancyByAirportRef.current = {};
 
     const startDate = fechaInicio || (() => { const d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0)); })();
     const endDate = new Date(startDate.getTime());
@@ -394,6 +428,7 @@ export function useSimulation() {
     activeSimIdRef.current = null;
     blockQueueRef.current = [];
     blocksConsumedRef.current = 0;
+    occupancyByAirportRef.current = {};
     setWaitCountdown(0);
     setState(prev => ({ ...prev, running: false, stopped: true, hasStarted: false, waitingForFirstBlock: false }));
   }, []);
@@ -430,6 +465,7 @@ export function useSimulation() {
      await stop();
       blockQueueRef.current = [];
       blocksConsumedRef.current = 0;
+      occupancyByAirportRef.current = {};
      setWaitCountdown(0);
      setState(prev => {
        targetTimeRef.current = prev.startTime;

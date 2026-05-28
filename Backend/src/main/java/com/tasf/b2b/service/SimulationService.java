@@ -166,6 +166,11 @@ public class SimulationService {
         aeropuertos.forEach(inputMaestro::agregarAeropuerto);
         vuelos.forEach(inputMaestro::agregarVuelo);
 
+        Map<String, AeropuertoAlgoritmo> mapaAeropuertos = aeropuertos.stream()
+                .collect(Collectors.toMap(AeropuertoAlgoritmo::getOaci, a -> a, (a, b) -> a));
+        Map<String, VueloAlgoritmo> indiceVuelos = new HashMap<>();
+        prepararIndiceVuelos(indiceVuelos, vuelos, sim.getFechaInicioSim(), sim.getFechaFinSim());
+
         // Cursor: posición actual en el tiempo simulado
         LocalDateTime cursor = sim.getCursorTemporal();
         int bloqueActual = sim.getBloqueActual();
@@ -211,6 +216,7 @@ public class SimulationService {
 
             // Datos para el mensaje WebSocket enriquecido
             List<Map<String, Object>> rutasResumen = new ArrayList<>();
+            PlanificationSolutionOutput solucion = null;
 
             if (!enviosBloque.isEmpty()) {
                 // 2. Crear sub-input con los envíos del bloque
@@ -218,7 +224,7 @@ public class SimulationService {
 
                 // 3. Ejecutar ACS
                 long tiempoMs = (long) ta * 1000L;
-                PlanificationSolutionOutput solucion = ACSAdapter.planificar(subInput, tiempoMs);
+                solucion = ACSAdapter.planificar(subInput, tiempoMs);
 
                 // ¿Se pidió pausa o cancelación durante la ejecución del algoritmo?
                 paused = pauseFlags.get(simulacionId);
@@ -228,6 +234,11 @@ public class SimulationService {
                 }
 
                 long duracion = System.currentTimeMillis() - t0;
+
+                int minutosVentana = (int) ChronoUnit.MINUTES.between(
+                        bloqueRes.getInicioVentana(), bloqueRes.getFinVentana());
+                solucion.calcularEstadisticasOcupacion(
+                        indiceVuelos, mapaAeropuertos, bloqueRes.getInicioVentana(), minutosVentana);
 
                 // 4. Guardar métricas del bloque
                 bloqueRes.setEnviosConRuta(solucion.enviosConRuta());
@@ -293,6 +304,12 @@ public class SimulationService {
             // Resumen de rutas (limitado para controlar volumen)
             wsMessage.put("rutasResumen", rutasResumen);
             wsMessage.put("bloqueId", bloqueRes.getId());
+
+            Map<String, int[]> estadoOcupacion = (solucion != null)
+                    ? solucion.getEstadoOcupacionAlmacenes()
+                    : new HashMap<>(inputMaestro.getOcupacionGlobalAlmacenes());
+            wsMessage.put("estadoOcupacionAlmacenes", estadoOcupacion);
+            wsMessage.put("inicioVentana", bloqueRes.getInicioVentana().toString());
 
             messagingTemplate.convertAndSend("/topic/simulacion/" + simulacionId, wsMessage);
 
@@ -541,5 +558,19 @@ public class SimulationService {
         log.info("Bloque planificado con éxito. SLA Promedio: {}", solucion.getPromedioConsumoSLA());
 
         return solucion;
+    }
+
+    /** Índice clave vuelo → VueloAlgoritmo (misma clave que usa PlanificationSolutionOutput). */
+    private void prepararIndiceVuelos(Map<String, VueloAlgoritmo> indice,
+                                      List<VueloAlgoritmo> vuelos,
+                                      LocalDateTime inicio,
+                                      LocalDateTime fin) {
+        for (LocalDateTime date = inicio; !date.isAfter(fin); date = date.plusDays(1)) {
+            for (VueloAlgoritmo v : vuelos) {
+                String clave = v.getOrigenOaci() + "-" + v.getDestinoOaci() + "-"
+                        + v.getHoraSalida() + "-" + date.toLocalDate();
+                indice.put(clave, v);
+            }
+        }
     }
 }
