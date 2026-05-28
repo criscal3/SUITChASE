@@ -170,10 +170,12 @@ export function useSimulation() {
 
         let nextTime = prev.currentTime + deltaMs;
         const maxTime = prev.startTime + 5 * 86400000;
-        if (prev.scenario === "weekly" && nextTime >= maxTime) {
+        const reachedEnd =
+          prev.scenario === "weekly" && nextTime >= maxTime;
+        if (reachedEnd) {
           nextTime = maxTime;
         }
-        
+
         const diffHours = (nextTime - prev.startTime) / 3600000;
 
         const minuteIdx = minuteIndexFromSimStart(prev.startTime, nextTime);
@@ -211,6 +213,9 @@ export function useSimulation() {
           hour: diffHours % 24,
           airports,
           stats,
+          ...(reachedEnd
+            ? { running: false, stopped: true, hasStarted: true }
+            : {}),
         };
       });
     }, 50);
@@ -311,7 +316,8 @@ export function useSimulation() {
         setState(prev => ({
           ...prev,
           running: false,
-          stopped: true,
+          stopped: msg.estado === "FINALIZADA",
+          hasStarted: true,
           waitingForFirstBlock: false,
         }));
         return;
@@ -411,16 +417,14 @@ export function useSimulation() {
     }
   }, [speed, connectWebSocket, airportsList]);
 
-  const stop = useCallback(async () => {
-    if (activeSimIdRef.current) {
+  const teardownActiveSimulation = useCallback(async (cancelBackend: boolean) => {
+    if (cancelBackend && activeSimIdRef.current) {
       try {
         await api.cancelarSimulacion(activeSimIdRef.current);
       } catch (error: any) {
-        // Ignore errors when cancelling (e.g. already cancelled/finished)
         console.warn("Error cancelando simulación:", error.message);
       }
     }
-    // Always clean up local state regardless of API success
     if (wsClientRef.current) {
       wsClientRef.current.disconnect();
       wsClientRef.current = null;
@@ -428,10 +432,33 @@ export function useSimulation() {
     activeSimIdRef.current = null;
     blockQueueRef.current = [];
     blocksConsumedRef.current = 0;
-    occupancyByAirportRef.current = {};
     setWaitCountdown(0);
-    setState(prev => ({ ...prev, running: false, stopped: true, hasStarted: false, waitingForFirstBlock: false }));
   }, []);
+
+  /** Detiene la simulación en curso y conserva datos para Highlights (no reinicia). */
+  const endSimulation = useCallback(async () => {
+    await teardownActiveSimulation(true);
+    setState(prev => ({
+      ...prev,
+      running: false,
+      stopped: true,
+      hasStarted: true,
+      waitingForFirstBlock: false,
+    }));
+  }, [teardownActiveSimulation]);
+
+  /** Cancela antes de que arranque el cronómetro (espera inicial). */
+  const cancelSimulation = useCallback(async () => {
+    await teardownActiveSimulation(true);
+    occupancyByAirportRef.current = {};
+    setState(prev => ({
+      ...prev,
+      running: false,
+      stopped: false,
+      hasStarted: false,
+      waitingForFirstBlock: false,
+    }));
+  }, [teardownActiveSimulation]);
 
   const togglePause = useCallback(async () => {
     if (!activeSimIdRef.current) return;
@@ -462,29 +489,27 @@ export function useSimulation() {
   }, []);
 
   const reset = useCallback(async () => {
-     await stop();
-      blockQueueRef.current = [];
-      blocksConsumedRef.current = 0;
-      occupancyByAirportRef.current = {};
-     setWaitCountdown(0);
-     setState(prev => {
-       targetTimeRef.current = prev.startTime;
-       return {
-         ...prev,
-         currentTime: prev.startTime,
-         day: 1,
-         hour: 0,
-         airports: {},
-         flights: [],
-         baggageGroups: [],
-         stats: createEmptyStats(),
-         collapsed: false,
-         running: false,
-         stopped: false,
-         waitingForFirstBlock: false,
-       };
-     });
-   }, [stop]);
+    await teardownActiveSimulation(true);
+    occupancyByAirportRef.current = {};
+    setState(prev => {
+      targetTimeRef.current = prev.startTime;
+      return {
+        ...prev,
+        currentTime: prev.startTime,
+        day: 1,
+        hour: 0,
+        airports: {},
+        flights: [],
+        baggageGroups: [],
+        stats: createEmptyStats(),
+        collapsed: false,
+        running: false,
+        stopped: false,
+        hasStarted: false,
+        waitingForFirstBlock: false,
+      };
+    });
+  }, [teardownActiveSimulation]);
 
   // Clean up on unmount
   useEffect(() => {
@@ -519,7 +544,8 @@ export function useSimulation() {
     airportsList,
     airlines,
     start,
-    stop,
+    endSimulation,
+    cancelSimulation,
     reset,
     togglePause,
     updateSpeed,

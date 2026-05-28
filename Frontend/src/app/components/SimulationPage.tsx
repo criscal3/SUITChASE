@@ -16,7 +16,7 @@ function formatTimestampShort(ts: number): string {
 }
 
 export function SimulationPage() {
-  const { state, start, stop, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
+  const { state, start, endSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
   const { isDark } = useTheme();
   const [selectedBaggage, setSelectedBaggage] = useState<BaggageGroup | null>(null);
   const [showTracking, setShowTracking] = useState(true);
@@ -27,13 +27,12 @@ export function SimulationPage() {
   const [showHighlights, setShowHighlights] = useState(false);
   const prevRunning = useRef(false);
 
-  // Show highlights only when stopped (red button) or collapsed — NOT on pause
+  // Highlights al terminar (5 días), al detener con el cuadrado rojo o al colapsar
   useEffect(() => {
-    // Detect stop (state has stopped flag) or collapse
-    if ((state as any).stopped && state.currentTime > 0) {
+    if (state.stopped && state.hasStarted && state.currentTime > 0) {
       setShowHighlights(true);
     }
-  }, [(state as any).stopped]);
+  }, [state.stopped, state.hasStarted, state.currentTime]);
 
   // Auto-show highlights on collapse
   useEffect(() => {
@@ -228,10 +227,10 @@ export function SimulationPage() {
               <div className="flex items-center gap-2 mb-2">
                 <button
                   onClick={() => {
-                    if (!state.hasStarted || (state as any).stopped) {
-                       start(pendingStartDate);
-                    } else {
-                       togglePause();
+                    if (!state.hasStarted) {
+                      start(pendingStartDate);
+                    } else if (!state.stopped) {
+                      togglePause();
                     }
                   }}
                   className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${
@@ -241,7 +240,7 @@ export function SimulationPage() {
                   {state.running ? <Pause className={`w-5 h-5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} /> : <Play className={`w-5 h-5 ml-0.5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
                 </button>
                 <button
-                  onClick={stop}
+                  onClick={endSimulation}
                   className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors"
                 >
                   <Square className="w-3 h-3 text-red-400" />
@@ -447,7 +446,7 @@ export function SimulationPage() {
             {/* Footer */}
             <div className={`flex items-center justify-end px-6 py-3 border-t ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
               <button
-                onClick={stop}
+                onClick={cancelSimulation}
                 className={`px-4 py-1.5 rounded-lg text-[12px] border transition-colors ${isDark ? "border-red-500/30 text-red-400 hover:bg-red-500/10" : "border-red-300 text-red-600 hover:bg-red-50"}`}
               >
                 Cancelar
@@ -457,16 +456,13 @@ export function SimulationPage() {
         </div>
       )}
 
-      {/* Highlights overlay (RF70) - shown on stop or collapse. Closing also resets when triggered by stop. */}
+      {/* Highlights overlay (RF70) — al terminar, detener o colapsar; Cerrar solo oculta el panel */}
       {showHighlights && (
         <HighlightsPanel
           state={state}
           isDark={isDark}
-          onClose={() => {
-            setShowHighlights(false);
-            if ((state as any).stopped) reset("weekly", 1);
-          }}
-          onReset={() => { setShowHighlights(false); reset("weekly", 1); }}
+          onClose={() => setShowHighlights(false)}
+          onReset={() => { setShowHighlights(false); reset(); }}
         />
       )}
 
