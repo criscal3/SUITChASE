@@ -1,7 +1,10 @@
 package com.tasf.b2b.service;
 
 import com.tasf.b2b.core.EnvioAlgoritmo;
+import com.tasf.b2b.domain.AeropuertoEntity;
+import com.tasf.b2b.repository.AeropuertoRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -25,6 +28,9 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 public class EnvioSinteticoFileReader {
+
+    @Autowired
+    private AeropuertoRepository aeropuertoRepository;
 
     @Value("${suitchase.envios.path:Planificador/_envios_preliminar_}")
     private String enviosBasePath;
@@ -142,12 +148,16 @@ public class EnvioSinteticoFileReader {
 
             LocalDateTime fechaHora = LocalDateTime.of(anio, mes, dia, hora, minuto);
 
+            int gmtOrigen = aeropuertoRepository.findById(origenOaci)
+                    .map(AeropuertoEntity::getGmt).orElse(0);
+            LocalDateTime fechaGmt0 = fechaHora.minusHours(gmtOrigen);
+
             EnvioAlgoritmo envio = new EnvioAlgoritmo();
             // ID único: origen-idEnvio para evitar colisiones entre archivos
             envio.setId(origenOaci + "-" + idEnvio);
             envio.setOrigenOaci(origenOaci);
             envio.setDestinoOaci(destinoOaci);
-            envio.setFechaHoraRegistro(fechaHora);
+            envio.setFechaHoraRegistro(fechaGmt0);
             envio.setCantidadMaletas(cantidad);
             envio.setClienteId(clienteId);
 

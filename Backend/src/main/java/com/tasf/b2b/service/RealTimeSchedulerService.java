@@ -1,6 +1,7 @@
 package com.tasf.b2b.service;
 
 import com.tasf.b2b.core.*;
+import com.tasf.b2b.domain.AeropuertoEntity;
 import com.tasf.b2b.domain.AsignacionEnvioEntity;
 import com.tasf.b2b.domain.EnvioEntity;
 import com.tasf.b2b.domain.EnvioEntity.EstadoEnvio;
@@ -157,9 +158,17 @@ public class RealTimeSchedulerService {
     }
 
     private Long buscarVueloId(VueloAlgoritmo vuelo) {
+        int gmtOrigen = aeropuertoRepository.findById(vuelo.getOrigenOaci())
+                .map(AeropuertoEntity::getGmt).orElse(0);
+        int gmtDestino = aeropuertoRepository.findById(vuelo.getDestinoOaci())
+                .map(AeropuertoEntity::getGmt).orElse(0);
+
+        java.time.LocalTime horaSalidaLocal = vuelo.getHoraSalida().plusHours(gmtOrigen);
+        java.time.LocalTime horaLlegadaLocal = vuelo.getHoraLlegada().plusHours(gmtDestino);
+
         return vueloRepository.findByOrigenOaciAndDestinoOaciAndHoraSalidaAndHoraLlegada(
                 vuelo.getOrigenOaci(), vuelo.getDestinoOaci(),
-                vuelo.getHoraSalida(), vuelo.getHoraLlegada()
+                horaSalidaLocal, horaLlegadaLocal
         ).map(v -> v.getId()).orElse(0L);
     }
 }

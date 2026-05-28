@@ -429,9 +429,17 @@ public class SimulationService {
     // Helper: buscar vuelo ID en DB
     // ========================================================
     private Long buscarVueloId(VueloAlgoritmo vuelo) {
+        int gmtOrigen = aeropuertoRepository.findById(vuelo.getOrigenOaci())
+                .map(AeropuertoEntity::getGmt).orElse(0);
+        int gmtDestino = aeropuertoRepository.findById(vuelo.getDestinoOaci())
+                .map(AeropuertoEntity::getGmt).orElse(0);
+
+        java.time.LocalTime horaSalidaLocal = vuelo.getHoraSalida().plusHours(gmtOrigen);
+        java.time.LocalTime horaLlegadaLocal = vuelo.getHoraLlegada().plusHours(gmtDestino);
+
         return vueloRepository.findByOrigenOaciAndDestinoOaciAndHoraSalidaAndHoraLlegada(
                 vuelo.getOrigenOaci(), vuelo.getDestinoOaci(),
-                vuelo.getHoraSalida(), vuelo.getHoraLlegada()
+                horaSalidaLocal, horaLlegadaLocal
         ).map(v -> v.getId()).orElse(0L);
     }
 

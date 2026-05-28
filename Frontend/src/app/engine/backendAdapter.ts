@@ -67,20 +67,6 @@ export function mapBlockResultToBaggageGroups(
   currentBaggageGroups: BaggageGroup[],
   airportsList?: any[]
 ): BaggageGroup[] {
-  const getAirportOffsetMs = (code: string): number => {
-    if (!airportsList) return 0;
-    const ap = airportsList.find((a) => a.code === String(code).toUpperCase());
-    if (!ap) return 0;
-    const tz = ap.timezone || "UTC+0";
-    const match = tz.match(/UTC([+-]\d+)(?::(\d+))?/);
-    if (!match) return 0;
-    const hours = parseInt(match[1], 10);
-    const minutes = match[2] ? parseInt(match[2], 10) : 0;
-    const sign = hours >= 0 ? 1 : -1;
-    const totalHours = hours + sign * (minutes / 60);
-    return totalHours * 3600000;
-  };
-
   const updatedGroups: BaggageGroup[] = (rutasResumen || []).map((resumen) => {
     const route: BaggageGroup["route"] = [];
 
@@ -89,14 +75,13 @@ export function mapBlockResultToBaggageGroups(
       if (resumen.tramos && Array.isArray(resumen.tramos) && resumen.tramos.length > 0) {
         for (let i = 0; i < resumen.tramos.length; i++) {
           const tramo = resumen.tramos[i];
-          const depLocal = parseSimDate(tramo.salida, cursorTime);
-          const arrLocal = parseSimDate(tramo.llegada, depLocal + 3600000);
-          const arrUtc = arrLocal - getAirportOffsetMs(tramo.destino);
-          const depUtc = fixDepartureTime(depLocal - getAirportOffsetMs(tramo.origen), arrUtc);
+          const depUtc = parseSimDate(tramo.salida, cursorTime);
+          const arrUtc = parseSimDate(tramo.llegada, depUtc + 3600000);
+          const depUtcFixed = fixDepartureTime(depUtc, arrUtc);
           route.push({
             from: String(tramo.origen).toUpperCase(),
             to: String(tramo.destino).toUpperCase(),
-            departureTime: depUtc,
+            departureTime: depUtcFixed,
             arrivalTime: arrUtc,
             flightId: `FLIGHT-${resumen.envioId}-${i + 1}`,
             transitHours: 0,
@@ -107,17 +92,16 @@ export function mapBlockResultToBaggageGroups(
         const split1 = splitTramo(resumen.primerTramo);
         if (split1) {
           const [from1, to1] = split1;
-          const dep1Local = parseSimDate(resumen.salidaPrimer, cursorTime);
+          const dep1Utc = parseSimDate(resumen.salidaPrimer, cursorTime);
           const hasSecondLeg = resumen.primerTramo !== resumen.ultimoTramo;
-          const arr1Local = hasSecondLeg
-            ? dep1Local + 3600000
-            : parseSimDate(resumen.llegadaFinal, dep1Local + 3600000);
-          const arr1Utc = arr1Local - getAirportOffsetMs(to1);
-          const dep1Utc = fixDepartureTime(dep1Local - getAirportOffsetMs(from1), arr1Utc);
+          const arr1Utc = hasSecondLeg
+            ? dep1Utc + 3600000
+            : parseSimDate(resumen.llegadaFinal, dep1Utc + 3600000);
+          const dep1UtcFixed = fixDepartureTime(dep1Utc, arr1Utc);
           route.push({
             from: from1,
             to: to1,
-            departureTime: dep1Utc,
+            departureTime: dep1UtcFixed,
             arrivalTime: arr1Utc,
             flightId: `FLIGHT-${resumen.envioId}-1`,
             transitHours: 0,
@@ -127,8 +111,7 @@ export function mapBlockResultToBaggageGroups(
           const split2 = splitTramo(resumen.ultimoTramo);
           if (split2) {
             const [from2, to2] = split2;
-            const arrival2Local = parseSimDate(resumen.llegadaFinal, cursorTime);
-            const arrival2Utc = arrival2Local - getAirportOffsetMs(to2);
+            const arrival2Utc = parseSimDate(resumen.llegadaFinal, cursorTime);
             const prevRoute = route[route.length - 1];
             const dep2Utc = prevRoute
               ? fixDepartureTime(prevRoute.arrivalTime + 1800000, arrival2Utc)
@@ -149,7 +132,7 @@ export function mapBlockResultToBaggageGroups(
     const firstDep = route.length > 0 ? route[0].departureTime : cursorTime;
     const lastArr  = route.length > 0
       ? route[route.length - 1].arrivalTime
-      : parseSimDate(resumen.llegadaFinal, cursorTime + 48 * 3600 * 1000) - getAirportOffsetMs(resumen.destino);
+      : parseSimDate(resumen.llegadaFinal, cursorTime + 48 * 3600 * 1000);
 
     return {
       id: String(resumen.envioId),
