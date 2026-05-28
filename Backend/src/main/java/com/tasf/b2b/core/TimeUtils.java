@@ -5,22 +5,31 @@ import java.time.temporal.ChronoUnit;
 
 /**
  * Utilidades de tiempo para el sistema de simulación.
- *
- * Las fechas de inicio/fin son configurables por simulación para permitir
- * que cada simulación tenga su propio rango temporal sin afectar a otras.
  */
 public class TimeUtils {
 
-    // Valores por defecto (se sobrescriben al iniciar cada simulación)
     public static volatile LocalDateTime FECHA_INICIO_SIM = LocalDateTime.of(2027, 7, 24, 0, 0);
     public static volatile LocalDateTime FECHA_FIN_SIM = LocalDateTime.of(2027, 7, 26, 0, 0);
 
+    public static final int MARGEN_POST_FIN_HORAS = 72;
+    public static final int MARGEN_SLA_HORAS = 48;
+    public static final int MARGEN_MULTITRAMO_DIAS = 8;
+
+    private static volatile int capacidadMinutosAlmacen = -1;
+
     public static void setFechaInicioSim(LocalDateTime fecha) {
         FECHA_INICIO_SIM = fecha;
+        capacidadMinutosAlmacen = -1;
     }
 
     public static void setFechaFinSim(LocalDateTime fecha) {
         FECHA_FIN_SIM = fecha;
+        capacidadMinutosAlmacen = -1;
+    }
+
+    public static void configurarRangoSimulacion(LocalDateTime inicio, LocalDateTime fin) {
+        setFechaInicioSim(inicio);
+        setFechaFinSim(fin);
     }
 
     public static LocalDateTime getFechaInicioSim() {
@@ -31,9 +40,44 @@ public class TimeUtils {
         return FECHA_FIN_SIM;
     }
 
+    public static int getCapacidadMinutosAlmacen() {
+        if (capacidadMinutosAlmacen < 0) {
+            long minutosSim = Math.max(0, ChronoUnit.MINUTES.between(FECHA_INICIO_SIM, FECHA_FIN_SIM));
+            long margenMin = (long) (MARGEN_POST_FIN_HORAS + MARGEN_SLA_HORAS) * 60L
+                    + (long) MARGEN_MULTITRAMO_DIAS * 24L * 60L;
+            capacidadMinutosAlmacen = (int) Math.min(minutosSim + margenMin, Integer.MAX_VALUE - 1L) + 1;
+        }
+        return capacidadMinutosAlmacen;
+    }
+
+    public static int[] nuevoArregloOcupacionAlmacen() {
+        return new int[getCapacidadMinutosAlmacen()];
+    }
+
+    public static int[] ajustarArregloOcupacion(int[] existente) {
+        int cap = getCapacidadMinutosAlmacen();
+        if (existente != null && existente.length == cap) {
+            return existente;
+        }
+        int[] nuevo = new int[cap];
+        if (existente != null && existente.length > 0) {
+            System.arraycopy(existente, 0, nuevo, 0, Math.min(existente.length, cap));
+        }
+        return nuevo;
+    }
+
     public static int getIndiceMinuto(LocalDateTime fecha) {
-        int indice = (int) ChronoUnit.MINUTES.between(FECHA_INICIO_SIM, fecha);
-        if (indice < 0) return 0;
-        return indice;
+        return (int) ChronoUnit.MINUTES.between(FECHA_INICIO_SIM, fecha);
+    }
+
+    public static boolean intervaloAlmacenValido(int idxInicio, int idxFin) {
+        if (idxFin <= idxInicio) return true;
+        int cap = getCapacidadMinutosAlmacen();
+        return idxInicio >= 0 && idxInicio < cap && idxFin <= cap;
+    }
+
+    public static int usoAlmacenEnMinuto(int[] arreglo, int minuto) {
+        if (arreglo == null || minuto < 0 || minuto >= arreglo.length) return 0;
+        return arreglo[minuto];
     }
 }

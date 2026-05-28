@@ -48,7 +48,11 @@ public class PlanificationProblemInputACS {
     }
 
     public int[] getOcupacionGlobalAlmacenes(String warehouseKey) {
-        return ocupacionGlobalAlmacenes.getOrDefault(warehouseKey, new int[TimeUtils.getIndiceMinuto(TimeUtils.FECHA_FIN_SIM.plusHours(72)) + 1]);
+        int[] existente = ocupacionGlobalAlmacenes.get(warehouseKey);
+        if (existente == null) {
+            return TimeUtils.nuevoArregloOcupacionAlmacen();
+        }
+        return TimeUtils.ajustarArregloOcupacion(existente);
     }
 
 }

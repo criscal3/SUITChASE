@@ -21,7 +21,10 @@ public class ACSAdapter {
         }
 
         Map<String, Integer> capVuelos = new HashMap<>(input.getOcupacionGlobalVuelos());
-        Map<String, int[]> capAlmacenes = new HashMap<>(input.getOcupacionGlobalAlmacenes());
+        Map<String, int[]> capAlmacenes = new HashMap<>();
+        for (Map.Entry<String, int[]> entry : input.getOcupacionGlobalAlmacenes().entrySet()) {
+            capAlmacenes.put(entry.getKey(), TimeUtils.ajustarArregloOcupacion(entry.getValue()));
+        }
 
         // --- 1. Aeropuerto ACS interno ---
         Map<String, Aeropuerto> mapaAeropuertosACS = new HashMap<>();
@@ -145,8 +148,12 @@ public class ACSAdapter {
             int cantidadMaletas, Map<String, int[]> mapaAlmacenes) {
         int idxInicio = TimeUtils.getIndiceMinuto(llegada);
         int idxFin    = TimeUtils.getIndiceMinuto(salida);
-        int[] almacen = mapaAlmacenes.computeIfAbsent(oaci, 
-                k -> new int[TimeUtils.getIndiceMinuto(TimeUtils.FECHA_FIN_SIM.plusHours(72)) + 1]);
+        if (!TimeUtils.intervaloAlmacenValido(idxInicio, idxFin)) {
+            return;
+        }
+        int[] almacen = mapaAlmacenes.computeIfAbsent(oaci, k -> TimeUtils.nuevoArregloOcupacionAlmacen());
+        almacen = TimeUtils.ajustarArregloOcupacion(almacen);
+        mapaAlmacenes.put(oaci, almacen);
         for (int i = idxInicio; i < idxFin; i++) {
             almacen[i] += cantidadMaletas;
         }

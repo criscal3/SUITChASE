@@ -245,7 +245,7 @@ export function useSimulation() {
       let newStats  = prev.stats;
       let newAirports = { ...prev.airports };
 
-      if (msg.rutasResumen && msg.metricas) {
+      if (msg.rutasResumen?.length && msg.metricas) {
         const blockGroups = mapBlockResultToBaggageGroups(
           msg.rutasResumen,
           cursorTime,

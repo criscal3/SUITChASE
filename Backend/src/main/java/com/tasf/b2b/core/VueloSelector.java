@@ -122,15 +122,15 @@ public class VueloSelector {
                 
                 int idxInicio = TimeUtils.getIndiceMinuto(actual.tiempoDisponible);
                 int idxFin = TimeUtils.getIndiceMinuto(salida);
-                
-                // Estos mÃ©todos deben existir en tus clases input y ruta para retornar el arreglo int[]
+                if (!TimeUtils.intervaloAlmacenValido(idxInicio, idxFin)) continue;
+
                 int[] globalAlmacen = input.getOcupacionGlobalAlmacenes(v.getOrigen());
                 int[] localAlmacen = ruta.getOcupacionAlmacen(v.getOrigen());
 
                 boolean almacenOK = true;
                 for (int i = idxInicio; i < idxFin; i++) {
-                    int usoGlobal = (globalAlmacen != null) ? globalAlmacen[i] : 0;
-                    int usoLocal = (localAlmacen != null) ? localAlmacen[i] : 0;
+                    int usoGlobal = TimeUtils.usoAlmacenEnMinuto(globalAlmacen, i);
+                    int usoLocal = TimeUtils.usoAlmacenEnMinuto(localAlmacen, i);
                     
                     if (usoGlobal + usoLocal + p.getCantidadMaletas() > aeroOrig.getCapacidad()) {
                         almacenOK = false;
@@ -259,15 +259,15 @@ public class VueloSelector {
             // VerificaciÃ³n minuto a minuto de almacenes
             int idxInicio = TimeUtils.getIndiceMinuto(disp);
             int idxFin = TimeUtils.getIndiceMinuto(salida);
-            
-            // Requerimos que los arreglos sean obtenidos desde el estado global y de la ruta actual
+            if (!TimeUtils.intervaloAlmacenValido(idxInicio, idxFin)) continue;
+
             int[] globalAlmacen = input.getOcupacionGlobalAlmacenes(v.getOrigen());
             int[] localAlmacen = ruta.getOcupacionAlmacen(v.getOrigen());
 
             boolean almacenConEspacio = true;
             for (int i = idxInicio; i < idxFin; i++) {
-                int usoGlobal = (globalAlmacen != null) ? globalAlmacen[i] : 0;
-                int usoLocal = (localAlmacen != null) ? localAlmacen[i] : 0;
+                int usoGlobal = TimeUtils.usoAlmacenEnMinuto(globalAlmacen, i);
+                int usoLocal = TimeUtils.usoAlmacenEnMinuto(localAlmacen, i);
 
                 if (usoGlobal + usoLocal + p.getCantidadMaletas() > aeroOrig.getCapacidad()) {
                     almacenConEspacio = false;

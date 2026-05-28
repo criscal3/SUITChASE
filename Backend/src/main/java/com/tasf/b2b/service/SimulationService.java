@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentHashMap.KeySetView;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,6 +34,9 @@ public class SimulationService {
 
     // Estado de simulaciones activas: simulacionId -> flag de pausa
     private final Map<Long, Boolean> pauseFlags = new ConcurrentHashMap<>();
+
+    /** Evita dos hilos @Async procesando la misma simulación (p. ej. al reanudar). */
+    private final KeySetView<Long, Boolean> simulacionesEnEjecucion = ConcurrentHashMap.newKeySet();
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -142,15 +146,27 @@ public class SimulationService {
     // ========================================================
     @Async
     public void ejecutarSimulacionAsync(Long simulacionId) {
+        if (!simulacionesEnEjecucion.add(simulacionId)) {
+            log.warn("Simulación {} ya tiene un proceso en ejecución; se ignora la invocación duplicada.", simulacionId);
+            return;
+        }
+        try {
+            ejecutarSimulacionAsyncInterno(simulacionId);
+        } finally {
+            envioFileReader.finalizarLecturaSimulacion(simulacionId);
+            simulacionesEnEjecucion.remove(simulacionId);
+        }
+    }
+
+    private void ejecutarSimulacionAsyncInterno(Long simulacionId) {
         SimulacionEntity sim = simulacionRepository.findById(simulacionId)
                 .orElseThrow(() -> new RuntimeException("Simulación no encontrada"));
 
         int sa = sim.getSaltoAlgoritmoSa();
         int ta = sim.getTiempoAlgoritmoTa();
 
-        // Configurar TimeUtils para esta simulación
-        TimeUtils.setFechaInicioSim(sim.getFechaInicioSim());
-        TimeUtils.setFechaFinSim(sim.getFechaFinSim());
+        TimeUtils.configurarRangoSimulacion(sim.getFechaInicioSim(), sim.getFechaFinSim());
+        envioFileReader.iniciarLecturaSimulacion(simulacionId, sim.getFechaInicioSim(), sim.getFechaFinSim());
 
         // --- Cargar aeropuertos y vuelos (datos ligeros, se cargan una vez) ---
         List<AeropuertoAlgoritmo> aeropuertos = aeropuertoRepository.findAll().stream()
@@ -182,6 +198,7 @@ public class SimulationService {
         // LOOP DE BLOQUES
         // ═══════════════════════════════════════════════════
         while (cursor.isBefore(sim.getFechaFinSim())) {
+            sim = simulacionRepository.findById(simulacionId).orElse(sim);
 
             // ¿Se pidió pausa o cancelación?
             Boolean paused = pauseFlags.get(simulacionId);
@@ -193,6 +210,10 @@ public class SimulationService {
             // --- Recargar K desde DB (por si cambió en caliente) ---
             SimulacionEntity simActual = simulacionRepository.findById(simulacionId).orElse(null);
             if (simActual == null) return;
+
+            TimeUtils.configurarRangoSimulacion(simActual.getFechaInicioSim(), simActual.getFechaFinSim());
+            normalizarArreglosOcupacionAlmacen(inputMaestro.getOcupacionGlobalAlmacenes());
+
             int k = simActual.getConstanteK();
             int sc = k * sa;
 
@@ -201,8 +222,9 @@ public class SimulationService {
                 finVentana = sim.getFechaFinSim();
             }
 
-            // 1. LEER ENVÍOS DESDE ARCHIVOS .TXT (no desde DB)
-            List<EnvioAlgoritmo> enviosBloque = envioFileReader.leerEnviosPorRango(cursor, finVentana);
+            // 1. LEER ENVÍOS del índice en memoria (cargado una vez al inicio, como Planificador)
+            List<EnvioAlgoritmo> enviosBloque = envioFileReader.leerEnviosPorRango(simulacionId, cursor, finVentana);
+            boolean bloqueVacio = enviosBloque.isEmpty();
 
             bloqueActual++;
             long t0 = System.currentTimeMillis();
@@ -261,16 +283,14 @@ public class SimulationService {
                         k, sc, enviosBloque.size(), solucion.enviosConRuta(),
                         String.format("%.2f", solucion.getPromedioConsumoSLA()), duracion);
             } else {
-                // ¿Se pidió pausa o cancelación antes de guardar el bloque vacío?
                 paused = pauseFlags.get(simulacionId);
                 if (paused == null || paused) {
-                    log.info("Simulación {} pausada/cancelada en el bloque {} (vacío). Descartando guardado.", simulacionId, bloqueActual);
+                    log.info("Simulación {} pausada/cancelada en el bloque {} (vacío).", simulacionId, bloqueActual);
                     return;
                 }
                 bloqueRes.setDuracionMs(System.currentTimeMillis() - t0);
-                bloqueResultadoRepository.save(bloqueRes);
-                log.info("Bloque {}/{} — sin envíos (K={}, Sc={}min)",
-                        bloqueActual, simActual.getTotalBloquesEstimados(), k, sc);
+                log.debug("Bloque {}/{} — sin envíos (K={}, Sc={}min), cursor {}",
+                        bloqueActual, simActual.getTotalBloquesEstimados(), k, sc, cursor);
             }
 
             // 7. Avanzar cursor
@@ -281,7 +301,7 @@ public class SimulationService {
             simActual.setBloqueActual(bloqueActual);
             simulacionRepository.save(simActual);
 
-            // 9. Notificar frontend por WebSocket — MENSAJE ENRIQUECIDO
+            // 9. Notificar frontend (bloques vacíos: mensaje ligero; con envíos: mensaje completo)
             Map<String, Object> wsMessage = new LinkedHashMap<>();
             wsMessage.put("simulacionId", simulacionId);
             wsMessage.put("bloqueActual", bloqueActual);
@@ -289,8 +309,8 @@ public class SimulationService {
             wsMessage.put("cursor", cursor.toString());
             wsMessage.put("estado", simActual.getEstado().name());
             wsMessage.put("k", k);
+            wsMessage.put("inicioVentana", bloqueRes.getInicioVentana().toString());
 
-            // Métricas del bloque
             Map<String, Object> metricas = new LinkedHashMap<>();
             metricas.put("totalEnvios", bloqueRes.getTotalEnvios());
             metricas.put("enviosConRuta", bloqueRes.getEnviosConRuta());
@@ -301,29 +321,28 @@ public class SimulationService {
             metricas.put("duracionMs", bloqueRes.getDuracionMs());
             wsMessage.put("metricas", metricas);
 
-            // Resumen de rutas (limitado para controlar volumen)
-            wsMessage.put("rutasResumen", rutasResumen);
-            wsMessage.put("bloqueId", bloqueRes.getId());
-
-            Map<String, int[]> estadoOcupacion = (solucion != null)
-                    ? solucion.getEstadoOcupacionAlmacenes()
-                    : new HashMap<>(inputMaestro.getOcupacionGlobalAlmacenes());
-            wsMessage.put("estadoOcupacionAlmacenes", estadoOcupacion);
-            wsMessage.put("inicioVentana", bloqueRes.getInicioVentana().toString());
-
+            if (bloqueVacio) {
+                wsMessage.put("bloqueVacio", true);
+                wsMessage.put("rutasResumen", List.of());
+            } else {
+                wsMessage.put("rutasResumen", rutasResumen);
+                wsMessage.put("bloqueId", bloqueRes.getId());
+                if (solucion != null) {
+                    wsMessage.put("estadoOcupacionAlmacenes", solucion.getEstadoOcupacionAlmacenes());
+                }
+            }
             messagingTemplate.convertAndSend("/topic/simulacion/" + simulacionId, wsMessage);
 
-            // 10. SLEEP post-planificación para sincronizar con el cronómetro del frontend.
-            //     - Primer bloque: el frontend espera 90s iniciales, así que dormimos (90s - duración_algoritmo).
-            //     - Bloques siguientes: dormimos (Sa*60s - duración_algoritmo) para que el backend
-            //       despierte justo cuando el frontend necesita el siguiente bloque.
+            // 10. SLEEP solo si hubo planificación (bloques vacíos no deben bloquear minutos reales)
+            if (bloqueVacio) {
+                continue;
+            }
+
             long duracionAlgoritmoSeg = (System.currentTimeMillis() - t0) / 1000;
             long sleepTargetSeg;
             if (bloqueActual == 1) {
-                // Primer bloque: espera inicial de 90 segundos
                 sleepTargetSeg = 90 - duracionAlgoritmoSeg;
             } else {
-                // Bloques siguientes: ciclo de Sa minutos (Sa*60 segundos)
                 sleepTargetSeg = (long) sa * 60 - duracionAlgoritmoSeg;
             }
 
@@ -561,6 +580,12 @@ public class SimulationService {
     }
 
     /** Índice clave vuelo → VueloAlgoritmo (misma clave que usa PlanificationSolutionOutput). */
+    private void normalizarArreglosOcupacionAlmacen(Map<String, int[]> ocupacionGlobalAlmacenes) {
+        for (Map.Entry<String, int[]> entry : ocupacionGlobalAlmacenes.entrySet()) {
+            entry.setValue(TimeUtils.ajustarArregloOcupacion(entry.getValue()));
+        }
+    }
+
     private void prepararIndiceVuelos(Map<String, VueloAlgoritmo> indice,
                                       List<VueloAlgoritmo> vuelos,
                                       LocalDateTime inicio,

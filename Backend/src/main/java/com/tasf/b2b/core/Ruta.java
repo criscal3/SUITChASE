@@ -34,7 +34,8 @@ public class Ruta {
                     this.ocupacionVuelos.getOrDefault(a.getVuelo().getId(), 0) + a.getPedido().getCantidadMaletas());
             this.estadoUbicacionPedido.put(a.getPedido().getId(), a.getVuelo().getDestino());
             this.ocupacionAlmacenes.put(a.getVuelo().getOrigen(),
-                    this.ocupacionAlmacenes.getOrDefault(a.getVuelo().getOrigen(), new int[TimeUtils.getIndiceMinuto(TimeUtils.FECHA_FIN_SIM.plusHours(72)) + 1]).clone());
+                    TimeUtils.ajustarArregloOcupacion(this.ocupacionAlmacenes.getOrDefault(
+                            a.getVuelo().getOrigen(), TimeUtils.nuevoArregloOcupacionAlmacen())).clone());
             this.aeropuertosVisitados.computeIfAbsent(a.getPedido().getId(), k -> new HashSet<>())
                     .add(a.getVuelo().getDestino());
             this.aeropuertosVisitados.get(a.getPedido().getId()).add(a.getPedido().getOrigen());
@@ -97,20 +98,25 @@ public class Ruta {
 
         // 2. Obtener o inicializar el arreglo para este aeropuerto (OACI)
         // El tamaÃ±o debe cubrir hasta el final de la simulaciÃ³n (usualmente FECHA_FIN_SIM + margen)
-        int[] almacen = this.ocupacionAlmacenes.computeIfAbsent(oaci, k -> 
-            new int[TimeUtils.getIndiceMinuto(TimeUtils.FECHA_FIN_SIM.plusHours(72)) + 1]
-        );
+        if (!TimeUtils.intervaloAlmacenValido(idxInicio, idxFin)) {
+            return;
+        }
 
-        // 3. Llenar el arreglo minuto a minuto
-        // Usamos < idxFin porque en el Ãºltimo minuto (momento de la salida) 
-        // la maleta ya deja de ocupar espacio en el almacÃ©n.
+        int[] almacen = this.ocupacionAlmacenes.computeIfAbsent(oaci, k -> TimeUtils.nuevoArregloOcupacionAlmacen());
+        almacen = TimeUtils.ajustarArregloOcupacion(almacen);
+        this.ocupacionAlmacenes.put(oaci, almacen);
+
         for (int i = idxInicio; i < idxFin; i++) {
             almacen[i] += cantidad;
         }
     }
 
     public int[] getOcupacionAlmacen(String claveAlmacen) {
-        return ocupacionAlmacenes.getOrDefault(claveAlmacen, new int[TimeUtils.getIndiceMinuto(TimeUtils.FECHA_FIN_SIM.plusHours(72)) + 1]);
+        int[] existente = ocupacionAlmacenes.get(claveAlmacen);
+        if (existente == null) {
+            return TimeUtils.nuevoArregloOcupacionAlmacen();
+        }
+        return TimeUtils.ajustarArregloOcupacion(existente);
     }
 
 }
