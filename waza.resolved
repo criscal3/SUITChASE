@@ -112,7 +112,7 @@ Al iniciar la simulación, se construye un **índice temporal** en memoria (fech
     - Fecha/hora de inicio de la simulación (selector de fecha)
     - Sa: salto del algoritmo en minutos (default: 30)
     - K: constante multiplicadora (default: 4, **modificable en caliente**)
-    - Ta: tiempo ACS en segundos (default: 15)
+    - Ta: tiempo ACS en segundos (default: 60; espera máxima inicial: 90 s)
   - **Panel de monitoreo** (durante la ejecución):
     - Barra de progreso: `bloqueActual / totalBloques`
     - KPIs en vivo: SLA, ocupación de vuelos, ocupación de almacenes
@@ -189,7 +189,7 @@ sequenceDiagram
     participant DB as MySQL
     participant WS as WebSocket
 
-    Admin->>API: POST /simulacion/iniciar {fecha, sa=30, k=4, ta=15}
+    Admin->>API: POST /simulacion/iniciar {fecha, sa=30, k=4, ta=60}
     API->>SimSvc: iniciarSimulacion()
     SimSvc->>DB: INSERT SimulacionEntity
     SimSvc-->>API: {simulacionId: 1, totalBloques: 240}

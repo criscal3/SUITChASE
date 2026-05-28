@@ -42,7 +42,7 @@ public class RealTimeSchedulerService {
     @Value("${planificador.sa-segundos:600}")
     private int saSegundos;  // Sa: cada cuánto se ejecuta (intervalo)
 
-    @Value("${planificador.ta-segundos:15}")
+    @Value("${planificador.ta-segundos:60}")
     private int taSegundos;  // Ta: tiempo de ejecución del algoritmo ACS
 
     @Value("${planificador.enabled:false}")

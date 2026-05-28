@@ -128,7 +128,7 @@ public class SimulationController {
     public ResponseEntity<PlanificationSolutionOutput> testBloque(
             @RequestParam(defaultValue = "2027-07-24T00:00:00") String inicio,
             @RequestParam(defaultValue = "120") int ventanaSc,
-            @RequestParam(defaultValue = "15") int taSegundos) {
+            @RequestParam(defaultValue = "60") int taSegundos) {
 
         LocalDateTime inicioBloque = LocalDateTime.parse(inicio, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         PlanificationSolutionOutput resultado = simulationService.procesarBloquePrueba(inicioBloque, ventanaSc, taSegundos);
