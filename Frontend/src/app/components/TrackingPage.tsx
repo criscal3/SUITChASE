@@ -78,7 +78,19 @@ export function TrackingPage({ embedded = false }: { embedded?: boolean }) {
 
             {/* Tarjetas de estadísticas */}
             <div className="space-y-2">
-              <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={state.flights.filter(f => !f.cancelled).length.toLocaleString()} />
+              {(() => {
+                const seen = new Set<string>();
+                for (const bg of state.baggageGroups) {
+                  if (!bg.route) continue;
+                  for (const leg of bg.route) {
+                    if (state.currentTime >= leg.departureTime && state.currentTime < leg.arrivalTime) {
+                      const key = `${leg.from}-${leg.to}-${leg.departureTime}`;
+                      seen.add(key);
+                    }
+                  }
+                }
+                return <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={seen.size.toLocaleString()} />;
+              })()}
               <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Maletas" value={state.stats.totalRegistered.toLocaleString()} />
             </div>
             <div className="shrink-0 mb-auto" />

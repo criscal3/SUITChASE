@@ -95,7 +95,12 @@ export function useSimulation() {
         // simulated ms to advance in 50ms of real time
         const deltaMs = 50 * (sa * 60 * k) / ta;
 
-        const nextTime = prev.currentTime + deltaMs;
+        let nextTime = prev.currentTime + deltaMs;
+        const maxTime = prev.startTime + 5 * 86400000;
+        if (prev.scenario === "weekly" && nextTime >= maxTime) {
+          nextTime = maxTime;
+        }
+        
         const diffHours = (nextTime - prev.startTime) / 3600000;
 
         return {

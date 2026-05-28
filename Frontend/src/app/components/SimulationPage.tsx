@@ -55,14 +55,42 @@ export function SimulationPage() {
     return () => window.removeEventListener("resize", checkScroll);
   }, [checkScroll]);
 
-  // Timeline: days 1..5 anchored to state.startTime
-  const totalDays = 5;
-  // current elapsed days from simulation start
-  const elapsedMs = state.hasStarted ? Math.max(0, state.currentTime - state.startTime) : 0;
-  const elapsedDays = elapsedMs / 86400000; // ms → days
-  const currentSimDay = Math.floor(elapsedDays) + 1; // 1-based day number
-  const currentSimHour = (elapsedDays % 1) * 24;    // fractional hour within the day
+  // Timeline: 6 calendar days anchored to state.startTime
+  const totalDays = 6;
   const days = Array.from({ length: totalDays }, (_, i) => i + 1);
+
+  // Base start time for the timeline (used for labels and coloring)
+  const baseStartTime = state.hasStarted
+    ? state.startTime
+    : (pendingStartDate ? pendingStartDate.getTime() : (() => { const td = new Date(); return Date.UTC(td.getFullYear(), td.getMonth(), td.getDate(), 0, 0, 0); })());
+
+  // Determine "current time" for timeline rendering (use startTime before simulation starts)
+  const timelineNow = state.hasStarted ? state.currentTime : baseStartTime;
+
+  // Calendar-day helpers: compute the UTC day-of-year for baseStartTime and timelineNow
+  const startDate = new Date(baseStartTime);
+  const nowDate = new Date(timelineNow);
+  // Day offset (0-based) from the start date's calendar day
+  const startDayFloor = Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), startDate.getUTCDate());
+  const nowDayFloor = Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth(), nowDate.getUTCDate());
+  const calendarDayOffset = Math.floor((nowDayFloor - startDayFloor) / 86400000); // 0 on first day
+  const currentCalDay = calendarDayOffset + 1; // 1-based
+  const currentHourFraction = (nowDate.getUTCHours() + nowDate.getUTCMinutes() / 60) / 24;
+
+  // Active flights: count unique flight legs currently in-flight across all baggageGroups
+  const activeFlightsCount = (() => {
+    const seen = new Set<string>();
+    for (const bg of state.baggageGroups) {
+      if (!bg.route) continue;
+      for (const leg of bg.route) {
+        if (state.currentTime >= leg.departureTime && state.currentTime < leg.arrivalTime) {
+          const key = `${leg.from}-${leg.to}-${leg.departureTime}`;
+          seen.add(key);
+        }
+      }
+    }
+    return seen.size;
+  })();
 
   // Theme-aware class helpers
   const panelBg = isDark
@@ -163,17 +191,13 @@ export function SimulationPage() {
               </div>
               <div className="space-y-1">
                 {days.map(d => {
-                  const isActive = state.hasStarted && currentSimDay === d;
-                  const isPast = state.hasStarted && currentSimDay > d;
-                  // Base start time for the timeline
-                  const baseStartTime = state.hasStarted
-                    ? state.startTime
-                    : (pendingStartDate ? pendingStartDate.getTime() : (() => { const td = new Date(); return Date.UTC(td.getFullYear(), td.getMonth(), td.getDate(), 0, 0, 0); })());
+                  const isActive = currentCalDay === d;
+                  const isPast = currentCalDay > d;
                   
                   // timestamp for this day's label
-                  const dayTs = baseStartTime + (d - 1) * 86400000;
+                  const dayTs = startDayFloor + (d - 1) * 86400000;
                   const timeStr = isActive
-                    ? ` ${String(new Date(state.currentTime).getUTCHours()).padStart(2,"0")}:${String(new Date(state.currentTime).getUTCMinutes()).padStart(2,"0")}`
+                    ? ` ${String(nowDate.getUTCHours()).padStart(2,"0")}:${String(nowDate.getUTCMinutes()).padStart(2,"0")}`
                     : "";
                   return (
                     <div key={d} className="flex items-center gap-2">
@@ -181,7 +205,7 @@ export function SimulationPage() {
                         isActive ? (isDark ? "bg-cyan-400 animate-pulse" : "bg-blue-600 animate-pulse") : isPast ? (isDark ? "bg-cyan-400" : "bg-blue-600") : isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"
                       }`} />
                       <div className={`flex-1 h-[1px] ${isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"}`}>
-                        {(isActive || isPast) && <div className={`h-full ${isDark ? "bg-cyan-400/30" : "bg-blue-600/30"}`} style={{ width: isActive ? `${(currentSimHour / 24) * 100}%` : "100%" }} />}
+                        {(isActive || isPast) && <div className={`h-full ${isDark ? "bg-cyan-400/30" : "bg-blue-600/30"}`} style={{ width: isActive ? `${currentHourFraction * 100}%` : "100%" }} />}
                       </div>
                       <span className={`text-[10px] ${isActive ? (isDark ? "text-cyan-400" : "text-blue-700") : isPast ? isDark ? "text-white/60" : "text-[#475569]" : mutedText}`}>
                         {formatTimestampShort(dayTs)}{timeStr}
@@ -195,7 +219,7 @@ export function SimulationPage() {
 
             {/* Tarjetas de estadísticas */}
             <div className="space-y-2">
-              <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={state.flights.filter(f => !f.cancelled).length.toLocaleString()} />
+              <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={activeFlightsCount.toLocaleString()} />
               <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Maletas" value={state.stats.totalRegistered.toLocaleString()} />
             </div>
 
@@ -238,8 +262,6 @@ export function SimulationPage() {
                   <Download className="w-3 h-3" /> CSV
                 </button>
               </div>
-              {/* Control de velocidad */}
-              <SpeedSlider speed={state.speed} onChange={updateSpeed} isDark={isDark} />
             </div>
 
             {/* Escenarios */}
@@ -305,7 +327,7 @@ export function SimulationPage() {
 
             {/* Stats */}
             <div className="space-y-2">
-              <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={state.flights.filter(f => !f.cancelled).length.toLocaleString()} />
+              <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={activeFlightsCount.toLocaleString()} />
               <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Maletas" value={state.stats.totalRegistered.toLocaleString()} />
             </div>
 
@@ -473,92 +495,6 @@ function StatCard({ icon, label, value, sub, isDark }: { icon: React.ReactNode; 
   );
 }
 
-function SpeedSlider({ speed, onChange, isDark }: { speed: number; onChange: (speed: number) => void; isDark: boolean }) {
-  const speeds = [1, 2, 5, 10];
-  const currentIdx = Math.max(0, speeds.indexOf(speed));
-  const trackRef = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
-
-  const getIndexFromX = (clientX: number) => {
-    const track = trackRef.current;
-    if (!track) return currentIdx;
-    const rect = track.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    // Snap to nearest index
-    return Math.round(ratio * (speeds.length - 1));
-  };
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    dragging.current = true;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    const idx = getIndexFromX(e.clientX);
-    if (speeds[idx] !== speed) onChange(speeds[idx]);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!dragging.current) return;
-    const idx = getIndexFromX(e.clientX);
-    if (speeds[idx] !== speed) onChange(speeds[idx]);
-  };
-
-  const handlePointerUp = () => {
-    dragging.current = false;
-  };
-
-  const thumbLeft = `${(currentIdx / (speeds.length - 1)) * 100}%`;
-
-  return (
-    <div className="flex flex-col gap-0.5 px-1">
-      {/* Track area */}
-      <div
-        ref={trackRef}
-        className="relative h-6 cursor-pointer"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        style={{ touchAction: "none" }}
-      >
-        {/* Background track */}
-        <div className={`absolute top-[11px] left-0 right-0 h-[2px] rounded-full ${isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"}`} />
-        {/* Active track */}
-        <div
-          className={`absolute top-[11px] left-0 h-[2px] rounded-full transition-[width] duration-150 ${isDark ? "bg-cyan-400" : "bg-blue-600"}`}
-          style={{ width: thumbLeft }}
-        />
-        {/* Tick marks */}
-        {speeds.map((s, i) => (
-          <div
-            key={s}
-            className={`absolute top-[6px] w-[2px] h-3 rounded-full -translate-x-1/2 ${
-              i <= currentIdx ? (isDark ? "bg-cyan-400" : "bg-blue-600") : isDark ? "bg-[#475569]" : "bg-[#94a3b8]"
-            }`}
-            style={{ left: `${(i / (speeds.length - 1)) * 100}%` }}
-          />
-        ))}
-        {/* Draggable thumb */}
-        <div
-          className={`absolute top-[6px] w-3 h-3 -translate-x-1/2 rounded-full border-2 transition-[left] duration-150 cursor-grab active:cursor-grabbing ${isDark ? "bg-cyan-400 border-cyan-300 shadow-[0_0_6px_#00e5ff80]" : "bg-blue-600 border-blue-400 shadow-[0_0_6px_#2563eb80]"}`}
-          style={{ left: thumbLeft }}
-        />
-      </div>
-      {/* Labels */}
-      <div className="relative h-3">
-        {speeds.map((s, i) => (
-          <button
-            key={s}
-            onClick={() => onChange(s)}
-            className={`absolute -translate-x-1/2 text-[9px] transition-colors ${
-              i === currentIdx ? (isDark ? "text-cyan-400" : "text-blue-700") : isDark ? "text-[#64748b]" : "text-[#94a3b8]"
-            }`}
-            style={{ left: `${(i / (speeds.length - 1)) * 100}%` }}
-          >
-            x{s}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function HighlightsPanel({ state, isDark, onClose, onReset }: {
   state: import("../engine/types").SimulationState;
