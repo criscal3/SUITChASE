@@ -27,6 +27,26 @@ function parseSimDate(dateStr: any, fallbackTime: number): number {
   }
 }
 
+const MAX_FLIGHT_DURATION_MS = 24 * 3600 * 1000; // 24 h
+const DAY_MS = 24 * 3600 * 1000;
+
+function fixDepartureTime(depUtc: number, arrUtc: number): number {
+  if (depUtc <= arrUtc && arrUtc - depUtc <= MAX_FLIGHT_DURATION_MS) {
+    return depUtc; // already valid
+  }
+
+  // Try retracting by 1 or 2 days (covers any realistic timezone swing)
+  for (let days = 1; days <= 2; days++) {
+    const candidate = depUtc - days * DAY_MS;
+    if (candidate <= arrUtc && arrUtc - candidate <= MAX_FLIGHT_DURATION_MS) {
+      return candidate;
+    }
+  }
+
+  // No clean fix found — return original to preserve the raw data
+  return depUtc;
+}
+
 function splitTramo(tramoStr: string): [string, string] | null {
   if (!tramoStr) return null;
   const match = tramoStr.match(/([A-Z0-9]{3,4})[^A-Z0-9]+([A-Z0-9]{3,4})/i);
@@ -70,9 +90,9 @@ export function mapBlockResultToBaggageGroups(
         for (let i = 0; i < resumen.tramos.length; i++) {
           const tramo = resumen.tramos[i];
           const depLocal = parseSimDate(tramo.salida, cursorTime);
-          const depUtc = depLocal - getAirportOffsetMs(tramo.origen);
           const arrLocal = parseSimDate(tramo.llegada, depLocal + 3600000);
           const arrUtc = arrLocal - getAirportOffsetMs(tramo.destino);
+          const depUtc = fixDepartureTime(depLocal - getAirportOffsetMs(tramo.origen), arrUtc);
           route.push({
             from: String(tramo.origen).toUpperCase(),
             to: String(tramo.destino).toUpperCase(),
@@ -88,12 +108,12 @@ export function mapBlockResultToBaggageGroups(
         if (split1) {
           const [from1, to1] = split1;
           const dep1Local = parseSimDate(resumen.salidaPrimer, cursorTime);
-          const dep1Utc = dep1Local - getAirportOffsetMs(from1);
           const hasSecondLeg = resumen.primerTramo !== resumen.ultimoTramo;
           const arr1Local = hasSecondLeg
             ? dep1Local + 3600000
             : parseSimDate(resumen.llegadaFinal, dep1Local + 3600000);
           const arr1Utc = arr1Local - getAirportOffsetMs(to1);
+          const dep1Utc = fixDepartureTime(dep1Local - getAirportOffsetMs(from1), arr1Utc);
           route.push({
             from: from1,
             to: to1,
@@ -110,7 +130,9 @@ export function mapBlockResultToBaggageGroups(
             const arrival2Local = parseSimDate(resumen.llegadaFinal, cursorTime);
             const arrival2Utc = arrival2Local - getAirportOffsetMs(to2);
             const prevRoute = route[route.length - 1];
-            const dep2Utc = prevRoute ? prevRoute.arrivalTime + 1800000 : arrival2Utc - 3600000;
+            const dep2Utc = prevRoute
+              ? fixDepartureTime(prevRoute.arrivalTime + 1800000, arrival2Utc)
+              : fixDepartureTime(arrival2Utc - 3600000, arrival2Utc);
             route.push({
               from: from2,
               to: to2,
