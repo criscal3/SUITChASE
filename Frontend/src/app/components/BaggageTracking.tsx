@@ -140,6 +140,7 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
               const isCompleted = i < selectedBaggage.currentLegIndex;
               const isCurrent = i === selectedBaggage.currentLegIndex && selectedBaggage.status === "in_transit";
               const isLastLeg = i === selectedBaggage.route.length - 1;
+              const nextLeg = selectedBaggage.route[i + 1];
               
               return (
                 <React.Fragment key={i}>
@@ -157,7 +158,7 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
                       <div className={`text-[9px] ${mutedCls}`}>
                         {isLastLeg
                           ? `Llegada: ${formatTimestamp(leg.arrivalTime)}`
-                          : `Llegada: ${formatTimestamp(leg.arrivalTime)} | Salida: ${formatTimestamp(leg.departureTime)}`
+                          : `Llegada: ${formatTimestamp(leg.arrivalTime)} | Salida: ${formatTimestamp(nextLeg?.departureTime)}`
                         }
                       </div>
                     </div>
