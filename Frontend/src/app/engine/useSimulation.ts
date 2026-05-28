@@ -141,7 +141,9 @@ export function useSimulation() {
               if (!isNaN(parsed)) cursorTime = parsed;
             } else {
               const d = new Date(msg.cursor);
-              if (!isNaN(d.getTime())) cursorTime = d.getTime();
+              if (!isNaN(d.getTime())) {
+                cursorTime = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds());
+              }
             }
           } catch (e) {
             console.error("Error parsing cursor:", e);
@@ -220,17 +222,17 @@ export function useSimulation() {
     }
     activeSimIdRef.current = null;
 
-    const startDate = fechaInicio || (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
-    const endDate = new Date(startDate);
-    endDate.setDate(startDate.getDate() + 5); // 5 days
+    const startDate = fechaInicio || (() => { const d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0)); })();
+    const endDate = new Date(startDate.getTime());
+    endDate.setUTCDate(startDate.getUTCDate() + 5); // 5 days, UTC-aligned
 
     const formatLocalISO = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      const hours = String(d.getHours()).padStart(2, "0");
-      const minutes = String(d.getMinutes()).padStart(2, "0");
-      const seconds = String(d.getSeconds()).padStart(2, "0");
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      const hours = String(d.getUTCHours()).padStart(2, "0");
+      const minutes = String(d.getUTCMinutes()).padStart(2, "0");
+      const seconds = String(d.getUTCSeconds()).padStart(2, "0");
       return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
     };
 
@@ -256,7 +258,7 @@ export function useSimulation() {
         initialAirports[a.code] = { code: a.code, currentStock: 0, capacity: a.warehouseCapacity, incoming: 0, outgoing: 0 };
       });
 
-      const startUtcMs = Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0);
+      const startUtcMs = startDate.getTime();
       targetTimeRef.current = startUtcMs;
 
       setState({

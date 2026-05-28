@@ -29,7 +29,7 @@ function formatSimDate(ts: number): string {
     return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
   }
   const d = new Date(ts);
-  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  return `${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
 }
 
 // Synchronous migration: clean stale localStorage before any React renders
@@ -106,14 +106,20 @@ function LayoutInner() {
   React.useEffect(() => {
     if (state.hasStarted && state.currentTime) {
       const d = new Date(state.currentTime);
-      setPickerValue(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}T${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`);
+      setPickerValue(`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}T${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`);
     }
-  }, [state.hasStarted]);
+  }, [state.hasStarted, state.currentTime]);
 
   const handleDateSeek = () => {
     if (!pickerValue) return;
-    const target = new Date(pickerValue);
-    if (!isNaN(target.getTime())) {
+    const parts = pickerValue.split(/[^0-9]/);
+    if (parts.length >= 5) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const hour = parseInt(parts[3], 10);
+      const min = parseInt(parts[4], 10);
+      const target = new Date(Date.UTC(year, month, day, hour, min, 0));
       setPendingStartDate(target);
     }
     setShowSimDatePicker(false);

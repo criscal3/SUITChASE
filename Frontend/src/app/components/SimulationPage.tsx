@@ -12,7 +12,7 @@ import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTria
 function formatTimestampShort(ts: number): string {
   if (!ts || isNaN(ts)) return "";
   const d = new Date(ts);
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
 }
 
 export function SimulationPage() {
@@ -168,12 +168,12 @@ export function SimulationPage() {
                   // Base start time for the timeline
                   const baseStartTime = state.hasStarted
                     ? state.startTime
-                    : (pendingStartDate ? pendingStartDate.getTime() : (() => { const td = new Date(); td.setHours(0,0,0,0); return td.getTime(); })());
+                    : (pendingStartDate ? pendingStartDate.getTime() : (() => { const td = new Date(); return Date.UTC(td.getFullYear(), td.getMonth(), td.getDate(), 0, 0, 0); })());
                   
                   // timestamp for this day's label
                   const dayTs = baseStartTime + (d - 1) * 86400000;
                   const timeStr = isActive
-                    ? ` ${String(Math.floor(currentSimHour)).padStart(2,"0")}:${String(Math.round((currentSimHour%1)*60)).padStart(2,"0")}`
+                    ? ` ${String(new Date(state.currentTime).getUTCHours()).padStart(2,"0")}:${String(new Date(state.currentTime).getUTCMinutes()).padStart(2,"0")}`
                     : "";
                   return (
                     <div key={d} className="flex items-center gap-2">
