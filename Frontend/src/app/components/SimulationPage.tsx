@@ -612,7 +612,7 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
           {/* Rate & Duration */}
           <div className={`rounded-xl p-4 border ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
             <div className="flex items-center justify-between mb-2">
-              <span className={`text-[12px] ${textSecondary}`}>Tasa a Tiempo</span>
+              <span className={`text-[12px] ${textSecondary}`}>Tasa de consumo SLA</span>
               <span className={`text-[14px] ${stats.onTimeRate >= 90 ? "text-green-400" : stats.onTimeRate >= 70 ? "text-amber-400" : "text-red-400"}`}>
                 {stats.onTimeRate.toFixed(1)}%
               </span>
