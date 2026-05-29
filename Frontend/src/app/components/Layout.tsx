@@ -242,7 +242,7 @@ function LayoutInner() {
               {state.scenario === "weekly" ? "Semanal" : state.scenario === "daily" ? "Diario" : "Colapso"}
             </Badge>
             <span className={`text-[11px] ${isDark ? "text-white/80" : "text-[#334155]"}`}>
-              {state.stats.totalRegistered} maletas | {state.stats.onTimeRate.toFixed(0)}% a tiempo
+              {state.stats.totalRegistered} maletas | {state.stats.onTimeRate.toFixed(0)}% consumo SLA
             </span>
 
             {/* Theme toggle button */}
