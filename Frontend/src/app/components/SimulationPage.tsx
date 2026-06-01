@@ -7,6 +7,8 @@ import { TrackingPage } from "./TrackingPage";
 import type { BaggageGroup } from "../engine/types";
 import { hasReachedWeeklySimEnd } from "../engine/types";
 import { INITIAL_WAIT_SECONDS } from "../engine/useSimulation";
+import { OccupancyLegend } from "./OccupancyLegend";
+import { getOccupancyColor, getOccupancyLevel } from "../engine/occupancyStatus";
 import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse } from "lucide-react";
 
 
@@ -183,30 +185,7 @@ export function SimulationPage() {
             {/* Estado */}
             <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
               <h4 className={`text-[12px] mb-2 ${panelText}`}>Estado</h4>
-              <p className={`text-[9px] mb-2 ${subText}`}>Almacenes y aviones</p>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-3 h-3 rounded-sm bg-[#22c55e]"></div>
-                <span className={`text-[10px] ${subText}`}>Capacidad Normal (&lt;50%)</span>
-              </div>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-3 h-3 rounded-sm bg-[#f59e0b]"></div>
-                <span className={`text-[10px] ${subText}`}>Capacidad Moderada (&lt;80%)</span>
-              </div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-sm bg-[#ef4444]"></div>
-                <span className={`text-[10px] ${subText}`}>Saturado (&gt;80%)</span>
-              </div>
-              <div className={`border-t pt-2 mb-1 ${isDark ? "border-[#1a2744]" : "border-[#cbd5e1]"}`}>
-                <p className={`text-[9px] mb-1.5 ${subText}`}>Rutas de vuelo</p>
-                <div className="flex items-center gap-2 mb-1">
-                  <div className={`w-5 h-0.5 rounded ${isDark ? "bg-[#22d3ee]" : "bg-[#0891b2]"}`}></div>
-                  <span className={`text-[10px] ${subText}`}>Mismo continente</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className={`w-5 h-0.5 rounded ${isDark ? "bg-[#fb7185]" : "bg-[#e11d48]"}`}></div>
-                  <span className={`text-[10px] ${subText}`}>Distinto continente</span>
-                </div>
-              </div>
+              <OccupancyLegend isDark={isDark} subText={subText} />
             </div>
 
             {/* Línea de tiempo */}
@@ -338,30 +317,7 @@ export function SimulationPage() {
             {/* Estado */}
             <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
               <h4 className={`text-[12px] mb-2 ${panelText}`}>Estado</h4>
-              <p className={`text-[9px] mb-2 ${subText}`}>Almacenes y aviones</p>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-3 h-3 rounded-sm bg-[#22c55e]"></div>
-                <span className={`text-[10px] ${subText}`}>Capacidad Normal (&lt;50%)</span>
-              </div>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-3 h-3 rounded-sm bg-[#f59e0b]"></div>
-                <span className={`text-[10px] ${subText}`}>Capacidad Moderada (&lt;80%)</span>
-              </div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-sm bg-[#ef4444]"></div>
-                <span className={`text-[10px] ${subText}`}>Saturado (&gt;80%)</span>
-              </div>
-              <div className={`border-t pt-2 mb-1 ${isDark ? "border-[#1a2744]" : "border-[#cbd5e1]"}`}>
-                <p className={`text-[9px] mb-1.5 ${subText}`}>Rutas de vuelo</p>
-                <div className="flex items-center gap-2 mb-1">
-                  <div className={`w-5 h-0.5 rounded ${isDark ? "bg-[#22d3ee]" : "bg-[#0891b2]"}`}></div>
-                  <span className={`text-[10px] ${subText}`}>Mismo continente</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className={`w-5 h-0.5 rounded ${isDark ? "bg-[#fb7185]" : "bg-[#e11d48]"}`}></div>
-                  <span className={`text-[10px] ${subText}`}>Distinto continente</span>
-                </div>
-              </div>
+              <OccupancyLegend isDark={isDark} subText={subText} />
             </div>
 
             {/* Stats */}
@@ -682,10 +638,19 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
                   <div key={a.code} className="flex items-center gap-2">
                     <span className={`font-mono text-[11px] w-10 ${textPrimary}`}>{a.code}</span>
                     <div className={`flex-1 h-2 rounded-full ${isDark ? "bg-[#1e293b]" : "bg-[#e2e8f0]"}`}>
-                      <div className={`h-full rounded-full ${a.pct > 80 ? "bg-red-500" : a.pct > 50 ? "bg-amber-500" : "bg-green-500"}`}
-                        style={{ width: `${Math.min(100, a.pct)}%` }} />
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${Math.min(100, a.pct)}%`,
+                          backgroundColor: getOccupancyColor(a.pct),
+                        }}
+                      />
                     </div>
-                    <span className={`text-[10px] w-16 text-right ${a.pct > 80 ? "text-red-400" : textSecondary}`}>
+                    <span
+                      className={`text-[10px] w-16 text-right ${
+                        getOccupancyLevel(a.pct) === "saturated" ? "text-red-400" : textSecondary
+                      }`}
+                    >
                       {a.pct.toFixed(0)}% ({a.stock}/{a.cap})
                     </span>
                   </div>

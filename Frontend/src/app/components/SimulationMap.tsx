@@ -4,6 +4,12 @@ import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
 import type { BaggageGroup } from "../engine/types";
 import { resolveFlightCapacity } from "../engine/backendAdapter";
+import {
+  computeUtilizationPercent,
+  getOccupancyColor,
+  getOccupancyPlaneStroke,
+  getOccupancyTextClass,
+} from "../engine/occupancyStatus";
 
 interface SimMapProps {
   onSelectBaggage?: (bg: BaggageGroup) => void;
@@ -34,12 +40,6 @@ interface HoveredFlight {
 
 type HoveredItem = HoveredAirport | HoveredFlight;
 
-function getStatusColor(u: number) {
-  if (u < 50) return "#22c55e";
-  if (u < 80) return "#f59e0b";
-  return "#ef4444";
-}
-
 function getArcColor(intercontinental: boolean, isDark: boolean) {
   if (intercontinental) {
     return isDark ? "#fb7185" : "#e11d48";
@@ -65,7 +65,7 @@ function computeFlightMetrics(
 ) {
   const load = claveVuelo ? flightOccupancy[claveVuelo] ?? 0 : 0;
   const capacity = resolveFlightCapacity(claveVuelo, flightCapacities, flightCapacities);
-  const utilization = capacity > 0 ? (load / capacity) * 100 : 0;
+  const utilization = computeUtilizationPercent(load, capacity);
   return { load, capacity, utilization };
 }
 
@@ -169,15 +169,17 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
   const pointsData = useMemo(() => {
     return airportsList.map((a) => {
       const ap = state.airports[a.code];
-      const util = ap ? (ap.currentStock / ap.capacity) * 100 : 0;
+      const util = ap
+        ? computeUtilizationPercent(ap.currentStock, ap.capacity)
+        : 0;
       return {
         ...a,
         utilization: util,
-        color: getStatusColor(util),
+        color: getOccupancyColor(util),
         label: `${a.city} (${a.code}) - ${ap?.currentStock || 0}/${ap?.capacity || 0} maletas`,
       };
     });
-  }, [state.airports, airportsList]);
+  }, [state.airports, state.currentTime, airportsList]);
 
   const showFlightHover = (flight: Omit<HoveredFlight, "kind" | "x" | "y">, e: React.MouseEvent) => {
     setHovered({ kind: "flight", ...flight, x: e.clientX, y: e.clientY });
@@ -411,8 +413,9 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
           ))}
 
           {planesData.map((plane) => {
-            const planeColor = getStatusColor(plane.utilization ?? 0);
-            const planeStroke = planeColor === "#22c55e" ? "#15803d" : planeColor === "#f59e0b" ? "#b45309" : "#b91c1c";
+            const planeUtil = plane.utilization ?? 0;
+            const planeColor = getOccupancyColor(planeUtil);
+            const planeStroke = getOccupancyPlaneStroke(planeUtil);
             return (
               <Marker key={`plane-${plane.routeKey || plane.flightId}`} coordinates={[plane.lng, plane.lat]}>
                 <g
@@ -449,7 +452,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
             Uso: <span className={tooltipVal}>{hovered.stock}</span> / {hovered.capacity} maletas
           </div>
           <div className={`text-[10px] ${tooltipSub}`}>
-            Ocupación: <span className={`${hovered.utilization < 50 ? "text-green-500" : hovered.utilization < 80 ? "text-amber-500" : "text-red-500"}`}>{hovered.utilization.toFixed(1)}%</span>
+            Ocupación: <span className={getOccupancyTextClass(hovered.utilization)}>{hovered.utilization.toFixed(1)}%</span>
           </div>
         </div>
       )}
@@ -464,7 +467,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
             Uso: <span className={tooltipVal}>{hovered.load}</span> / {hovered.capacity} maletas
           </div>
           <div className={`text-[10px] ${tooltipSub}`}>
-            Ocupación: <span className={`${hovered.utilization < 50 ? "text-green-500" : hovered.utilization < 80 ? "text-amber-500" : "text-red-500"}`}>{hovered.utilization.toFixed(1)}%</span>
+            Ocupación: <span className={getOccupancyTextClass(hovered.utilization)}>{hovered.utilization.toFixed(1)}%</span>
           </div>
         </div>
       )}

@@ -1,17 +1,12 @@
 import React, { useMemo } from "react";
 import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
+import { computeUtilizationPercent, getOccupancyColor } from "../engine/occupancyStatus";
 
 function latLngToXY(lat: number, lng: number, width: number, height: number) {
   const x = ((lng + 180) / 360) * width;
   const y = ((90 - lat) / 180) * height;
   return { x, y };
-}
-
-function getStatusColor(utilization: number): string {
-  if (utilization < 50) return "#22c55e"; // green
-  if (utilization < 80) return "#f59e0b"; // amber
-  return "#ef4444"; // red
 }
 
 const CONTINENT_COLORS: Record<string, string> = {
@@ -107,8 +102,10 @@ export function WorldMap() {
         {/* Airports */}
         {airportPositions.map(a => {
           const apState = state.airports[a.code];
-          const utilization = apState ? (apState.currentStock / apState.capacity) * 100 : 0;
-          const color = getStatusColor(utilization);
+          const utilization = apState
+            ? computeUtilizationPercent(apState.currentStock, apState.capacity)
+            : 0;
+          const color = getOccupancyColor(utilization);
           const r = Math.max(4, Math.min(8, 4 + (apState?.currentStock || 0) / 50));
           return (
             <g key={a.code}>
