@@ -18,7 +18,7 @@ function formatTimestampShort(ts: number): string {
 }
 
 export function SimulationPage() {
-  const { state, start, endSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
+  const { state, start, pauseSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
   const { isDark } = useTheme();
   const [selectedBaggage, setSelectedBaggage] = useState<BaggageGroup | null>(null);
   const [showTracking, setShowTracking] = useState(true);
@@ -27,14 +27,34 @@ export function SimulationPage() {
   const [viewMode, setViewMode] = useState<"simulation" | "tracking">("simulation");
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showHighlights, setShowHighlights] = useState(false);
-  const prevRunning = useRef(false);
+  const weeklyEndHandledRef = useRef(false);
 
-  // Highlights solo cuando el cronómetro alcanza 5 días desde la fecha inicial
-  useEffect(() => {
-    if (hasReachedWeeklySimEnd(state)) {
-      setShowHighlights(true);
+  /** Detener: pausa (reanudable tras Cerrar) y abre Highlights. */
+  const handleStopSimulation = useCallback(async () => {
+    if (state.waitingForFirstBlock || state.hasStarted) {
+      const finished = hasReachedWeeklySimEnd(state);
+      await pauseSimulation(finished);
     }
-  }, [state.currentTime, state.startTime, state.hasStarted]);
+    setShowHighlights(true);
+  }, [state, pauseSimulation]);
+
+  // Al completar 5 días sim: pausar y mostrar Highlights (una sola vez)
+  useEffect(() => {
+    if (
+      hasReachedWeeklySimEnd(state) &&
+      state.hasStarted &&
+      !weeklyEndHandledRef.current
+    ) {
+      weeklyEndHandledRef.current = true;
+      void handleStopSimulation();
+    }
+  }, [
+    state.currentTime,
+    state.startTime,
+    state.hasStarted,
+    state.stopped,
+    handleStopSimulation,
+  ]);
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -247,8 +267,9 @@ export function SimulationPage() {
                   {state.running ? <Pause className={`w-5 h-5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} /> : <Play className={`w-5 h-5 ml-0.5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
                 </button>
                 <button
-                  onClick={endSimulation}
-                  className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors"
+                  onClick={() => void handleStopSimulation()}
+                  disabled={!state.hasStarted && !state.waitingForFirstBlock}
+                  className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:pointer-events-none"
                 >
                   <Square className="w-3 h-3 text-red-400" />
                 </button>
@@ -481,7 +502,11 @@ export function SimulationPage() {
           state={state}
           isDark={isDark}
           onClose={() => setShowHighlights(false)}
-          onReset={() => { setShowHighlights(false); reset(); }}
+          onReset={() => {
+            setShowHighlights(false);
+            weeklyEndHandledRef.current = false;
+            void reset();
+          }}
         />
       )}
 
@@ -548,10 +573,10 @@ export function SimulationPage() {
             <div className="text-red-400 text-[16px] mb-2">Sistema Colapsado</div>
             <div className="text-[12px] text-white mb-4">{state.collapseReason}</div>
             <div className="flex items-center gap-2 justify-center">
-              <button onClick={() => { setShowHighlights(true); }} className={`px-4 py-2 border rounded-lg text-[12px] ${isDark ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/20 text-blue-700 hover:bg-blue-600/20"}`}>
+              <button onClick={() => void handleStopSimulation()} className={`px-4 py-2 border rounded-lg text-[12px] ${isDark ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/20 text-blue-700 hover:bg-blue-600/20"}`}>
                 Ver Highlights
               </button>
-              <button onClick={() => reset("weekly", 1)} className="px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-[12px] hover:bg-red-500/30">
+              <button onClick={() => { weeklyEndHandledRef.current = false; void reset(); }} className="px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-[12px] hover:bg-red-500/30">
                 Reiniciar
               </button>
             </div>

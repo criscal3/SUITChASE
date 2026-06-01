@@ -561,17 +561,45 @@ export function useSimulation() {
     setWaitCountdown(0);
   }, []);
 
-  /** Detiene la simulación en curso y conserva datos para Highlights (no reinicia). */
-  const endSimulation = useCallback(async () => {
-    await teardownActiveSimulation(true);
+  /**
+   * Pausa cronómetro y backend para revisar Highlights.
+   * @param markStopped true solo si la simulación terminó (p. ej. 5 días) y no debe reanudarse
+   */
+  const pauseSimulation = useCallback(async (markStopped = false) => {
+    runningRef.current = false;
+
+    if (waitingForFirstBlockRef.current) {
+      await teardownActiveSimulation(true);
+      setState(prev => ({
+        ...prev,
+        running: false,
+        stopped: false,
+        hasStarted: false,
+        waitingForFirstBlock: false,
+      }));
+      return;
+    }
+
+    if (activeSimIdRef.current) {
+      try {
+        await api.pausarSimulacion(activeSimIdRef.current);
+      } catch (error: any) {
+        console.warn("Error pausando simulación:", error.message);
+      }
+      // Mantener WebSocket para poder reanudar tras cerrar Highlights
+    }
+
     setState(prev => ({
       ...prev,
       running: false,
-      stopped: true,
-      hasStarted: true,
+      stopped: markStopped,
+      hasStarted: markStopped ? prev.hasStarted : true,
       waitingForFirstBlock: false,
     }));
   }, [teardownActiveSimulation]);
+
+  /** @deprecated alias — usar pauseSimulation(false) al detener manualmente */
+  const endSimulation = pauseSimulation;
 
   /** Cancela antes de que arranque el cronómetro (espera inicial). */
   const cancelSimulation = useCallback(async () => {
@@ -589,19 +617,26 @@ export function useSimulation() {
   }, [teardownActiveSimulation]);
 
   const togglePause = useCallback(async () => {
-    if (!activeSimIdRef.current) return;
+    if (!activeSimIdRef.current || state.stopped || state.waitingForFirstBlock) {
+      return;
+    }
     try {
       if (state.running) {
+        runningRef.current = false;
         await api.pausarSimulacion(activeSimIdRef.current);
         setState(prev => ({ ...prev, running: false }));
       } else {
+        if (!wsClientRef.current) {
+          connectWebSocket(activeSimIdRef.current);
+        }
+        runningRef.current = true;
         await api.reanudarSimulacion(activeSimIdRef.current);
         setState(prev => ({ ...prev, running: true }));
       }
     } catch (error: any) {
       toast.error(`Error pausando/reanudando: ${error.message}`);
     }
-  }, [state.running]);
+  }, [state.running, state.stopped, state.waitingForFirstBlock, connectWebSocket]);
 
   const updateSpeed = useCallback(async (newSpeed: number) => {
     setSpeed(newSpeed);
@@ -677,6 +712,7 @@ export function useSimulation() {
     airlines,
     start,
     endSimulation,
+    pauseSimulation,
     cancelSimulation,
     reset,
     togglePause,
