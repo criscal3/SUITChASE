@@ -38,7 +38,8 @@ public class PlanificationProblemInputACS {
     public Map<String, Aeropuerto> getAeropuertos() { return aeropuertos; }
 
     public List<Vuelo> getVuelosDesdeLinea(String origen) {
-        return vuelosPorOrigen.getOrDefault(origen, new ArrayList<>());
+        List<Vuelo> vuelos = vuelosPorOrigen.get(origen);
+        return vuelos != null ? vuelos : Collections.emptyList();
     }
 
     public List<Pedido> getPedidos() { return pedidos; }
@@ -50,7 +51,7 @@ public class PlanificationProblemInputACS {
     public int[] getOcupacionGlobalAlmacenes(String warehouseKey) {
         int[] existente = ocupacionGlobalAlmacenes.get(warehouseKey);
         if (existente == null) {
-            return TimeUtils.nuevoArregloOcupacionAlmacen();
+            return TimeUtils.almacenSinUso();
         }
         return TimeUtils.ajustarArregloOcupacion(existente);
     }

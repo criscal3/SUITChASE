@@ -14,6 +14,8 @@ public class Ruta {
     private Map<String, int[]> ocupacionAlmacenes;
     private Map<String, String> estadoUbicacionPedido;
     private Map<String, Set<String>> aeropuertosVisitados;
+    /** Disponibilidad O(1) por pedido (evita recorrer asignaciones en cada A*). */
+    private Map<String, LocalDateTime> disponibilidadPedido;
 
     public Ruta() {
         this.asignaciones = new ArrayList<>();
@@ -21,6 +23,7 @@ public class Ruta {
         this.ocupacionAlmacenes = new HashMap<>();
         this.estadoUbicacionPedido = new HashMap<>();
         this.aeropuertosVisitados = new HashMap<>();
+        this.disponibilidadPedido = new HashMap<>();
     }
 
     public Ruta(List<Asignacion> asignaciones) {
@@ -29,6 +32,7 @@ public class Ruta {
         this.ocupacionAlmacenes = new HashMap<>();
         this.estadoUbicacionPedido = new HashMap<>();
         this.aeropuertosVisitados = new HashMap<>();
+        this.disponibilidadPedido = new HashMap<>();
         for (Asignacion a : asignaciones) {
             this.ocupacionVuelos.put(a.getVuelo().getId(),
                     this.ocupacionVuelos.getOrDefault(a.getVuelo().getId(), 0) + a.getPedido().getCantidadMaletas());
@@ -43,18 +47,25 @@ public class Ruta {
     }
 
     public void agregarAsignacion(Pedido p, Vuelo v) {
-        java.time.LocalDateTime disp = VueloSelector.getDisponibilidadAbsoluta(p, this);
-        java.time.LocalDateTime salida = disp.with(v.getHoraSalida());
+        LocalDateTime disp = getDisponibilidadPedido(p);
+        LocalDateTime salida = disp.with(v.getHoraSalida());
         if (salida.isBefore(disp)) salida = salida.plusDays(1);
+        LocalDateTime llegada = salida.with(v.getHoraLlegada());
+        if (llegada.isBefore(salida)) llegada = llegada.plusDays(1);
         String flightKey = v.getId() + "-" + salida.toLocalDate().toString();
 
         this.asignaciones.add(new Asignacion(p, v, flightKey));
         this.ocupacionVuelos.put(flightKey,
             this.ocupacionVuelos.getOrDefault(flightKey, 0) + p.getCantidadMaletas());
         this.estadoUbicacionPedido.put(p.getId(), v.getDestino());
+        this.disponibilidadPedido.put(p.getId(), llegada.plusMinutes(VueloSelector.HANDLING_MINUTES));
 
         this.aeropuertosVisitados.computeIfAbsent(p.getId(), k -> new HashSet<>()).add(p.getOrigen());
         this.aeropuertosVisitados.get(p.getId()).add(v.getDestino());
+    }
+
+    public LocalDateTime getDisponibilidadPedido(Pedido p) {
+        return disponibilidadPedido.getOrDefault(p.getId(), p.getTiempoCreacion());
     }
 
     public List<Asignacion> getAsignaciones() {
@@ -114,9 +125,9 @@ public class Ruta {
     public int[] getOcupacionAlmacen(String claveAlmacen) {
         int[] existente = ocupacionAlmacenes.get(claveAlmacen);
         if (existente == null) {
-            return TimeUtils.nuevoArregloOcupacionAlmacen();
+            return TimeUtils.almacenSinUso();
         }
-        return TimeUtils.ajustarArregloOcupacion(existente);
+        return existente;
     }
 
 }

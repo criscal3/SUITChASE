@@ -54,6 +54,26 @@ public class TimeUtils {
         return new int[getCapacidadMinutosAlmacen()];
     }
 
+    /**
+     * Arreglo de solo lectura compartido (todos ceros) para aeropuertos sin ocupacion local/global.
+     * Evita asignar ~26k enteros en cada evaluacion de A*.
+     */
+    public static int[] almacenSinUso() {
+        int cap = getCapacidadMinutosAlmacen();
+        int[] actual = almacenCero;
+        if (actual != null && actual.length == cap) {
+            return actual;
+        }
+        synchronized (TimeUtils.class) {
+            if (almacenCero == null || almacenCero.length != cap) {
+                almacenCero = new int[cap];
+            }
+            return almacenCero;
+        }
+    }
+
+    private static volatile int[] almacenCero = null;
+
     public static int[] ajustarArregloOcupacion(int[] existente) {
         int cap = getCapacidadMinutosAlmacen();
         if (existente != null && existente.length == cap) {

@@ -1,5 +1,8 @@
 export const SIM_BASE_DATE = new Date(2026, 0, 2, 0, 0, 0);
 
+/** Duración del cronómetro de simulación semanal (5 días desde fecha inicial). */
+export const SIM_WEEKLY_DURATION_MS = 5 * 24 * 60 * 60 * 1000;
+
 export interface BaggageGroup {
   id: string;
   airline: string;
@@ -48,6 +51,16 @@ export interface SimulationState {
   fastForwardTarget?: number | null;
   fastForwardState?: "idle" | "running" | "reached";
   targetDateStr?: string;
+}
+
+export function hasReachedWeeklySimEnd(
+  state: Pick<SimulationState, "hasStarted" | "startTime" | "currentTime">
+): boolean {
+  return (
+    !!state.hasStarted &&
+    state.startTime > 0 &&
+    state.currentTime >= state.startTime + SIM_WEEKLY_DURATION_MS
+  );
 }
 
 export interface AirportState {

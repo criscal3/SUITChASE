@@ -5,6 +5,8 @@ import { SimulationMap } from "./SimulationMap";
 import { BaggageTracking } from "./BaggageTracking";
 import { TrackingPage } from "./TrackingPage";
 import type { BaggageGroup } from "../engine/types";
+import { hasReachedWeeklySimEnd } from "../engine/types";
+import { INITIAL_WAIT_SECONDS } from "../engine/useSimulation";
 import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse } from "lucide-react";
 
 
@@ -27,19 +29,12 @@ export function SimulationPage() {
   const [showHighlights, setShowHighlights] = useState(false);
   const prevRunning = useRef(false);
 
-  // Highlights al terminar (5 días), al detener con el cuadrado rojo o al colapsar
+  // Highlights solo cuando el cronómetro alcanza 5 días desde la fecha inicial
   useEffect(() => {
-    if (state.stopped && state.hasStarted && state.currentTime > 0) {
+    if (hasReachedWeeklySimEnd(state)) {
       setShowHighlights(true);
     }
-  }, [state.stopped, state.hasStarted, state.currentTime]);
-
-  // Auto-show highlights on collapse
-  useEffect(() => {
-    if (state.collapsed && state.currentTime > 0) {
-      setShowHighlights(true);
-    }
-  }, [state.collapsed, state.currentTime]);
+  }, [state.currentTime, state.startTime, state.hasStarted]);
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -415,7 +410,7 @@ export function SimulationPage() {
         )}
       </div>
 
-      {/* Initial 90-second waiting popup — shown while backend computes first block */}
+      {/* Initial waiting popup — shown while backend computes first block */}
       {state.waitingForFirstBlock && (
         <div className="absolute inset-0 z-50 bg-black/60 flex items-center justify-center">
           <div className={`border rounded-2xl w-full max-w-md mx-4 overflow-hidden ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-white border-[#cbd5e1]"}`}>
@@ -447,7 +442,7 @@ export function SimulationPage() {
                 <div className={`w-full h-3 rounded-full overflow-hidden ${isDark ? "bg-[#1e293b]" : "bg-[#e2e8f0]"}`}>
                   <div
                     className={`h-full rounded-full transition-all duration-1000 ease-linear ${isDark ? "bg-gradient-to-r from-cyan-600 to-cyan-400" : "bg-gradient-to-r from-blue-500 to-blue-400"}`}
-                    style={{ width: `${((90 - waitCountdown) / 90) * 100}%` }}
+                    style={{ width: `${((INITIAL_WAIT_SECONDS - waitCountdown) / INITIAL_WAIT_SECONDS) * 100}%` }}
                   />
                 </div>
               </div>

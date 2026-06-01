@@ -194,6 +194,12 @@ public class SimulationService {
         log.info("Simulación {} iniciada/reanudada. Cursor: {}, Bloque: {}/{}",
                 simulacionId, cursor, bloqueActual, sim.getTotalBloquesEstimados());
 
+        // Ancla de reloj real: bloque n inicia en (n-1)*Sa y termina su ventana en n*Sa (segundos)
+        final long saPeriodoMs = (long) sa * 60_000L;
+        final long wallClockAnchorMs = bloqueActual > 0
+                ? System.currentTimeMillis() - (long) bloqueActual * saPeriodoMs
+                : System.currentTimeMillis();
+
         // ═══════════════════════════════════════════════════
         // LOOP DE BLOQUES
         // ═══════════════════════════════════════════════════
@@ -227,6 +233,12 @@ public class SimulationService {
             boolean bloqueVacio = enviosBloque.isEmpty();
 
             bloqueActual++;
+
+            long slotStartMs = wallClockAnchorMs + (long) (bloqueActual - 1) * saPeriodoMs;
+            if (!esperarHastaInterruptible(simulacionId, slotStartMs)) {
+                return;
+            }
+
             long t0 = System.currentTimeMillis();
 
             BloqueResultadoEntity bloqueRes = new BloqueResultadoEntity();
@@ -334,27 +346,16 @@ public class SimulationService {
             }
             messagingTemplate.convertAndSend("/topic/simulacion/" + simulacionId, wsMessage);
 
+            long slotEndMs = wallClockAnchorMs + (long) bloqueActual * saPeriodoMs;
             long duracionAlgoritmoSeg = (System.currentTimeMillis() - t0) / 1000;
-            long sleepTargetSeg = (long) sa * 60 - duracionAlgoritmoSeg;
-
-            if (sleepTargetSeg > 0) {
-                log.info("Simulación {} — Bloque {} completado en {}s, durmiendo {}s",
-                        simulacionId, bloqueActual, duracionAlgoritmoSeg, sleepTargetSeg);
-                try {
-                    // Sleep interruptible por pausa: revisamos cada segundo
-                    for (long s = 0; s < sleepTargetSeg; s++) {
-                        Boolean pausedDuringSleep = pauseFlags.get(simulacionId);
-                        if (pausedDuringSleep == null || pausedDuringSleep) {
-                            log.info("Simulación {} interrumpida durante sleep en bloque {}", simulacionId, bloqueActual);
-                            return;
-                        }
-                        Thread.sleep(1000);
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    log.warn("Simulación {} — sleep interrumpido en bloque {}", simulacionId, bloqueActual);
-                    return;
-                }
+            long sleepSeg = Math.max(0, (slotEndMs - System.currentTimeMillis() + 999) / 1000);
+            if (sleepSeg > 0) {
+                log.info("Simulación {} — Bloque {} enviado ({}s de cómputo), durmiendo hasta t={}s",
+                        simulacionId, bloqueActual, duracionAlgoritmoSeg,
+                        (bloqueActual * sa * 60L));
+            }
+            if (!esperarHastaInterruptible(simulacionId, slotEndMs)) {
+                return;
             }
         }
 
@@ -573,6 +574,30 @@ public class SimulationService {
         log.info("Bloque planificado con éxito. SLA Promedio: {}", solucion.getPromedioConsumoSLA());
 
         return solucion;
+    }
+
+    /**
+     * Espera hasta un instante de reloj real (interruptible por pausa/cancelación).
+     * @return false si la simulación fue pausada o cancelada durante la espera
+     */
+    private boolean esperarHastaInterruptible(Long simulacionId, long targetEpochMs) {
+        while (true) {
+            Boolean paused = pauseFlags.get(simulacionId);
+            if (paused == null || paused) {
+                return false;
+            }
+            long remaining = targetEpochMs - System.currentTimeMillis();
+            if (remaining <= 0) {
+                return true;
+            }
+            try {
+                Thread.sleep(Math.min(remaining, 1000L));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Simulación {} — espera interrumpida", simulacionId);
+                return false;
+            }
+        }
     }
 
     /** Índice clave vuelo → VueloAlgoritmo (misma clave que usa PlanificationSolutionOutput). */

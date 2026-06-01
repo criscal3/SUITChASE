@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { createEmptyStats } from "./simulation";
 import { AIRPORTS as DEFAULT_AIRPORTS, type Airport } from "../data/airports";
 import type { SimulationState, SimEvent, Airline } from "./types";
-import { SIM_BASE_DATE } from "./types";
+import { SIM_BASE_DATE, SIM_WEEKLY_DURATION_MS } from "./types";
 import { toast } from "sonner";
 import { api } from "../services/api";
 import { SimulationWebSocketClient } from "../services/websocket";
@@ -28,13 +28,16 @@ const DEFAULT_AIRLINES: Airline[] = [
 // Simulation timing constants
 const SA_MINUTES = 3;        // Sa: salto del algoritmo en minutos
 const K_DEFAULT = 120;       // K: constante de velocidad
-const TA_SECONDS = 60;       // Ta: tiempo del algoritmo en segundos (máx. espera inicial: 90 s)
+const TA_SECONDS = 20;       // Ta: tiempo del algoritmo en segundos (máx. espera inicial: 60 s)
 const SC_MINUTES = K_DEFAULT * SA_MINUTES; // Sc: ventana de consumo = 360 min = 6h
 const SA_SECONDS = SA_MINUTES * 60;        // Sa en segundos = 180s = 3 min
-const INITIAL_WAIT_SECONDS = 90;           // Espera inicial antes de iniciar cronómetro
+export const INITIAL_WAIT_SECONDS = 60;    // t=60 real: inicio del cronómetro (UI de datos en cada +Sc sim)
+const SC_MS = SC_MINUTES * 60 * 1000;      // Sc = 6 h de simulación entre actualizaciones de maletas
 // Clock speed: Sc minutos de simulación en Sa segundos reales
 // = 360 min sim / 180 s real = 2 min sim / 1 s real = 120 s sim / 1 s real
 const SIM_MS_PER_REAL_MS = (SC_MINUTES * 60 * 1000) / (SA_SECONDS * 1000); // = 120
+/** Intervalo mínimo entre commits de React del cronómetro (evita saturar la UI). */
+const CLOCK_UI_COMMIT_MS = 50;
 
 export function useSimulation() {
   const [state, setState] = useState<SimulationState>(() => {
@@ -65,7 +68,7 @@ export function useSimulation() {
   const [speed, setSpeed] = useState(K_DEFAULT);
   const [airportsList, setAirportsList] = useState<Airport[]>(DEFAULT_AIRPORTS);
   const [airlines, setAirlines] = useState<Airline[]>(DEFAULT_AIRLINES);
-  // Countdown seconds remaining for the initial 90s wait
+  // Countdown seconds remaining for the initial wait (INITIAL_WAIT_SECONDS)
   const [waitCountdown, setWaitCountdown] = useState(0);
   // Queue of received blocks waiting to be displayed
   const blockQueueRef = useRef<any[]>([]);
@@ -149,14 +152,31 @@ export function useSimulation() {
   }, []);
 
   const targetTimeRef = useRef<number>(state.currentTime);
-  // Track the real-time timestamp when the simulation clock started (after 90s wait)
+  const currentTimeRef = useRef<number>(state.currentTime);
+  const runningRef = useRef(false);
+  const waitingForFirstBlockRef = useRef(false);
+  const lastMinuteIdxRef = useRef(-1);
+  // Track the real-time timestamp when the simulation clock started (after initial wait)
   const clockStartRealTimeRef = useRef<number>(0);
   // Track the sim-time when the clock started
   const clockStartSimTimeRef = useRef<number>(0);
   // Track startTime for block boundary calculations in the clock tick
   const startTimeRef = useRef<number>(0);
 
-  // ─── Countdown timer for the initial 90-second wait ───
+  useEffect(() => {
+    runningRef.current = state.running;
+  }, [state.running]);
+
+  useEffect(() => {
+    waitingForFirstBlockRef.current = !!state.waitingForFirstBlock;
+  }, [state.waitingForFirstBlock]);
+
+  useEffect(() => {
+    currentTimeRef.current = state.currentTime;
+    targetTimeRef.current = state.currentTime;
+  }, [state.currentTime]);
+
+  // ─── Countdown timer for the initial wait before the chronometer starts ───
   useEffect(() => {
     if (!state.waitingForFirstBlock) return;
 
@@ -182,12 +202,7 @@ export function useSimulation() {
             running: true,
           };
         });
-        // Apply the first block from queue if available
-        const firstBlock = blockQueueRef.current.shift();
-        if (firstBlock) {
-          blocksConsumedRef.current = 1;
-          applyBlock(firstBlock);
-        }
+        // Solo arranca el cronómetro; maletas/rastreo se actualizan cada Sc (6 h sim)
       } else {
         setWaitCountdown(remaining);
       }
@@ -196,77 +211,7 @@ export function useSimulation() {
     return () => clearInterval(countdownId);
   }, [state.waitingForFirstBlock]);
 
-  // ─── Block consumption is now driven by the clock ticker below (removed setInterval) ───
-
-  // ─── Smooth clock ticker: 2 sim-minutes per 1 real second ───
-  // Also checks whether the simulation time has crossed the next block boundary
-  // to consume queued blocks in perfect sync with the chronometer.
-  useEffect(() => {
-    if (!state.running) return;
-
-    const SC_MS = SC_MINUTES * 60 * 1000; // 6 hours in ms
-
-    const intervalId = setInterval(() => {
-      setState(prev => {
-        if (!prev.running) return prev;
-
-        // Advance: SIM_MS_PER_REAL_MS sim-ms per real-ms → in 50ms tick:
-        const deltaMs = 50 * SIM_MS_PER_REAL_MS;
-
-        let nextTime = prev.currentTime + deltaMs;
-        const maxTime = prev.startTime + 5 * 86400000;
-        const reachedEnd =
-          prev.scenario === "weekly" && nextTime >= maxTime;
-        if (reachedEnd) {
-          nextTime = maxTime;
-        }
-
-        const diffHours = (nextTime - prev.startTime) / 3600000;
-
-        const minuteIdx = minuteIndexFromSimStart(prev.startTime, nextTime);
-        const airports = mapOccupancyToAirports(
-          occupancyByAirportRef.current,
-          prev.airports,
-          minuteIdx
-        );
-        const stats = {
-          ...prev.stats,
-          warehouseUtilization:
-            Object.keys(occupancyByAirportRef.current).length > 0
-              ? computeWarehouseUtilization(airports)
-              : prev.stats.warehouseUtilization,
-        };
-
-        // Check if we crossed a block boundary and should consume the next block.
-        // Block N should be shown when currentTime reaches startTime + N * SC_MS.
-        // blocksConsumedRef tracks how many blocks have been applied (1-indexed).
-        const nextBlockIndex = blocksConsumedRef.current + 1;
-        const nextBoundary = startTimeRef.current + nextBlockIndex * SC_MS;
-        if (nextTime >= nextBoundary) {
-          const nextBlock = blockQueueRef.current.shift();
-          if (nextBlock) {
-            blocksConsumedRef.current = nextBlockIndex;
-            // Schedule applyBlock outside setState to avoid nested updates
-            queueMicrotask(() => applyBlock(nextBlock));
-          }
-        }
-
-        return {
-          ...prev,
-          currentTime: nextTime,
-          day: Math.floor(diffHours / 24) + 1,
-          hour: diffHours % 24,
-          airports,
-          stats,
-          ...(reachedEnd
-            ? { running: false, stopped: true, hasStarted: true }
-            : {}),
-        };
-      });
-    }, 50);
-
-    return () => clearInterval(intervalId);
-  }, [state.running]);
+  // ─── Block consumption is driven by the clock ticker below ───
 
   // ─── Apply a block's data to the simulation state ───
   const applyBlock = useCallback((msg: any) => {
@@ -364,6 +309,119 @@ export function useSimulation() {
     });
   }, []);
 
+  const applyBlockRef = useRef(applyBlock);
+  applyBlockRef.current = applyBlock;
+
+  /**
+   * Aplica el siguiente bloque cuando el reloj sim alcanza start + n×Sc (n = bloques ya mostrados).
+   * Ej.: inicio 01/01 18:00 → bloque 1; 02/01 00:00 → bloque 2; 06:00 → bloque 3; …
+   */
+  const tryConsumeBlocksAtSimTime = useCallback((simTimeMs: number) => {
+    while (blockQueueRef.current.length > 0) {
+      const nextBoundary =
+        startTimeRef.current + blocksConsumedRef.current * SC_MS;
+      if (simTimeMs < nextBoundary) break;
+      const nextBlock = blockQueueRef.current.shift();
+      if (!nextBlock) break;
+      blocksConsumedRef.current += 1;
+      queueMicrotask(() => applyBlockRef.current(nextBlock));
+    }
+  }, []);
+
+  const tryConsumeBlocksAtSimTimeRef = useRef(tryConsumeBlocksAtSimTime);
+  tryConsumeBlocksAtSimTimeRef.current = tryConsumeBlocksAtSimTime;
+
+  // ─── Cronómetro: avance por tiempo real (rAF), independiente de la carga de la UI ───
+  useEffect(() => {
+    if (!state.running) return;
+
+    let lastReal = performance.now();
+    let lastUiCommit = lastReal;
+    let rafId = 0;
+
+    const commitClock = (nextTime: number, prev: SimulationState) => {
+      const maxTime = prev.startTime + SIM_WEEKLY_DURATION_MS;
+      const reachedEnd =
+        prev.scenario === "weekly" && nextTime >= maxTime;
+      const clampedTime = reachedEnd ? maxTime : nextTime;
+
+      currentTimeRef.current = clampedTime;
+      targetTimeRef.current = Math.max(targetTimeRef.current, clampedTime);
+
+      const diffHours = (clampedTime - prev.startTime) / 3600000;
+      const minuteIdx = minuteIndexFromSimStart(prev.startTime, clampedTime);
+
+      let airports = prev.airports;
+      let stats = prev.stats;
+      if (minuteIdx !== lastMinuteIdxRef.current) {
+        lastMinuteIdxRef.current = minuteIdx;
+        airports = mapOccupancyToAirports(
+          occupancyByAirportRef.current,
+          prev.airports,
+          minuteIdx
+        );
+        stats = {
+          ...prev.stats,
+          warehouseUtilization:
+            Object.keys(occupancyByAirportRef.current).length > 0
+              ? computeWarehouseUtilization(airports)
+              : prev.stats.warehouseUtilization,
+        };
+      }
+
+      return {
+        ...prev,
+        currentTime: clampedTime,
+        day: Math.floor(diffHours / 24) + 1,
+        hour: diffHours % 24,
+        airports,
+        stats,
+        ...(reachedEnd
+          ? { running: false, stopped: true, hasStarted: true }
+          : {}),
+      };
+    };
+
+    const tick = (now: number) => {
+      if (!runningRef.current) return;
+
+      const realDelta = now - lastReal;
+      lastReal = now;
+
+      if (realDelta > 0) {
+        const simDelta = realDelta * SIM_MS_PER_REAL_MS;
+        currentTimeRef.current += simDelta;
+        tryConsumeBlocksAtSimTimeRef.current(currentTimeRef.current);
+
+        if (now - lastUiCommit >= CLOCK_UI_COMMIT_MS) {
+          lastUiCommit = now;
+          setState(prev => {
+            if (!prev.running) return prev;
+            return commitClock(currentTimeRef.current, prev);
+          });
+        }
+      }
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    lastMinuteIdxRef.current = minuteIndexFromSimStart(
+      startTimeRef.current,
+      currentTimeRef.current
+    );
+    rafId = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      const pending = currentTimeRef.current;
+      tryConsumeBlocksAtSimTimeRef.current(pending);
+      setState(prev => {
+        if (pending === prev.currentTime) return prev;
+        return commitClock(pending, prev);
+      });
+    };
+  }, [state.running]);
+
   const connectWebSocket = useCallback((simId: number) => {
     if (wsClientRef.current) {
       wsClientRef.current.disconnect();
@@ -385,10 +443,12 @@ export function useSimulation() {
         return;
       }
 
-      // Queue the block for consumption by the timer
-      // During the waiting phase, the first block is queued and will be consumed at t=90s
+      // En cola hasta que el cronómetro sim cruce cada frontera de 6 h (Sc)
       blockQueueRef.current.push(msg);
       console.log(`Block ${msg.bloqueActual} queued. Queue size: ${blockQueueRef.current.length}`);
+      if (runningRef.current && !waitingForFirstBlockRef.current) {
+        tryConsumeBlocksAtSimTimeRef.current(currentTimeRef.current);
+      }
     });
 
     ws.onConnect(() => {
@@ -453,7 +513,7 @@ export function useSimulation() {
       startTimeRef.current = startUtcMs;
       blocksConsumedRef.current = 0;
 
-      // Don't start running yet — enter 90-second waiting phase
+      // Don't start running yet — enter initial waiting phase
       setState({
         scenario: "weekly",
         turnaroundHours: 1,
@@ -469,7 +529,7 @@ export function useSimulation() {
         stats: createEmptyStats(),
         collapsed: false,
         collapseReason: "",
-        running: false,           // NOT running yet — waiting for 90s
+        running: false,           // NOT running yet — waiting for INITIAL_WAIT_SECONDS
         waitingForFirstBlock: true, // Show the waiting popup
         stopped: false,
         hasStarted: true,

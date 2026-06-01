@@ -71,7 +71,7 @@ public class VueloSelector {
             Pedido p, Ruta ruta, Map<String, Double> feromonas,
             double tau0, PlanificationProblemInputACS input, int maxSaltos) {
 
-        LocalDateTime tiempoInicio = getDisponibilidadAbsoluta(p, ruta);
+        LocalDateTime tiempoInicio = ruta.getDisponibilidadPedido(p);
         double hInicial = estimarTiempoRestante(p.getOrigen(), p.getDestino(), input) * 60.0;
 
         PriorityQueue<NodoAstar> cola = new PriorityQueue<>();
@@ -79,6 +79,8 @@ public class VueloSelector {
 
         // Mejor tiempo de llegada visto por aeropuerto (para poda)
         Map<String, LocalDateTime> mejorLlegada = new HashMap<>();
+        Map<String, int[]> cacheGlobalAlm = new HashMap<>();
+        Map<String, int[]> cacheLocalAlm = new HashMap<>();
 
         while (!cola.isEmpty()) {
             NodoAstar actual = cola.poll();
@@ -124,28 +126,33 @@ public class VueloSelector {
                 int idxFin = TimeUtils.getIndiceMinuto(salida);
                 if (!TimeUtils.intervaloAlmacenValido(idxInicio, idxFin)) continue;
 
-                int[] globalAlmacen = input.getOcupacionGlobalAlmacenes(v.getOrigen());
-                int[] localAlmacen = ruta.getOcupacionAlmacen(v.getOrigen());
+                int[] globalAlmacen = cacheGlobalAlm.computeIfAbsent(
+                        v.getOrigen(), k -> input.getOcupacionGlobalAlmacenes(k));
+                int[] localAlmacen = cacheLocalAlm.computeIfAbsent(
+                        v.getOrigen(), k -> ruta.getOcupacionAlmacen(k));
 
-                boolean almacenOK = true;
-                for (int i = idxInicio; i < idxFin; i++) {
-                    int usoGlobal = TimeUtils.usoAlmacenEnMinuto(globalAlmacen, i);
-                    int usoLocal = TimeUtils.usoAlmacenEnMinuto(localAlmacen, i);
-                    
-                    if (usoGlobal + usoLocal + p.getCantidadMaletas() > aeroOrig.getCapacidad()) {
-                        almacenOK = false;
-                        break;
-                    }
+                if (!almacenTieneCapacidadEnIntervalo(
+                        idxInicio, idxFin, p.getCantidadMaletas(), aeroOrig.getCapacidad(),
+                        globalAlmacen, localAlmacen)) {
+                    continue;
                 }
-                
-                if (!almacenOK) continue;
 
                 // Verificar almacen destino final: 10 min de estadia antes de recogida
-                if (v.getDestino().equals(p.getDestino())
-                        && !almacenTieneCapacidadEnIntervalo(
-                                v.getDestino(), llegada, dispSiguiente,
-                                p.getCantidadMaletas(), input, ruta)) {
-                    continue;
+                if (v.getDestino().equals(p.getDestino())) {
+                    int idxDestInicio = TimeUtils.getIndiceMinuto(llegada);
+                    int idxDestFin = TimeUtils.getIndiceMinuto(dispSiguiente);
+                    Aeropuerto aeroDest = input.getAeropuerto(v.getDestino());
+                    if (aeroDest == null) continue;
+                    int[] globalDest = cacheGlobalAlm.computeIfAbsent(
+                            v.getDestino(), k -> input.getOcupacionGlobalAlmacenes(k));
+                    int[] localDest = cacheLocalAlm.computeIfAbsent(
+                            v.getDestino(), k -> ruta.getOcupacionAlmacen(k));
+                    if (!TimeUtils.intervaloAlmacenValido(idxDestInicio, idxDestFin)
+                            || !almacenTieneCapacidadEnIntervalo(
+                                    idxDestInicio, idxDestFin, p.getCantidadMaletas(),
+                                    aeroDest.getCapacidad(), globalDest, localDest)) {
+                        continue;
+                    }
                 }
 
                 // Costo A* con bias de feromonas:
@@ -319,13 +326,21 @@ public class VueloSelector {
         int idxFin = TimeUtils.getIndiceMinuto(hasta);
         if (!TimeUtils.intervaloAlmacenValido(idxInicio, idxFin)) return false;
 
-        int[] globalAlmacen = input.getOcupacionGlobalAlmacenes(oaci);
-        int[] localAlmacen = ruta.getOcupacionAlmacen(oaci);
+        return almacenTieneCapacidadEnIntervalo(
+                idxInicio, idxFin, cantidadMaletas, aero.getCapacidad(),
+                input.getOcupacionGlobalAlmacenes(oaci),
+                ruta.getOcupacionAlmacen(oaci));
+    }
+
+    /** Verificacion minuto a minuto reutilizando arreglos ya cargados. */
+    static boolean almacenTieneCapacidadEnIntervalo(
+            int idxInicio, int idxFin, int cantidadMaletas, int capacidadAlmacen,
+            int[] globalAlmacen, int[] localAlmacen) {
 
         for (int i = idxInicio; i < idxFin; i++) {
             int usoGlobal = TimeUtils.usoAlmacenEnMinuto(globalAlmacen, i);
             int usoLocal = TimeUtils.usoAlmacenEnMinuto(localAlmacen, i);
-            if (usoGlobal + usoLocal + cantidadMaletas > aero.getCapacidad()) {
+            if (usoGlobal + usoLocal + cantidadMaletas > capacidadAlmacen) {
                 return false;
             }
         }
@@ -337,26 +352,7 @@ public class VueloSelector {
     // =======================================================================
 
     public static LocalDateTime getDisponibilidadAbsoluta(Pedido p, Ruta ruta) {
-        List<Asignacion> todas = ruta.getAsignaciones();
-        String cacheKey = p.getId() + ":" + todas.size();
-
-        Map<String, LocalDateTime> cache = CACHE_DISP.get();
-        LocalDateTime cached = cache.get(cacheKey);
-        if (cached != null) return cached;
-
-        LocalDateTime actual = p.getTiempoCreacion();
-        for (Asignacion a : todas) {
-            if (!a.getPedido().getId().equals(p.getId())) continue;
-            Vuelo v = a.getVuelo();
-            LocalDateTime salida = actual.with(v.getHoraSalida());
-            if (salida.isBefore(actual)) salida = salida.plusDays(1);
-            LocalDateTime llegada = salida.with(v.getHoraLlegada());
-            if (llegada.isBefore(salida)) llegada = llegada.plusDays(1);
-            actual = llegada.plusMinutes(HANDLING_MINUTES);
-        }
-
-        cache.put(cacheKey, actual);
-        return actual;
+        return ruta.getDisponibilidadPedido(p);
     }
 
     // =======================================================================
