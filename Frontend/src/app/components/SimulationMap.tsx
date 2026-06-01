@@ -3,6 +3,7 @@ import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup, Line } fr
 import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
 import type { BaggageGroup } from "../engine/types";
+import { resolveFlightCapacity } from "../engine/backendAdapter";
 
 interface SimMapProps {
   onSelectBaggage?: (bg: BaggageGroup) => void;
@@ -10,6 +11,7 @@ interface SimMapProps {
 }
 
 interface HoveredAirport {
+  kind: "airport";
   code: string;
   city: string;
   stock: number;
@@ -19,10 +21,52 @@ interface HoveredAirport {
   y: number;
 }
 
+interface HoveredFlight {
+  kind: "flight";
+  from: string;
+  to: string;
+  load: number;
+  capacity: number;
+  utilization: number;
+  x: number;
+  y: number;
+}
+
+type HoveredItem = HoveredAirport | HoveredFlight;
+
 function getStatusColor(u: number) {
-  if (u < 50) return "#22c55e"; // green
-  if (u < 80) return "#f59e0b"; // amber
-  return "#ef4444"; // red
+  if (u < 50) return "#22c55e";
+  if (u < 80) return "#f59e0b";
+  return "#ef4444";
+}
+
+function getArcColor(intercontinental: boolean, isDark: boolean) {
+  if (intercontinental) {
+    return isDark ? "#fb7185" : "#e11d48";
+  }
+  return isDark ? "#22d3ee" : "#0891b2";
+}
+
+function isIntercontinentalRoute(
+  fromCode: string,
+  toCode: string,
+  airportsList: { code: string; continent: string }[]
+): boolean {
+  const from = airportsList.find((a) => a.code === fromCode);
+  const to = airportsList.find((a) => a.code === toCode);
+  if (!from || !to) return false;
+  return from.continent !== to.continent;
+}
+
+function computeFlightMetrics(
+  claveVuelo: string | undefined,
+  flightOccupancy: Record<string, number>,
+  flightCapacities: Record<string, number>
+) {
+  const load = claveVuelo ? flightOccupancy[claveVuelo] ?? 0 : 0;
+  const capacity = resolveFlightCapacity(claveVuelo, flightCapacities, flightCapacities);
+  const utilization = capacity > 0 ? (load / capacity) * 100 : 0;
+  return { load, capacity, utilization };
 }
 
 // Spherical linear interpolation for plane positions
@@ -68,10 +112,10 @@ function getHeading(lat1: number, lng1: number, lat2: number, lng2: number) {
 }
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+const PLANE_SCALE = 0.72;
 
 function Building3D({ color, util }: { color: string; util: number }) {
   const h = 8 + (Math.min(100, util) / 100) * 16;
-  // Center the building so coordinate (0,0) is at the geometric center
   return (
     <g>
       <path d={`M0,3 L-6,0 L-6,-${h} L0,-${h + 3} Z`} fill={color} opacity={0.8} />
@@ -81,30 +125,35 @@ function Building3D({ color, util }: { color: string; util: number }) {
   );
 }
 
+function PlaneIcon({ color, stroke }: { color: string; stroke: string }) {
+  return (
+    <path
+      d="M0,-8 C0.8,-7.5 1.2,-6 1.2,-4 L1.2,-1.5 L7,3 L7,4.2 L1.2,1.5 L1.2,4.5 L3.2,6.2 L3.2,7.2 L0,6 L-3.2,7.2 L-3.2,6.2 L-1.2,4.5 L-1.2,1.5 L-7,4.2 L-7,3 L-1.2,-1.5 L-1.2,-4 C-1.2,-6 -0.8,-7.5 0,-8 Z"
+      fill={color}
+      stroke={stroke}
+      strokeWidth={0.35}
+      strokeLinejoin="round"
+    />
+  );
+}
+
 export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps) {
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
-  const [hovered, setHovered] = useState<HoveredAirport | null>(null);
+  const [hovered, setHovered] = useState<HoveredItem | null>(null);
 
-  // Theme colours
-  const mapBg      = isDark ? "#060a15"  : "#c8d8e8";
-  // Scale factor inversely proportional to zoom
   const s = 1 / position.zoom;
+  const mapBg      = isDark ? "#060a15"  : "#c8d8e8";
   const geoFill    = isDark ? "#0c1a30"  : "#b0c4d8";
   const geoStroke  = isDark ? "#1a2744"  : "#8fafc8";
   const geoHover   = isDark ? "#0f203d"  : "#9ab8cc";
-  const bgArcColor = isDark ? "#0c1a30"  : "#8fafc8";
-  const legendBg   = isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/80" : "bg-white/85 border-[#b0c4d8] text-[#374151]";
-  const legendTitle = isDark ? "text-white" : "text-[#111827]";
-  const legendDivider = isDark ? "border-[#1a2744]" : "border-[#b0c4d8]";
   const tooltipBg  = isDark ? "bg-[#0a0f1ef0] border-[#1a2744]" : "bg-white/95 border-[#b0c4d8]";
   const tooltipTitle = isDark ? "text-cyan-400" : "text-blue-700";
   const tooltipSub = isDark ? "text-white/70" : "text-[#374151]";
   const tooltipVal = isDark ? "text-white" : "text-[#111827]";
   const labelFill  = isDark ? "#fff" : "#1e3a5f";
 
-  // Center on map init or selected baggage
   useEffect(() => {
     if (selectedBaggage) {
       const leg = selectedBaggage.route[selectedBaggage.currentLegIndex] || selectedBaggage.route[0];
@@ -117,7 +166,6 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
     }
   }, [selectedBaggage, airportsList]);
 
-  // Points (Airports)
   const pointsData = useMemo(() => {
     return airportsList.map((a) => {
       const ap = state.airports[a.code];
@@ -131,11 +179,15 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
     });
   }, [state.airports, airportsList]);
 
+  const showFlightHover = (flight: Omit<HoveredFlight, "kind" | "x" | "y">, e: React.MouseEvent) => {
+    setHovered({ kind: "flight", ...flight, x: e.clientX, y: e.clientY });
+  };
+
   const { arcsData, planesData } = useMemo(() => {
     const arcs: any[] = [];
     const activePlanes: any[] = [];
+    const { flightOccupancy, flightCapacities } = state;
 
-    // Selected Baggage Route
     if (selectedBaggage) {
       for (let i = 0; i < selectedBaggage.route.length; i++) {
         const leg = selectedBaggage.route[i];
@@ -154,8 +206,18 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
       }
     }
 
-    // Determine active baggage routes and failed baggage routes
-    const activeRoutesMap = new Map<string, { from: typeof airportsList[0]; to: typeof airportsList[0]; qty: number }>();
+    const activeRoutesMap = new Map<string, {
+      from: typeof airportsList[0];
+      to: typeof airportsList[0];
+      qty: number;
+      claveVuelo?: string;
+      fromCode: string;
+      toCode: string;
+      intercontinental: boolean;
+      load: number;
+      capacity: number;
+      utilization: number;
+    }>();
     const failedRoutesMap = new Map<string, { from: typeof airportsList[0]; to: typeof airportsList[0]; qty: number; registeredAt: number }>();
 
     const baggagesToRender = selectedBaggage
@@ -163,9 +225,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
       : state.baggageGroups;
 
     for (const bg of baggagesToRender) {
-      // If the shipment has no route (failed planning)
       if (bg.status === "failed") {
-        // Only show if the current simulation time has reached or passed the registration time
         if (state.currentTime < bg.registeredAt) continue;
 
         const from = airportsList.find((a) => a.code === bg.origin);
@@ -185,12 +245,9 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
 
       if (bg.status !== "in_transit" || !bg.route || bg.route.length === 0) continue;
 
-      // Check ALL legs: find the one that is currently active in the time window
       for (let legIdx = 0; legIdx < bg.route.length; legIdx++) {
         const leg = bg.route[legIdx];
 
-        // CRITICAL: Only display planes and lines if the current simulated time is strictly
-        // between the departure and arrival times of the flight leg!
         if (state.currentTime < leg.departureTime || state.currentTime > leg.arrivalTime) continue;
 
         const from = airportsList.find((a) => a.code === leg.from);
@@ -200,17 +257,27 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
         const total = leg.arrivalTime - leg.departureTime;
         if (total <= 0) continue;
         const progress = (state.currentTime - leg.departureTime) / total;
-        const key = `${leg.from}-${leg.to}`;
+        const routeKey = leg.claveVuelo || `${leg.from}-${leg.to}-${leg.departureTime}`;
+        const intercontinental = isIntercontinentalRoute(leg.from, leg.to, airportsList);
+        const metrics = computeFlightMetrics(leg.claveVuelo, flightOccupancy, flightCapacities);
 
-        const existing = activeRoutesMap.get(key);
+        const existing = activeRoutesMap.get(routeKey);
         if (existing) {
           existing.qty += bg.quantity;
         } else {
-          activeRoutesMap.set(key, { from, to, qty: bg.quantity });
+          activeRoutesMap.set(routeKey, {
+            from,
+            to,
+            qty: bg.quantity,
+            claveVuelo: leg.claveVuelo,
+            fromCode: leg.from,
+            toCode: leg.to,
+            intercontinental,
+            ...metrics,
+          });
         }
 
         const pos = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, progress);
-        // Compute heading dynamically at current position using a small delta forward
         const delta = Math.min(0.01, 1 - progress);
         const posAhead = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, progress + delta);
         const heading = getHeading(pos.lat, pos.lng, posAhead.lat, posAhead.lng);
@@ -221,31 +288,34 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
           heading,
           qty: bg.quantity,
           flightId: leg.flightId,
+          routeKey,
+          fromCode: leg.from,
+          toCode: leg.to,
+          claveVuelo: leg.claveVuelo,
+          intercontinental,
+          ...metrics,
         });
-        // Only one active leg per group at a time
         break;
       }
     }
 
-    // De-duplicate planes that share the same flightId and progress
-    const uniquePlanes = Array.from(new Map(activePlanes.map((p) => [p.flightId, p])).values());
+    const uniquePlanes = Array.from(
+      new Map(activePlanes.map((p) => [p.routeKey || p.flightId, p])).values()
+    );
 
-    const activeRouteColor = isDark ? "#00e5ff" : "#1e3a8a";
-    const failedRouteColor = "#ef4444"; // Red for failures
+    const failedRouteColor = "#ef4444";
 
-    // Draw active routes
     for (const [key, val] of Array.from(activeRoutesMap.entries())) {
       arcs.push({
         from: [val.from.lng, val.from.lat],
         to: [val.to.lng, val.to.lat],
-        color: activeRouteColor,
+        color: getArcColor(val.intercontinental, isDark),
         strokeWidth: 1 + Math.min(2, val.qty / 100),
         isActive: true,
         key: `act-${key}`,
       });
     }
 
-    // Draw failed routes (only if planned in the last 6 simulated hours)
     for (const [key, val] of Array.from(failedRoutesMap.entries())) {
       const ageHours = (state.currentTime - val.registeredAt) / 3600000;
       if (ageHours > 6) continue;
@@ -261,7 +331,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
     }
 
     return { arcsData: arcs, planesData: uniquePlanes };
-  }, [state.baggageGroups, state.currentTime, state.flights, selectedBaggage, isDark, airportsList]);
+  }, [state.baggageGroups, state.currentTime, state.flightOccupancy, state.flightCapacities, selectedBaggage, isDark, airportsList]);
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative transition-colors duration-200" style={{ background: mapBg }}>
@@ -291,7 +361,6 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
             }
           </Geographies>
 
-          {/* Arcs */}
           {arcsData.map((arc) => (
             <Line
               key={arc.key}
@@ -308,7 +377,6 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
             />
           ))}
 
-          {/* Airports */}
           {pointsData.map((point) => (
             <Marker key={point.code} coordinates={[point.lng, point.lat]}>
               <g
@@ -318,6 +386,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
                 onMouseEnter={(e) => {
                   const ap = state.airports[point.code];
                   setHovered({
+                    kind: "airport",
                     code: point.code,
                     city: point.city,
                     stock: ap?.currentStock || 0,
@@ -341,28 +410,36 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
             </Marker>
           ))}
 
-          {/* Planes */}
-          {planesData.map((plane) => (
-            <Marker key={`plane-${plane.flightId}`} coordinates={[plane.lng, plane.lat]}>
-              <g style={{ pointerEvents: "none" }} transform={`scale(${s})`}>
-                <g transform={`rotate(${plane.heading})`}>
-                  <path
-                    d="M0,-8 C0.8,-7.5 1.2,-6 1.2,-4 L1.2,-1.5 L7,3 L7,4.2 L1.2,1.5 L1.2,4.5 L3.2,6.2 L3.2,7.2 L0,6 L-3.2,7.2 L-3.2,6.2 L-1.2,4.5 L-1.2,1.5 L-7,4.2 L-7,3 L-1.2,-1.5 L-1.2,-4 C-1.2,-6 -0.8,-7.5 0,-8 Z"
-                    fill={isDark ? "#00e5ff" : "#1e3a8a"}
-                    stroke={isDark ? "#007fa3" : "#1e3a8a"}
-                    strokeWidth={0.35}
-                    strokeLinejoin="round"
-                  />
+          {planesData.map((plane) => {
+            const planeColor = getStatusColor(plane.utilization ?? 0);
+            const planeStroke = planeColor === "#22c55e" ? "#15803d" : planeColor === "#f59e0b" ? "#b45309" : "#b91c1c";
+            return (
+              <Marker key={`plane-${plane.routeKey || plane.flightId}`} coordinates={[plane.lng, plane.lat]}>
+                <g
+                  style={{ cursor: "pointer" }}
+                  transform={`scale(${s * PLANE_SCALE})`}
+                  onMouseEnter={(e) => {
+                    showFlightHover({
+                      from: plane.fromCode,
+                      to: plane.toCode,
+                      load: plane.load ?? 0,
+                      capacity: plane.capacity ?? 0,
+                      utilization: plane.utilization ?? 0,
+                    }, e);
+                  }}
+                  onMouseLeave={() => setHovered(null)}
+                >
+                  <g transform={`rotate(${plane.heading})`}>
+                    <PlaneIcon color={planeColor} stroke={planeStroke} />
+                  </g>
                 </g>
-              </g>
-              {/* flight label removed */}
-            </Marker>
-          ))}
+              </Marker>
+            );
+          })}
         </ZoomableGroup>
       </ComposableMap>
 
-      {/* Tooltip */}
-      {hovered && (
+      {hovered && hovered.kind === "airport" && (
         <div
           className={`fixed z-50 border rounded-lg px-3 py-2 pointer-events-none ${tooltipBg}`}
           style={{ left: hovered.x + 12, top: hovered.y - 10 }}
@@ -370,6 +447,21 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
           <div className={`text-[11px] ${tooltipTitle}`}>{hovered.city} ({hovered.code})</div>
           <div className={`text-[10px] mt-1 ${tooltipSub}`}>
             Uso: <span className={tooltipVal}>{hovered.stock}</span> / {hovered.capacity} maletas
+          </div>
+          <div className={`text-[10px] ${tooltipSub}`}>
+            Ocupación: <span className={`${hovered.utilization < 50 ? "text-green-500" : hovered.utilization < 80 ? "text-amber-500" : "text-red-500"}`}>{hovered.utilization.toFixed(1)}%</span>
+          </div>
+        </div>
+      )}
+
+      {hovered && hovered.kind === "flight" && (
+        <div
+          className={`fixed z-50 border rounded-lg px-3 py-2 pointer-events-none ${tooltipBg}`}
+          style={{ left: hovered.x + 12, top: hovered.y - 10 }}
+        >
+          <div className={`text-[11px] ${tooltipTitle}`}>{hovered.from} → {hovered.to}</div>
+          <div className={`text-[10px] mt-1 ${tooltipSub}`}>
+            Uso: <span className={tooltipVal}>{hovered.load}</span> / {hovered.capacity} maletas
           </div>
           <div className={`text-[10px] ${tooltipSub}`}>
             Ocupación: <span className={`${hovered.utilization < 50 ? "text-green-500" : hovered.utilization < 80 ? "text-amber-500" : "text-red-500"}`}>{hovered.utilization.toFixed(1)}%</span>

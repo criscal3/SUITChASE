@@ -1,6 +1,54 @@
 import { BaggageGroup, SimStats, AirportState } from "./types";
 
 export type OcupacionAlmacenesPorAeropuerto = Record<string, number[]>;
+export type CapacidadesVuelosPorClave = Record<string, number>;
+
+/** Clave sin fecha: origen-destino-horaSalida */
+export function flightTemplateKey(claveVuelo: string): string {
+  const dateSuffix = claveVuelo.match(/-\d{4}-\d{2}-\d{2}$/);
+  if (!dateSuffix) return claveVuelo;
+  return claveVuelo.slice(0, claveVuelo.length - dateSuffix[0].length);
+}
+
+export function mergeFlightOccupancyState(
+  current: CapacidadesVuelosPorClave,
+  incoming: CapacidadesVuelosPorClave | undefined
+): CapacidadesVuelosPorClave {
+  if (!incoming) return current;
+  return { ...current, ...incoming };
+}
+
+export function mergeFlightCapacityState(
+  current: CapacidadesVuelosPorClave,
+  incoming: CapacidadesVuelosPorClave | undefined
+): CapacidadesVuelosPorClave {
+  if (!incoming) return current;
+  return { ...current, ...incoming };
+}
+
+export function resolveFlightCapacity(
+  claveVuelo: string | undefined,
+  capacities: CapacidadesVuelosPorClave,
+  templateCapacities: CapacidadesVuelosPorClave
+): number {
+  if (!claveVuelo) return 0;
+  if (capacities[claveVuelo]) return capacities[claveVuelo];
+  const template = flightTemplateKey(claveVuelo);
+  return templateCapacities[template] ?? capacities[template] ?? 0;
+}
+
+export function extractCapacitiesFromRoutes(groups: BaggageGroup[]): CapacidadesVuelosPorClave {
+  const caps: CapacidadesVuelosPorClave = {};
+  for (const bg of groups) {
+    for (const leg of bg.route) {
+      if (leg.claveVuelo && leg.maxCapacity) {
+        caps[leg.claveVuelo] = leg.maxCapacity;
+        caps[flightTemplateKey(leg.claveVuelo)] = leg.maxCapacity;
+      }
+    }
+  }
+  return caps;
+}
 
 /**
  * Parses a LocalDateTime string from the backend (e.g. "2026-01-01T03:34:00")
@@ -87,6 +135,8 @@ export function mapBlockResultToBaggageGroups(
             arrivalTime: arrUtc,
             flightId: `FLIGHT-${resumen.envioId}-${i + 1}`,
             transitHours: 0,
+            claveVuelo: tramo.claveVuelo ? String(tramo.claveVuelo) : undefined,
+            maxCapacity: tramo.capacidad != null ? Number(tramo.capacidad) : undefined,
           });
         }
       } else if (resumen.primerTramo && resumen.ultimoTramo) {

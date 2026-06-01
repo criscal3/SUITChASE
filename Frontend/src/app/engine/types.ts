@@ -21,6 +21,8 @@ export interface RouteLeg {
   departureTime: number;
   arrivalTime: number;
   transitHours: number;
+  claveVuelo?: string;
+  maxCapacity?: number;
 }
 
 export interface SimulationState {
@@ -31,6 +33,8 @@ export interface SimulationState {
   baggageGroups: BaggageGroup[];
   airports: Record<string, AirportState>;
   flights: FlightState[];
+  flightOccupancy: Record<string, number>;
+  flightCapacities: Record<string, number>;
   stats: SimStats;
   collapsed: boolean;
   collapseReason: string;

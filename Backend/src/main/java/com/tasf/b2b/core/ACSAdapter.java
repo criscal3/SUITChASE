@@ -128,6 +128,20 @@ public class ACSAdapter {
                 llegadaAlOrigen = llegada;
             }
 
+            // Estadia de 10 min en almacén del aeropuerto destino final antes de recogida
+            if (!vuelosUsados.isEmpty()) {
+                VueloAlgoritmo ultimoVuelo = vuelosUsados.get(vuelosUsados.size() - 1);
+                if (ultimoVuelo.getDestinoOaci().equals(envio.getDestinoOaci())) {
+                    LocalDateTime recogidaCliente = llegadaAlOrigen.plusMinutes(VueloSelector.HANDLING_MINUTES);
+                    actualizarOcupacionAlmacen(
+                            ultimoVuelo.getDestinoOaci(),
+                            llegadaAlOrigen,
+                            recogidaCliente,
+                            envio.getCantidadMaletas(),
+                            capAlmacenes);
+                }
+            }
+
             // Agregar ruta vÃ¡lida
             output.agregarRuta(envio, new ResultadoRuta(
                     llegadaFinal, vuelosUsados, fechasVuelo));

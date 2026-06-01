@@ -47,6 +47,8 @@ export function createInitialState(scenario: "daily" | "weekly" | "collapse", tu
     baggageGroups: [],
     airports,
     flights,
+    flightOccupancy: {},
+    flightCapacities: {},
     stats: createEmptyStats(),
     collapsed: false,
     collapseReason: "",

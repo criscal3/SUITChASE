@@ -329,22 +329,13 @@ public class SimulationService {
                 wsMessage.put("bloqueId", bloqueRes.getId());
                 if (solucion != null) {
                     wsMessage.put("estadoOcupacionAlmacenes", solucion.getEstadoOcupacionAlmacenes());
+                    wsMessage.put("estadoCapacidadesVuelos", solucion.getEstadoCapacidadesVuelos());
                 }
             }
             messagingTemplate.convertAndSend("/topic/simulacion/" + simulacionId, wsMessage);
 
-            // 10. SLEEP solo si hubo planificación (bloques vacíos no deben bloquear minutos reales)
-            if (bloqueVacio) {
-                continue;
-            }
-
             long duracionAlgoritmoSeg = (System.currentTimeMillis() - t0) / 1000;
-            long sleepTargetSeg;
-            if (bloqueActual == 1) {
-                sleepTargetSeg = 90 - duracionAlgoritmoSeg;
-            } else {
-                sleepTargetSeg = (long) sa * 60 - duracionAlgoritmoSeg;
-            }
+            long sleepTargetSeg = (long) sa * 60 - duracionAlgoritmoSeg;
 
             if (sleepTargetSeg > 0) {
                 log.info("Simulación {} — Bloque {} completado en {}s, durmiendo {}s",
@@ -415,11 +406,16 @@ public class SimulationService {
                     if (llegada.isBefore(salida)) {
                         llegada = llegada.plusDays(1);
                     }
+                    String claveVuelo = vuelo.getOrigenOaci() + "-" + vuelo.getDestinoOaci()
+                            + "-" + vuelo.getHoraSalida() + "-" + salida.toLocalDate();
+
                     Map<String, Object> tramo = new LinkedHashMap<>();
                     tramo.put("origen", vuelo.getOrigenOaci());
                     tramo.put("destino", vuelo.getDestinoOaci());
                     tramo.put("salida", salida.toString());
                     tramo.put("llegada", llegada.toString());
+                    tramo.put("claveVuelo", claveVuelo);
+                    tramo.put("capacidad", vuelo.getCapacidad());
                     tramos.add(tramo);
                 }
                 envioResumen.put("tramos", tramos);

@@ -140,6 +140,14 @@ public class VueloSelector {
                 
                 if (!almacenOK) continue;
 
+                // Verificar almacen destino final: 10 min de estadia antes de recogida
+                if (v.getDestino().equals(p.getDestino())
+                        && !almacenTieneCapacidadEnIntervalo(
+                                v.getDestino(), llegada, dispSiguiente,
+                                p.getCantidadMaletas(), input, ruta)) {
+                    continue;
+                }
+
                 // Costo A* con bias de feromonas:
                 // Mayor feromona â†’ bonus negativo â†’ ruta mÃ¡s barata â†’ preferida
                 double tau = feromonas.getOrDefault(flightKey, tau0);
@@ -276,6 +284,16 @@ public class VueloSelector {
             }
 
             if (!almacenConEspacio) continue;
+
+            if (v.getDestino().equals(p.getDestino())) {
+                LocalDateTime recogidaCliente = llegada.plusMinutes(HANDLING_MINUTES);
+                if (!almacenTieneCapacidadEnIntervalo(
+                        v.getDestino(), llegada, recogidaCliente,
+                        p.getCantidadMaletas(), input, ruta)) {
+                    continue;
+                }
+            }
+
             viables.add(v);
         }
         return viables;
@@ -284,6 +302,34 @@ public class VueloSelector {
     public static List<Vuelo> candidatosViables(
             Pedido p, Ruta ruta, PlanificationProblemInputACS input) {
         return candidatosViables(p, ruta, input, getDisponibilidadAbsoluta(p, ruta));
+    }
+
+    // =======================================================================
+    //  VerificaciÃ³n de capacidad de almacÃ©n
+    // =======================================================================
+
+    public static boolean almacenTieneCapacidadEnIntervalo(
+            String oaci, LocalDateTime desde, LocalDateTime hasta,
+            int cantidadMaletas, PlanificationProblemInputACS input, Ruta ruta) {
+
+        Aeropuerto aero = input.getAeropuerto(oaci);
+        if (aero == null) return false;
+
+        int idxInicio = TimeUtils.getIndiceMinuto(desde);
+        int idxFin = TimeUtils.getIndiceMinuto(hasta);
+        if (!TimeUtils.intervaloAlmacenValido(idxInicio, idxFin)) return false;
+
+        int[] globalAlmacen = input.getOcupacionGlobalAlmacenes(oaci);
+        int[] localAlmacen = ruta.getOcupacionAlmacen(oaci);
+
+        for (int i = idxInicio; i < idxFin; i++) {
+            int usoGlobal = TimeUtils.usoAlmacenEnMinuto(globalAlmacen, i);
+            int usoLocal = TimeUtils.usoAlmacenEnMinuto(localAlmacen, i);
+            if (usoGlobal + usoLocal + cantidadMaletas > aero.getCapacidad()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // =======================================================================

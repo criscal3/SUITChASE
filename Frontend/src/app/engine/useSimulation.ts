@@ -12,8 +12,12 @@ import {
   minuteIndexFromSimStart,
   mapOccupancyToAirports,
   mergeOccupancyState,
+  mergeFlightOccupancyState,
+  mergeFlightCapacityState,
+  extractCapacitiesFromRoutes,
   computeWarehouseUtilization,
   type OcupacionAlmacenesPorAeropuerto,
+  type CapacidadesVuelosPorClave,
 } from "./backendAdapter";
 
 const DEFAULT_AIRLINES: Airline[] = [
@@ -43,6 +47,8 @@ export function useSimulation() {
       hour: 0,
       airports: {},
       flights: [],
+      flightOccupancy: {},
+      flightCapacities: {},
       baggageGroups: [],
       stats: createEmptyStats(),
       collapsed: false,
@@ -72,6 +78,9 @@ export function useSimulation() {
   const [pendingStartDate, setPendingStartDate] = useState<Date | undefined>(undefined);
   const airportsListRef = useRef<Airport[]>(airportsList);
   const occupancyByAirportRef = useRef<OcupacionAlmacenesPorAeropuerto>({});
+  const flightOccupancyRef = useRef<CapacidadesVuelosPorClave>({});
+  const flightCapacitiesRef = useRef<CapacidadesVuelosPorClave>({});
+  const flightTemplateCapacitiesRef = useRef<CapacidadesVuelosPorClave>({});
 
   useEffect(() => {
     airportsListRef.current = airportsList;
@@ -101,7 +110,43 @@ export function useSimulation() {
 
   useEffect(() => {
     fetchAirports();
+    fetchFlightCapacities();
   }, [fetchAirports]);
+
+  const fetchFlightCapacities = useCallback(async () => {
+    try {
+      const data = await api.getFlights();
+      if (!data?.length) return;
+      const templateIndex: CapacidadesVuelosPorClave = {};
+      for (const f of data) {
+        const origen = String(f.origenOaci || f.origin || "").toUpperCase();
+        const destino = String(f.destinoOaci || f.destination || "").toUpperCase();
+        const capacidad = Number(f.capacidad ?? f.capacity ?? 0);
+        if (!origen || !destino || !capacidad) continue;
+
+        const airport = airportsListRef.current.find(a => a.code === origen);
+        const gmtMatch = airport?.timezone?.match(/UTC([+-]?\d+)/);
+        const gmt = gmtMatch ? parseInt(gmtMatch[1], 10) : 0;
+
+        const horaRaw = String(f.horaSalida || f.departureTime || "");
+        const timeParts = horaRaw.split(":");
+        if (timeParts.length < 2) continue;
+        let hours = parseInt(timeParts[0], 10) - gmt;
+        const minutes = parseInt(timeParts[1], 10);
+        const seconds = timeParts[2] ? parseInt(timeParts[2], 10) : 0;
+        while (hours < 0) hours += 24;
+        hours %= 24;
+        const horaSalida = seconds
+          ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+          : `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+
+        templateIndex[`${origen}-${destino}-${horaSalida}`] = capacidad;
+      }
+      flightTemplateCapacitiesRef.current = templateIndex;
+    } catch (err) {
+      console.error("Error fetching flight capacities:", err);
+    }
+  }, []);
 
   const targetTimeRef = useRef<number>(state.currentTime);
   // Track the real-time timestamp when the simulation clock started (after 90s wait)
@@ -249,9 +294,10 @@ export function useSimulation() {
       let newGroups = prev.baggageGroups;
       let newStats  = prev.stats;
       let newAirports = { ...prev.airports };
+      let blockGroups: ReturnType<typeof mapBlockResultToBaggageGroups> = [];
 
       if (msg.rutasResumen?.length && msg.metricas) {
-        const blockGroups = mapBlockResultToBaggageGroups(
+        blockGroups = mapBlockResultToBaggageGroups(
           msg.rutasResumen,
           cursorTime,
           prev.baggageGroups,
@@ -283,6 +329,20 @@ export function useSimulation() {
         );
       }
 
+      if (msg.estadoCapacidadesVuelos) {
+        flightOccupancyRef.current = mergeFlightOccupancyState(
+          flightOccupancyRef.current,
+          msg.estadoCapacidadesVuelos as CapacidadesVuelosPorClave
+        );
+      }
+
+      if (msg.rutasResumen?.length) {
+        flightCapacitiesRef.current = mergeFlightCapacityState(
+          flightCapacitiesRef.current,
+          extractCapacitiesFromRoutes(blockGroups)
+        );
+      }
+
       const minuteIdx = minuteIndexFromSimStart(prev.startTime, prev.currentTime);
       newAirports = mapOccupancyToAirports(
         occupancyByAirportRef.current,
@@ -298,6 +358,8 @@ export function useSimulation() {
         baggageGroups: newGroups,
         stats: newStats,
         airports: newAirports,
+        flightOccupancy: { ...flightOccupancyRef.current },
+        flightCapacities: { ...flightCapacitiesRef.current, ...flightTemplateCapacitiesRef.current },
       };
     });
   }, []);
@@ -347,6 +409,8 @@ export function useSimulation() {
     blockQueueRef.current = [];
     blocksConsumedRef.current = 0;
     occupancyByAirportRef.current = {};
+    flightOccupancyRef.current = {};
+    flightCapacitiesRef.current = {};
 
     const startDate = fechaInicio || (() => { const d = new Date(); return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0)); })();
     const endDate = new Date(startDate.getTime());
@@ -399,6 +463,8 @@ export function useSimulation() {
         hour: 0,
         airports: initialAirports,
         flights: [],
+        flightOccupancy: {},
+        flightCapacities: { ...flightTemplateCapacitiesRef.current },
         baggageGroups: [],
         stats: createEmptyStats(),
         collapsed: false,
@@ -451,6 +517,8 @@ export function useSimulation() {
   const cancelSimulation = useCallback(async () => {
     await teardownActiveSimulation(true);
     occupancyByAirportRef.current = {};
+    flightOccupancyRef.current = {};
+    flightCapacitiesRef.current = {};
     setState(prev => ({
       ...prev,
       running: false,
@@ -491,6 +559,8 @@ export function useSimulation() {
   const reset = useCallback(async () => {
     await teardownActiveSimulation(true);
     occupancyByAirportRef.current = {};
+    flightOccupancyRef.current = {};
+    flightCapacitiesRef.current = {};
     setState(prev => {
       targetTimeRef.current = prev.startTime;
       return {
@@ -500,6 +570,8 @@ export function useSimulation() {
         hour: 0,
         airports: {},
         flights: [],
+        flightOccupancy: {},
+        flightCapacities: { ...flightTemplateCapacitiesRef.current },
         baggageGroups: [],
         stats: createEmptyStats(),
         collapsed: false,

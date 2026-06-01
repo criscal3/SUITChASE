@@ -59,9 +59,10 @@ export function TrackingPage({ embedded = false }: { embedded?: boolean }) {
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
             <div className="shrink-0 mt-auto" />
-            {/* Estado de Aeropuertos */}
+            {/* Estado */}
             <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-              <h4 className={`text-[12px] mb-2 ${panelText}`}>Estado de Aeropuertos</h4>
+              <h4 className={`text-[12px] mb-2 ${panelText}`}>Estado</h4>
+              <p className={`text-[9px] mb-2 ${subText}`}>Almacenes y aviones</p>
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-3 h-3 rounded-sm bg-[#22c55e]"></div>
                 <span className={`text-[10px] ${subText}`}>Capacidad Normal (&lt;50%)</span>
@@ -70,9 +71,20 @@ export function TrackingPage({ embedded = false }: { embedded?: boolean }) {
                 <div className="w-3 h-3 rounded-sm bg-[#f59e0b]"></div>
                 <span className={`text-[10px] ${subText}`}>Capacidad Moderada (&lt;80%)</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mb-2">
                 <div className="w-3 h-3 rounded-sm bg-[#ef4444]"></div>
                 <span className={`text-[10px] ${subText}`}>Saturado (&gt;80%)</span>
+              </div>
+              <div className={`border-t pt-2 mb-1 ${isDark ? "border-[#1a2744]" : "border-[#cbd5e1]"}`}>
+                <p className={`text-[9px] mb-1.5 ${subText}`}>Rutas de vuelo</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className={`w-5 h-0.5 rounded ${isDark ? "bg-[#22d3ee]" : "bg-[#0891b2]"}`}></div>
+                  <span className={`text-[10px] ${subText}`}>Mismo continente</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className={`w-5 h-0.5 rounded ${isDark ? "bg-[#fb7185]" : "bg-[#e11d48]"}`}></div>
+                  <span className={`text-[10px] ${subText}`}>Distinto continente</span>
+                </div>
               </div>
             </div>
 

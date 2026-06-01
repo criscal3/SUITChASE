@@ -91,6 +91,7 @@ public class AntColonySystem {
                         double tauActual = feromonas.getOrDefault(flightKey, tau0);
                         feromonas.put(flightKey, (1 - RHO) * tauActual + RHO * tau0);
                     }
+                    registrarAlmacenDestinoFinal(pedido, rutaCompleta, ruta);
                 }
 
                 ruta = busquedaLocalCROSS(ruta, input);
@@ -228,10 +229,27 @@ public class AntColonySystem {
                 rutaTemp.agregarAsignacion(p, v);
                 rutaTemp.registrarUsoAlmacen(v.getOrigen(), disp, salida, p.getCantidadMaletas());
             }
+            registrarAlmacenDestinoFinal(p, rutaCompleta, rutaTemp);
         }
 
         Logger.info("ACS - SoluciÃ³n inicial A* construida (" + aProc.size() + " pedidos).");
         return rutaTemp.aPlanificationSolution();
+    }
+
+    /** Registra 10 min de estadia en el almacen del aeropuerto destino final antes de la recogida. */
+    private static void registrarAlmacenDestinoFinal(
+            Pedido pedido, List<Vuelo> rutaCompleta, Ruta ruta) {
+        if (rutaCompleta == null || rutaCompleta.isEmpty()) return;
+        Vuelo ultimoVuelo = rutaCompleta.get(rutaCompleta.size() - 1);
+        if (!ultimoVuelo.getDestino().equals(pedido.getDestino())) return;
+
+        LocalDateTime recogidaCliente = VueloSelector.getDisponibilidadAbsoluta(pedido, ruta);
+        LocalDateTime llegadaDestino = recogidaCliente.minusMinutes(VueloSelector.HANDLING_MINUTES);
+        ruta.registrarUsoAlmacen(
+                ultimoVuelo.getDestino(),
+                llegadaDestino,
+                recogidaCliente,
+                pedido.getCantidadMaletas());
     }
 
     // =======================================================================
