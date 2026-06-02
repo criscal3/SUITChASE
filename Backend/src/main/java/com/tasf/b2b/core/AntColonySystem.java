@@ -28,10 +28,14 @@ public class AntColonySystem {
     private static final int    MAX_CROSS_PAIRS  = 50;
     /** Entradas mÃ¡ximas en el mapa de feromonas antes de limpiar. */
     private static final int    MAX_FEROMONAS    = 500_000;
-    /** Iteraciones ACS sin mejora antes de detener (bloques grandes). */
-    private static final int    MAX_ITER_SIN_MEJORA = 4;
-    /** FracciÃ³n del tiempo reservada para la soluciÃ³n inicial constructiva. */
-    private static final double FRACCION_TIEMPO_INICIAL = 0.55;
+    /** Iteraciones ACS sin mejora antes de detener (bloques medianos/grandes). */
+    private static final int    MAX_ITER_SIN_MEJORA = 3;
+    /** Fracción del tiempo para solución inicial (el resto al bucle ACS). */
+    private static final double FRACCION_TIEMPO_INICIAL = 0.30;
+    /** Pedidos máximos en la fase inicial para bloques muy grandes (urgencia primero). */
+    private static final int    MAX_PEDIDOS_INICIAL   = 100;
+    /** Umbral de pedidos para parada temprana por convergencia. */
+    private static final int    UMBRAL_PARADA_TEMPRANA = 200;
     // ========================================
 
     private static final class ResultadoHormiga {
@@ -70,6 +74,11 @@ public class AntColonySystem {
                 : 1.0 / Math.max(n, 1);
 
         Map<String, Double> feromonas = new ConcurrentHashMap<>();
+        if (Rstar > 0) {
+            for (Asignacion a : psiStar.getAsignaciones()) {
+                feromonas.put(a.getFlightKey(), tau0 * 1.5);
+            }
+        }
 
         List<Pedido> pedidosPorUrgencia = new ArrayList<>(input.getPedidos());
         pedidosPorUrgencia.sort(Comparator.comparing(Pedido::getTiempoLimite));
@@ -78,44 +87,43 @@ public class AntColonySystem {
         int iteracionesSinMejora = 0;
         final double EPS = 1e-6;
 
-        // --- 2. Bucle ACS (hormigas en paralelo, parada temprana al converger) ---
+        // --- 2. Bucle ACS (paralelo solo en bloques grandes; sin lock global) ---
         while (System.currentTimeMillis() < deadline) {
             double rAntes = Rstar;
+            List<ResultadoHormiga> resultados = new ArrayList<>(mHormigas);
 
-            List<ResultadoHormiga> resultados = Collections.synchronizedList(new ArrayList<>());
-
-            IntStream.range(0, mHormigas).parallel().forEach(h -> {
-                if (System.currentTimeMillis() >= deadline) return;
-
-                VueloSelector.limpiarCacheDisponibilidad();
-                Ruta ruta = construirRutaHormiga(
-                        pedidosPorUrgencia, feromonas, tau0, input, deadline);
-                if (ruta.getAsignaciones().isEmpty()) return;
-
-                ruta = busquedaLocalCROSS(ruta, input);
-                PlanificationSolutionOutputACS sol = ruta.aPlanificationSolution();
-                resultados.add(new ResultadoHormiga(
-                        ruta,
-                        calcularResponsiveness(sol, input),
-                        calcularDistanciaTotal(sol)));
-            });
-
-            synchronized (AntColonySystem.class) {
-                for (ResultadoHormiga res : resultados) {
-                    if (res.responsividad < Rstar - EPS
-                            || (Math.abs(res.responsividad - Rstar) < EPS && res.distancia < Tstar)) {
-                        psiStar = res.ruta.aPlanificationSolution();
-                        Rstar = res.responsividad;
-                        Tstar = res.distancia;
-                    }
+            if (n >= UMBRAL_PARADA_TEMPRANA) {
+                List<ResultadoHormiga> paralelo = Collections.synchronizedList(new ArrayList<>());
+                IntStream.range(0, mHormigas).parallel().forEach(h -> {
+                    if (System.currentTimeMillis() >= deadline) return;
+                    ResultadoHormiga res = ejecutarHormiga(
+                            pedidosPorUrgencia, feromonas, tau0, input, deadline);
+                    if (res != null) paralelo.add(res);
+                });
+                resultados.addAll(paralelo);
+            } else {
+                for (int h = 0; h < mHormigas; h++) {
+                    if (System.currentTimeMillis() >= deadline) break;
+                    ResultadoHormiga res = ejecutarHormiga(
+                            pedidosPorUrgencia, feromonas, tau0, input, deadline);
+                    if (res != null) resultados.add(res);
                 }
+            }
 
-                if (Rstar > 0) {
-                    for (Asignacion a : psiStar.getAsignaciones()) {
-                        String key = a.getFlightKey();
-                        double tauActual = feromonas.getOrDefault(key, tau0);
-                        feromonas.put(key, (1 - RHO) * tauActual + RHO / Rstar);
-                    }
+            for (ResultadoHormiga res : resultados) {
+                if (res.responsividad < Rstar - EPS
+                        || (Math.abs(res.responsividad - Rstar) < EPS && res.distancia < Tstar)) {
+                    psiStar = res.ruta.aPlanificationSolution();
+                    Rstar = res.responsividad;
+                    Tstar = res.distancia;
+                }
+            }
+
+            if (Rstar > 0) {
+                for (Asignacion a : psiStar.getAsignaciones()) {
+                    String key = a.getFlightKey();
+                    double tauActual = feromonas.getOrDefault(key, tau0);
+                    feromonas.put(key, (1 - RHO) * tauActual + RHO / Rstar);
                 }
             }
 
@@ -132,7 +140,7 @@ public class AntColonySystem {
             } else {
                 iteracionesSinMejora = 0;
             }
-            if (n >= 500 && iteracionesSinMejora >= MAX_ITER_SIN_MEJORA) {
+            if (n >= UMBRAL_PARADA_TEMPRANA && iteracionesSinMejora >= MAX_ITER_SIN_MEJORA) {
                 Logger.info("ACS - Parada temprana tras " + iteracionesSinMejora
                         + " iteraciones sin mejora (" + n + " pedidos).");
                 break;
@@ -142,11 +150,34 @@ public class AntColonySystem {
         return psiStar;
     }
 
-    /** Menos hormigas en bloques grandes: misma lÃ³gica ACS, menos reconstrucciones redundantes. */
+    /** Menos hormigas en bloques grandes: misma lógica ACS, menos reconstrucciones redundantes. */
     private static int hormigasPorTamano(int n) {
         if (n >= 1500) return 4;
         if (n >= 800)  return 6;
+        if (n >= 400)  return 8;
         return M_HORMIGAS;
+    }
+
+    private static ResultadoHormiga ejecutarHormiga(
+            List<Pedido> pedidosPorUrgencia,
+            Map<String, Double> feromonas,
+            double tau0,
+            PlanificationProblemInputACS input,
+            long deadline) {
+
+        VueloSelector.limpiarCacheDisponibilidad();
+        Ruta ruta = construirRutaHormiga(pedidosPorUrgencia, feromonas, tau0, input, deadline);
+        if (ruta.getAsignaciones().isEmpty()) {
+            return null;
+        }
+        if (System.currentTimeMillis() < deadline) {
+            ruta = busquedaLocalCROSS(ruta, input);
+        }
+        PlanificationSolutionOutputACS sol = ruta.aPlanificationSolution();
+        return new ResultadoHormiga(
+                ruta,
+                calcularResponsiveness(sol, input),
+                calcularDistanciaTotal(sol));
     }
 
     private static Ruta construirRutaHormiga(
@@ -163,7 +194,7 @@ public class AntColonySystem {
             if (ruta.getUbicacionActual(pedido).equals(pedido.getDestino())) continue;
 
             List<Vuelo> rutaCompleta = VueloSelector.encontrarRutaCompletaAstar(
-                    pedido, ruta, feromonas, tau0, input, MAX_SALTOS_ASTAR);
+                    pedido, ruta, feromonas, tau0, input, MAX_SALTOS_ASTAR, deadline);
             if (rutaCompleta == null) continue;
 
             for (Vuelo vuelo : rutaCompleta) {
@@ -257,16 +288,22 @@ public class AntColonySystem {
         List<Pedido> todos = new ArrayList<>(input.getPedidos());
         todos.sort(Comparator.comparing(Pedido::getTiempoLimite));
 
+        List<Pedido> aProc = todos;
+        if (todos.size() > MAX_PEDIDOS_INICIAL * 10) {
+            int limite = Math.min(MAX_PEDIDOS_INICIAL, Math.max(todos.size() / 10, 1));
+            aProc = todos.subList(0, Math.min(limite, todos.size()));
+        }
+
         Ruta rutaTemp = new Ruta();
         VueloSelector.limpiarCacheDisponibilidad();
 
         Map<String, Double> sinFeromonas = Collections.emptyMap();
 
-        for (Pedido p : todos) {
+        for (Pedido p : aProc) {
             if (System.currentTimeMillis() >= deadline) break;
 
             List<Vuelo> rutaCompleta = VueloSelector.encontrarRutaCompletaAstar(
-                    p, rutaTemp, sinFeromonas, 1.0, input, MAX_SALTOS_ASTAR);
+                    p, rutaTemp, sinFeromonas, 1.0, input, MAX_SALTOS_ASTAR, deadline);
             if (rutaCompleta == null) continue;
 
             for (Vuelo v : rutaCompleta) {
@@ -279,7 +316,7 @@ public class AntColonySystem {
             registrarAlmacenDestinoFinal(p, rutaCompleta, rutaTemp);
         }
 
-        Logger.info("ACS - SoluciÃ³n inicial A* construida (" + todos.size() + " pedidos).");
+        Logger.info("ACS - Solución inicial A* (" + aProc.size() + "/" + todos.size() + " pedidos).");
         return rutaTemp.aPlanificationSolution();
     }
 

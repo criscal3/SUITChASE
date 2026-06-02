@@ -169,7 +169,7 @@ export function SimulationPage() {
       <div className="flex-1 flex relative overflow-hidden">
         {/* Panel izquierdo - solo visible en modo simulación */}
         {viewMode === "simulation" && (
-        <div className="absolute left-4 top-2 bottom-4 z-10 w-52 pointer-events-auto flex flex-col">
+        <div className="absolute left-4 top-2 bottom-4 z-10 w-56 pointer-events-auto flex flex-col">
           {/* Fade top */}
           {canScrollUp && (
             <div className={`absolute top-0 left-0 right-0 h-8 z-10 pointer-events-none rounded-t-xl ${isDark ? "bg-gradient-to-b from-[#1a2340ee] to-transparent" : "bg-gradient-to-b from-[#c8d0dcea] to-transparent"}`} />
@@ -225,7 +225,7 @@ export function SimulationPage() {
             {/* Tarjetas de estadísticas */}
             <div className="space-y-2">
               <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={activeFlightsCount.toLocaleString()} />
-              <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Maletas" value={state.stats.totalRegistered.toLocaleString()} />
+              <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
             </div>
 
             {/* Controles */}
@@ -311,7 +311,7 @@ export function SimulationPage() {
 
         {/* Selector de modo flotante en tracking */}
         {viewMode === "tracking" && (
-          <div className="absolute left-4 top-2 bottom-4 z-30 pointer-events-auto w-52 flex flex-col">
+          <div className="absolute left-4 top-2 bottom-4 z-30 pointer-events-auto w-56 flex flex-col">
           <div className="flex-1 flex flex-col gap-3 overflow-y-auto hide-scrollbar" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
             <div className="shrink-0 mt-auto" />
             {/* Estado */}
@@ -323,7 +323,7 @@ export function SimulationPage() {
             {/* Stats */}
             <div className="space-y-2">
               <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={activeFlightsCount.toLocaleString()} />
-              <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Maletas" value={state.stats.totalRegistered.toLocaleString()} />
+              <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
             </div>
 
             {/* Escenarios */}

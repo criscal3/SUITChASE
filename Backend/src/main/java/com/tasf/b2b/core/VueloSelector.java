@@ -70,9 +70,15 @@ public class VueloSelector {
     public static List<Vuelo> encontrarRutaCompletaAstar(
             Pedido p, Ruta ruta, Map<String, Double> feromonas,
             double tau0, PlanificationProblemInputACS input, int maxSaltos) {
+        return encontrarRutaCompletaAstar(p, ruta, feromonas, tau0, input, maxSaltos, 0L);
+    }
+
+    public static List<Vuelo> encontrarRutaCompletaAstar(
+            Pedido p, Ruta ruta, Map<String, Double> feromonas,
+            double tau0, PlanificationProblemInputACS input, int maxSaltos, long deadlineMs) {
 
         LocalDateTime tiempoInicio = ruta.getDisponibilidadPedido(p);
-        double hInicial = estimarTiempoRestante(p.getOrigen(), p.getDestino(), input) * 60.0;
+        double hInicial = input.estimarHorasHastaDestino(p.getOrigen(), p.getDestino()) * 60.0;
 
         PriorityQueue<NodoAstar> cola = new PriorityQueue<>();
         cola.add(new NodoAstar(p.getOrigen(), tiempoInicio, new ArrayList<>(), hInicial));
@@ -81,8 +87,13 @@ public class VueloSelector {
         Map<String, LocalDateTime> mejorLlegada = new HashMap<>();
         Map<String, int[]> cacheGlobalAlm = new HashMap<>();
         Map<String, int[]> cacheLocalAlm = new HashMap<>();
+        int expansiones = 0;
 
         while (!cola.isEmpty()) {
+            if (deadlineMs > 0 && (++expansiones & 63) == 0
+                    && System.currentTimeMillis() >= deadlineMs) {
+                return null;
+            }
             NodoAstar actual = cola.poll();
 
             // Llegamos al destino
@@ -160,7 +171,7 @@ public class VueloSelector {
                 double tau = feromonas.getOrDefault(flightKey, tau0);
                 double bonusMin = Math.max(0.0, (tau / tau0 - 1.0) * 120.0); // hasta 2h de bonus
                 double g = java.time.Duration.between(p.getTiempoCreacion(), dispSiguiente).toMinutes();
-                double h = estimarTiempoRestante(v.getDestino(), p.getDestino(), input) * 60.0;
+                double h = input.estimarHorasHastaDestino(v.getDestino(), p.getDestino()) * 60.0;
                 double f = Math.max(0.0, g + h - bonusMin);
 
                 List<Vuelo> nuevaRuta = new ArrayList<>(actual.vuelosUsados);
@@ -207,7 +218,7 @@ public class VueloSelector {
             if (llegada.isBefore(salida)) llegada = llegada.plusDays(1);
 
             double Rij = java.time.Duration.between(p.getTiempoCreacion(), llegada).toMinutes() / 60.0;
-            double costoRestante = estimarTiempoRestante(j.getDestino(), p.getDestino(), input);
+            double costoRestante = input.estimarHorasHastaDestino(j.getDestino(), p.getDestino());
             Rij += costoRestante;
             if (Rij <= 0) Rij = 0.001;
 
@@ -359,26 +370,4 @@ public class VueloSelector {
     //  HeurÃ­stica de distancia (Haversine)
     // =======================================================================
 
-    static double estimarTiempoRestante(
-            String nodoIntermedio, String destinoFinal, PlanificationProblemInputACS input) {
-        if (nodoIntermedio.equals(destinoFinal)) return 0.0;
-
-        Aeropuerto aInter = input.getAeropuerto(nodoIntermedio);
-        Aeropuerto aDest  = input.getAeropuerto(destinoFinal);
-        if (aInter == null || aDest == null) return 12.0;
-
-        double lat1 = Math.toRadians(aInter.getLatitud());
-        double lon1 = Math.toRadians(aInter.getLongitud());
-        double lat2 = Math.toRadians(aDest.getLatitud());
-        double lon2 = Math.toRadians(aDest.getLongitud());
-
-        double dLat = lat2 - lat1;
-        double dLon = lon2 - lon1;
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                 + Math.cos(lat1) * Math.cos(lat2)
-                 * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        double distanciaKm = 6371.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-        return distanciaKm / 950.0; // horas estimadas a 950 km/h
-    }
 }
