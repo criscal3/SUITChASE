@@ -39,10 +39,10 @@ public class RealTimeSchedulerService {
     private final DataMapperService dataMapper;
     private final SimpMessagingTemplate messagingTemplate;
 
-    @Value("${planificador.sa-segundos:600}")
+    @Value("${planificador.sa-segundos:120}")
     private int saSegundos;  // Sa: cada cuánto se ejecuta (intervalo)
 
-    @Value("${planificador.ta-segundos:20}")
+    @Value("${planificador.ta-segundos:10}")
     private int taSegundos;  // Ta: tiempo de ejecución del algoritmo ACS
 
     @Value("${planificador.enabled:false}")
@@ -52,7 +52,7 @@ public class RealTimeSchedulerService {
     private PlanificationProblemInput inputMaestro;
     private boolean initialized = false;
 
-    @Scheduled(fixedDelayString = "${planificador.sa-ms:600000}")
+    @Scheduled(fixedDelayString = "${planificador.sa-ms:120000}")
     public void planificarEnTiempoReal() {
         if (!enabled) return;
 

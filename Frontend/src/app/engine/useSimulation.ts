@@ -26,10 +26,10 @@ const DEFAULT_AIRLINES: Airline[] = [
 
 const SA_MINUTES = 2;        // Sa: salto del algoritmo en minutos
 const K_DEFAULT = 120;       // K: constante de velocidad
-const TA_SECONDS = 10;       // Ta: tiempo del algoritmo en segundos (máx. espera inicial: 45 s)
+const TA_SECONDS = 10;       // Ta: tiempo del algoritmo en segundos (máx. espera inicial: 50 s)
 const SC_MINUTES = K_DEFAULT * SA_MINUTES; // Sc: ventana de consumo = 240 min = 4h
 const SA_SECONDS = SA_MINUTES * 60;        // Sa en segundos = 120s = 2 min
-export const INITIAL_WAIT_SECONDS = 45;    // Espera inicial real antes de iniciar el cronómetro
+export const INITIAL_WAIT_SECONDS = 50;    // Espera inicial real antes de iniciar el cronómetro
 const SC_MS = SC_MINUTES * 60 * 1000;      // Sc = 4 h de simulación entre actualizaciones de maletas
 // Clock speed: Sc minutos de simulación en Sa segundos reales
 // = 240 min sim / 120 s real = 2 min sim / 1 s real = 120 s sim / 1 s real

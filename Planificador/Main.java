@@ -26,13 +26,13 @@ public class Main {
     private static final Simulador.Algoritmo ALGORITMO_ACTIVO = Simulador.Algoritmo.ACS;
 
     /** Sa: cada cuántos minutos simulados se planifica */
-    private static final int SALTO_ALGORITMO_SA = 10;
+    private static final int SALTO_ALGORITMO_SA = 2;
 
     /** k: Sc = k * Sa (ventana de consumo de datos) */
-    private static final int K = 12;
+    private static final int K = 120;
 
     /** Ta: tiempo máximo del algoritmo por bloque, en SEGUNDOS */
-    private static final int TIEMPO_ALGORITMO_TA = 60;
+    private static final int TIEMPO_ALGORITMO_TA = 10;
 
     // ── Rango temporal de la simulación ──────────────────────
     // Usar LocalDateTime.of(año, mes, día, hora, minuto) o null
