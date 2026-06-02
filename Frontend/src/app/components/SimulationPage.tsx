@@ -433,7 +433,7 @@ export function SimulationPage() {
                   </span>
                 </div>
                 <div className={`text-[10px] space-y-0.5 ${isDark ? "text-[#94a3b8]" : "text-[#64748b]"}`}>
-                  <div>Ventana de consumo: 6 horas simuladas cada 3 minutos reales</div>
+                  <div>Ventana de consumo: 4 horas simuladas cada 2 minutos reales</div>
                   <div>Velocidad: 2 minutos simulados por cada segundo real</div>
                 </div>
               </div>
@@ -622,7 +622,7 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
                 style={{ width: `${Math.min(100, stats.onTimeRate)}%` }} />
             </div>
             <div className="flex items-center justify-between mt-2">
-              <span className={`text-[11px] ${textSecondary}`}>Duración: {day} días simulados</span>
+              <span className={`text-[11px] ${textSecondary}`}>Duración: {day - 1} días simulados</span>
               <span className={`text-[11px] ${textSecondary}`}>Vuelos cancelados: {cancelledFlights}</span>
             </div>
           </div>

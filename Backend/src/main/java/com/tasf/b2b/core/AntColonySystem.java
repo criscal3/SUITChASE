@@ -23,7 +23,7 @@ public class AntColonySystem {
     /** NÃºmero de hormigas por iteraciÃ³n del bucle principal (bloques pequeÃ±os). */
     private static final int    M_HORMIGAS      = 10;
     /** Saltos mÃ¡ximos en la bÃºsqueda A* (profundidad del grafo de rutas). */
-    private static final int    MAX_SALTOS_ASTAR = 8;
+    private static final int    MAX_SALTOS_ASTAR = 6;
     /** Pares mÃ¡ximos evaluados en busquedaLocalCROSS por pedido. */
     private static final int    MAX_CROSS_PAIRS  = 50;
     /** Entradas mÃ¡ximas en el mapa de feromonas antes de limpiar. */
