@@ -170,11 +170,6 @@ public class SimulationService {
         int ta = sim.getTiempoAlgoritmoTa();
 
         TimeUtils.configurarRangoSimulacion(sim.getFechaInicioSim(), sim.getFechaFinSim());
-        // Only load envios if it's the first time running the simulation (bloqueActual is 0)
-        // On resume, reuse the already loaded data to avoid reloading all files
-        if (bloqueActual == 0) {
-            envioFileReader.iniciarLecturaSimulacion(simulacionId, sim.getFechaInicioSim(), sim.getFechaFinSim());
-        }
 
         // --- Cargar aeropuertos y vuelos (datos ligeros, se cargan una vez) ---
         List<AeropuertoAlgoritmo> aeropuertos = aeropuertoRepository.findAll().stream()
@@ -198,6 +193,12 @@ public class SimulationService {
         // Cursor: posición actual en el tiempo simulado
         LocalDateTime cursor = sim.getCursorTemporal();
         int bloqueActual = sim.getBloqueActual();
+
+        // Only load envios if it's the first time running the simulation (bloqueActual is 0)
+        // On resume, reuse the already loaded data to avoid reloading all files
+        if (bloqueActual == 0) {
+            envioFileReader.iniciarLecturaSimulacion(simulacionId, sim.getFechaInicioSim(), sim.getFechaFinSim());
+        }
 
         log.info("Simulación {} iniciada/reanudada. Cursor: {}, Bloque: {}/{}",
                 simulacionId, cursor, bloqueActual, sim.getTotalBloquesEstimados());
