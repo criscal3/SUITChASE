@@ -153,7 +153,11 @@ public class SimulationService {
         try {
             ejecutarSimulacionAsyncInterno(simulacionId);
         } finally {
-            envioFileReader.finalizarLecturaSimulacion(simulacionId);
+            // Only finalize lectura when simulation is cancelled or completed, not when paused
+            SimulacionEntity sim = simulacionRepository.findById(simulacionId).orElse(null);
+            if (sim == null || sim.getEstado() != EstadoSimulacion.PAUSADA) {
+                envioFileReader.finalizarLecturaSimulacion(simulacionId);
+            }
             simulacionesEnEjecucion.remove(simulacionId);
         }
     }
@@ -166,7 +170,11 @@ public class SimulationService {
         int ta = sim.getTiempoAlgoritmoTa();
 
         TimeUtils.configurarRangoSimulacion(sim.getFechaInicioSim(), sim.getFechaFinSim());
-        envioFileReader.iniciarLecturaSimulacion(simulacionId, sim.getFechaInicioSim(), sim.getFechaFinSim());
+        // Only load envios if it's the first time running the simulation (bloqueActual is 0)
+        // On resume, reuse the already loaded data to avoid reloading all files
+        if (bloqueActual == 0) {
+            envioFileReader.iniciarLecturaSimulacion(simulacionId, sim.getFechaInicioSim(), sim.getFechaFinSim());
+        }
 
         // --- Cargar aeropuertos y vuelos (datos ligeros, se cargan una vez) ---
         List<AeropuertoAlgoritmo> aeropuertos = aeropuertoRepository.findAll().stream()
