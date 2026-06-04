@@ -1,7 +1,7 @@
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 
-const WEBSOCKET_URL = 'http://localhost:8090/ws';
+const WEBSOCKET_URL = '/ws';
 
 export class SimulationWebSocketClient {
   private client: Client;

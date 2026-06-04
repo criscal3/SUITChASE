@@ -1,0 +1,79 @@
+# =====================================================
+# Docker Compose de Producción — SUITChASE
+# =====================================================
+# Este archivo está optimizado para su despliegue en la 
+# máquina virtual de la universidad, donde el Nginx nativo
+# ha sido desactivado y se puede usar directamente el puerto 80.
+#
+# USO EN LA VM:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+# =====================================================
+
+services:
+  # ============================================
+  # Base de Datos — MySQL 8
+  # ============================================
+  db:
+    image: mysql:8
+    container_name: suitchase-mysql
+    restart: unless-stopped
+    ports:
+      - "3307:3306" # Expuesto por si se requiere inspección remota
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root123}
+      MYSQL_DATABASE: suitchase
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - suitchase-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Backend — Spring Boot (JDK 21)
+  # ============================================
+  backend:
+    image: cesarocal30/suitchase-backend:latest
+    container_name: suitchase-backend
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      # Sobreescribir las propiedades de Spring Boot
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/suitchase?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-root}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-root123}
+      JAVA_OPTS: "-Xms512m -Xmx1024m"
+      SUITCHASE_ENVIOS_PATH: /Planificador/_envios_preliminar_
+    volumes:
+      - ./Planificador:/Planificador
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - suitchase-net
+
+  # ============================================
+  # Frontend — React/Vite servido con Nginx
+  # ============================================
+  frontend:
+    image: cesarocal30/suitchase-frontend:latest
+    container_name: suitchase-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80" # Expuesto directamente en el puerto 80 público de la VM
+    depends_on:
+      - backend
+    networks:
+      - suitchase-net 
+
+networks:
+  suitchase-net:
+    driver: bridge
+
+volumes:
+  mysql-data:
