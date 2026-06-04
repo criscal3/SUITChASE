@@ -29,13 +29,26 @@ const K_DEFAULT = 120;       // K: constante de velocidad
 const TA_SECONDS = 10;       // Ta: tiempo del algoritmo en segundos (máx. espera inicial: 50 s)
 const SC_MINUTES = K_DEFAULT * SA_MINUTES; // Sc: ventana de consumo = 240 min = 4h
 const SA_SECONDS = SA_MINUTES * 60;        // Sa en segundos = 120s = 2 min
-export const INITIAL_WAIT_SECONDS = 50;    // Espera inicial real antes de iniciar el cronómetro
+export const INITIAL_WAIT_SECONDS = 60;    // Espera inicial real antes de iniciar el cronómetro
 const SC_MS = SC_MINUTES * 60 * 1000;      // Sc = 4 h de simulación entre actualizaciones de maletas
 // Clock speed: Sc minutos de simulación en Sa segundos reales
 // = 240 min sim / 120 s real = 2 min sim / 1 s real = 120 s sim / 1 s real
 const SIM_MS_PER_REAL_MS = (SC_MINUTES * 60 * 1000) / (SA_SECONDS * 1000); // = 120
 /** Intervalo mínimo entre commits de React del cronómetro (evita saturar la UI). */
 const CLOCK_UI_COMMIT_MS = 50;
+
+// ─── Constantes para simulación en tiempo real ───
+const RT_SA_MINUTES = 2;         // Sa para tiempo real
+const RT_K = 180;                // K para tiempo real (Sc = 360 min = 6h)
+const RT_TA_SECONDS = 10;        // Ta para tiempo real
+const RT_SC_MINUTES = RT_K * RT_SA_MINUTES; // 360 min = 6h
+const RT_SC_MS = RT_SC_MINUTES * 60 * 1000;
+const RT_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24h hacia atrás
+const RT_LOOKAHEAD_MS = 6 * 60 * 60 * 1000; // 6h hacia adelante
+/** Velocidad de fast-forward en modo realtime: 1h sim por 1s real = 3600x */
+const RT_FAST_FORWARD_SPEED = 3600;
+/** Margen antes del borde de datos para solicitar extensión (1h) */
+const RT_EXTENSION_MARGIN_MS = 1 * 60 * 60 * 1000;
 
 export function useSimulation() {
   const [state, setState] = useState<SimulationState>(() => {
@@ -82,6 +95,12 @@ export function useSimulation() {
   const flightOccupancyRef = useRef<CapacidadesVuelosPorClave>({});
   const flightCapacitiesRef = useRef<CapacidadesVuelosPorClave>({});
   const flightTemplateCapacitiesRef = useRef<CapacidadesVuelosPorClave>({});
+
+  // ─── Refs para modo realtime ───
+  const scenarioRef = useRef<string>(state.scenario);
+  const realtimeAnchorRef = useRef<number>(0);   // hora real cuando se hizo click
+  const realtimeEndRef = useRef<number>(0);       // fin de la ventana de datos actual
+  const realtimeExtendingRef = useRef<boolean>(false); // evita extensiones duplicadas
 
   useEffect(() => {
     airportsListRef.current = airportsList;
@@ -166,6 +185,10 @@ export function useSimulation() {
   }, [state.running]);
 
   useEffect(() => {
+    scenarioRef.current = state.scenario;
+  }, [state.scenario]);
+
+  useEffect(() => {
     waitingForFirstBlockRef.current = !!state.waitingForFirstBlock;
   }, [state.waitingForFirstBlock]);
 
@@ -178,12 +201,13 @@ export function useSimulation() {
   useEffect(() => {
     if (!state.waitingForFirstBlock) return;
 
-    setWaitCountdown(INITIAL_WAIT_SECONDS);
+    const waitSec = state.scenario === "realtime" ? 30 : 60;
+    setWaitCountdown(waitSec);
     const countdownStart = Date.now();
 
     const countdownId = setInterval(() => {
       const elapsed = Math.floor((Date.now() - countdownStart) / 1000);
-      const remaining = INITIAL_WAIT_SECONDS - elapsed;
+      const remaining = waitSec - elapsed;
 
       if (remaining <= 0) {
         clearInterval(countdownId);
@@ -207,7 +231,7 @@ export function useSimulation() {
     }, 1000);
 
     return () => clearInterval(countdownId);
-  }, [state.waitingForFirstBlock]);
+  }, [state.waitingForFirstBlock, state.scenario]);
 
   // ─── Block consumption is driven by the clock ticker below ───
 
@@ -315,9 +339,10 @@ export function useSimulation() {
    * Ej.: inicio 01/01 18:00 → bloque 1; 02/01 00:00 → bloque 2; 06:00 → bloque 3; …
    */
   const tryConsumeBlocksAtSimTime = useCallback((simTimeMs: number) => {
+    const blockSize = scenarioRef.current === "realtime" ? RT_SC_MS : SC_MS;
     while (blockQueueRef.current.length > 0) {
       const nextBoundary =
-        startTimeRef.current + blocksConsumedRef.current * SC_MS;
+        startTimeRef.current + blocksConsumedRef.current * blockSize;
       if (simTimeMs < nextBoundary) break;
       const nextBlock = blockQueueRef.current.shift();
       if (!nextBlock) break;
@@ -338,9 +363,12 @@ export function useSimulation() {
     let rafId = 0;
 
     const commitClock = (nextTime: number, prev: SimulationState) => {
-      const maxTime = prev.startTime + SIM_WEEKLY_DURATION_MS;
+      const isRealtime = prev.scenario === "realtime";
+      const maxTime = isRealtime
+        ? Infinity  // realtime no tiene fin fijo
+        : prev.startTime + SIM_WEEKLY_DURATION_MS;
       const reachedEnd =
-        prev.scenario === "weekly" && nextTime >= maxTime;
+        !isRealtime && prev.scenario === "weekly" && nextTime >= maxTime;
       const clampedTime = reachedEnd ? maxTime : nextTime;
 
       currentTimeRef.current = clampedTime;
@@ -367,13 +395,29 @@ export function useSimulation() {
         };
       }
 
+      // Detectar transición de fast-forward a 1:1 en modo realtime
+      let realtimeUpdates: Partial<SimulationState> = {};
+      if (isRealtime) {
+        const anchorMs = realtimeAnchorRef.current;
+        const wasFastForwarding = prev.realtimeFastForwarding;
+        const nowReachedRealtime = clampedTime >= anchorMs;
+        if (wasFastForwarding && nowReachedRealtime) {
+          // Clamp to the real-time anchor so we don't overshoot
+          currentTimeRef.current = anchorMs;
+          realtimeUpdates = { realtimeFastForwarding: false };
+        }
+      }
+
       return {
         ...prev,
-        currentTime: clampedTime,
+        currentTime: isRealtime && !prev.realtimeFastForwarding
+          ? clampedTime  // will be synced to real time in tick
+          : clampedTime,
         day: Math.floor(diffHours / 24) + 1,
         hour: diffHours % 24,
         airports,
         stats,
+        ...realtimeUpdates,
         ...(reachedEnd
           ? { running: false, stopped: true, hasStarted: true }
           : {}),
@@ -387,8 +431,44 @@ export function useSimulation() {
       lastReal = now;
 
       if (realDelta > 0) {
-        const simDelta = realDelta * SIM_MS_PER_REAL_MS;
-        currentTimeRef.current += simDelta;
+        const isRealtime = scenarioRef.current === "realtime";
+
+        if (isRealtime) {
+          const anchorMs = realtimeAnchorRef.current;
+          const isFastForwarding = currentTimeRef.current < anchorMs;
+
+          if (isFastForwarding) {
+            // Fast-forward: 3600x speed (1h sim / 1s real)
+            const simDelta = realDelta * RT_FAST_FORWARD_SPEED;
+            currentTimeRef.current += simDelta;
+            // Don't overshoot past real time anchor
+            if (currentTimeRef.current >= anchorMs) {
+              currentTimeRef.current = anchorMs;
+            }
+          } else {
+            // 1:1 speed: sync to real wall clock
+            // anchorMs was the real time when click happened.
+            // The elapsed real ms since then = Date.now() - anchorMs
+            // So simTime = anchorMs + (Date.now() - anchorMs) = Date.now()
+            currentTimeRef.current = Date.now();
+          }
+
+          // Auto-extension: when approaching the data edge, request more
+          const endMs = realtimeEndRef.current;
+          if (
+            endMs > 0 &&
+            currentTimeRef.current >= endMs - RT_EXTENSION_MARGIN_MS &&
+            !realtimeExtendingRef.current
+          ) {
+            realtimeExtendingRef.current = true;
+            void extendRealtimeWindowRef.current();
+          }
+        } else {
+          // Normal simulation speed (weekly/collapse)
+          const simDelta = realDelta * SIM_MS_PER_REAL_MS;
+          currentTimeRef.current += simDelta;
+        }
+
         tryConsumeBlocksAtSimTimeRef.current(currentTimeRef.current);
 
         if (now - lastUiCommit >= CLOCK_UI_COMMIT_MS) {
@@ -546,6 +626,163 @@ export function useSimulation() {
     }
   }, [speed, connectWebSocket, airportsList]);
 
+  // ─── Simulación en Tiempo Real ───
+  const startRealtime = useCallback(async () => {
+    // Disconnect any previous WebSocket connection before starting fresh
+    if (wsClientRef.current) {
+      wsClientRef.current.disconnect();
+      wsClientRef.current = null;
+    }
+    activeSimIdRef.current = null;
+    blockQueueRef.current = [];
+    blocksConsumedRef.current = 0;
+    occupancyByAirportRef.current = {};
+    flightOccupancyRef.current = {};
+    flightCapacitiesRef.current = {};
+    realtimeExtendingRef.current = false;
+
+    const nowMs = Date.now();
+    realtimeAnchorRef.current = nowMs;
+
+    // Start 24h before now, end 6h after now
+    const startDate = new Date(nowMs - RT_LOOKBACK_MS);
+    const endDate = new Date(nowMs + RT_LOOKAHEAD_MS);
+    realtimeEndRef.current = endDate.getTime();
+
+    const formatLocalISO = (d: Date) => {
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      const hours = String(d.getUTCHours()).padStart(2, "0");
+      const minutes = String(d.getUTCMinutes()).padStart(2, "0");
+      const seconds = String(d.getUTCSeconds()).padStart(2, "0");
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    };
+
+    const fechaInicioStr = formatLocalISO(startDate);
+    const fechaFinStr = formatLocalISO(endDate);
+
+    try {
+      const res = await api.iniciarSimulacion({
+        nombre: `Tiempo Real ${fechaInicioStr}`,
+        fechaInicio: fechaInicioStr,
+        fechaFin: fechaFinStr,
+        sa: RT_SA_MINUTES,
+        k: RT_K,
+        ta: RT_TA_SECONDS
+      });
+
+      const simId = res.simulacionId;
+      activeSimIdRef.current = simId;
+
+      // Initialize airport state
+      const initialAirports: Record<string, any> = {};
+      airportsList.forEach(a => {
+        initialAirports[a.code] = { code: a.code, currentStock: 0, capacity: a.warehouseCapacity, incoming: 0, outgoing: 0 };
+      });
+
+      const startUtcMs = startDate.getTime();
+      targetTimeRef.current = startUtcMs;
+      startTimeRef.current = startUtcMs;
+      blocksConsumedRef.current = 0;
+      scenarioRef.current = "realtime";
+
+      setState({
+        scenario: "realtime",
+        turnaroundHours: 1,
+        currentTime: startUtcMs,
+        startTime: startUtcMs,
+        day: 1,
+        hour: 0,
+        airports: initialAirports,
+        flights: [],
+        flightOccupancy: {},
+        flightCapacities: { ...flightTemplateCapacitiesRef.current },
+        baggageGroups: [],
+        stats: createEmptyStats(),
+        collapsed: false,
+        collapseReason: "",
+        running: false,
+        waitingForFirstBlock: true,
+        stopped: false,
+        hasStarted: true,
+        speed: 1,
+        realtimeAnchorMs: nowMs,
+        realtimeEndMs: endDate.getTime(),
+        realtimeFastForwarding: true,
+      });
+      setEvents([]);
+
+      connectWebSocket(simId);
+    } catch (error: any) {
+      toast.error(`Error iniciando simulación en tiempo real: ${error.message}`);
+    }
+  }, [connectWebSocket, airportsList]);
+
+  // ─── Auto-extensión de ventana de datos en tiempo real ───
+  const extendRealtimeWindow = useCallback(async () => {
+    if (!activeSimIdRef.current || scenarioRef.current !== "realtime") {
+      realtimeExtendingRef.current = false;
+      return;
+    }
+
+    // Extend: new simulation from current end to +6h
+    const currentEnd = realtimeEndRef.current;
+    const newEnd = currentEnd + RT_LOOKAHEAD_MS;
+    const startDate = new Date(currentEnd);
+    const endDate = new Date(newEnd);
+
+    const formatLocalISO = (d: Date) => {
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      const hours = String(d.getUTCHours()).padStart(2, "0");
+      const minutes = String(d.getUTCMinutes()).padStart(2, "0");
+      const seconds = String(d.getUTCSeconds()).padStart(2, "0");
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    };
+
+    try {
+      // Cancel old simulation
+      try {
+        await api.cancelarSimulacion(activeSimIdRef.current);
+      } catch { /* ignore */ }
+      if (wsClientRef.current) {
+        wsClientRef.current.disconnect();
+        wsClientRef.current = null;
+      }
+
+      const res = await api.iniciarSimulacion({
+        nombre: `Tiempo Real Ext ${formatLocalISO(startDate)}`,
+        fechaInicio: formatLocalISO(startDate),
+        fechaFin: formatLocalISO(endDate),
+        sa: RT_SA_MINUTES,
+        k: RT_K,
+        ta: RT_TA_SECONDS
+      });
+
+      activeSimIdRef.current = res.simulacionId;
+      realtimeEndRef.current = newEnd;
+
+      // Update state with new end
+      setState(prev => ({
+        ...prev,
+        realtimeEndMs: newEnd,
+      }));
+
+      connectWebSocket(res.simulacionId);
+      console.log(`Realtime window extended to ${formatLocalISO(endDate)}`);
+    } catch (error: any) {
+      console.error("Error extending realtime window:", error);
+      toast.error("Error extendiendo ventana de simulación en tiempo real");
+    } finally {
+      realtimeExtendingRef.current = false;
+    }
+  }, [connectWebSocket]);
+
+  const extendRealtimeWindowRef = useRef(extendRealtimeWindow);
+  extendRealtimeWindowRef.current = extendRealtimeWindow;
+
   const teardownActiveSimulation = useCallback(async (cancelBackend: boolean) => {
     if (cancelBackend && activeSimIdRef.current) {
       try {
@@ -702,7 +939,7 @@ export function useSimulation() {
   const addAirline = useCallback(() => { }, []);
   const updateAirline = useCallback(() => { }, []);
   const removeAirline = useCallback(() => { }, []);
-  const setScenario = useCallback((sc: "weekly" | "collapse") => {
+  const setScenario = useCallback((sc: "weekly" | "collapse" | "realtime") => {
     setState(prev => ({ ...prev, scenario: sc }));
   }, []);
   const confirmFastForward = useCallback(() => { }, []);
@@ -714,6 +951,7 @@ export function useSimulation() {
     airportsList,
     airlines,
     start,
+    startRealtime,
     endSimulation,
     pauseSimulation,
     cancelSimulation,

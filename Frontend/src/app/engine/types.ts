@@ -46,11 +46,17 @@ export interface SimulationState {
   hasStarted?: boolean;
   waitingForFirstBlock?: boolean;
   speed: number;
-  scenario: "daily" | "weekly" | "collapse";
+  scenario: "daily" | "weekly" | "collapse" | "realtime";
   turnaroundHours: number;
   fastForwardTarget?: number | null;
   fastForwardState?: "idle" | "running" | "reached";
   targetDateStr?: string;
+  /** Epoch ms de la hora real cuando se inició la simulación en tiempo real */
+  realtimeAnchorMs?: number;
+  /** Epoch ms del fin de la ventana actual de datos planificados */
+  realtimeEndMs?: number;
+  /** true mientras se está avanzando rápido hasta la hora real */
+  realtimeFastForwarding?: boolean;
 }
 
 export function hasReachedWeeklySimEnd(

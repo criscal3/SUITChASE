@@ -6,10 +6,34 @@ import { BaggageTracking } from "./BaggageTracking";
 import { TrackingPage } from "./TrackingPage";
 import type { BaggageGroup } from "../engine/types";
 import { hasReachedWeeklySimEnd } from "../engine/types";
-import { INITIAL_WAIT_SECONDS } from "../engine/useSimulation";
 import { OccupancyLegend } from "./OccupancyLegend";
 import { getOccupancyColor, getOccupancyLevel } from "../engine/occupancyStatus";
-import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse } from "lucide-react";
+import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse, Radio } from "lucide-react";
+
+function formatRealtimeClock(ts: number): string {
+  if (!ts || isNaN(ts)) return "";
+  try {
+    const formatter = new Intl.DateTimeFormat("es-PE", {
+      timeZone: "America/Lima",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(new Date(ts));
+    const partMap: Record<string, string> = {};
+    for (const part of parts) {
+      partMap[part.type] = part.value;
+    }
+    return `${partMap.day}/${partMap.month}/${partMap.year} ${partMap.hour}:${partMap.minute}:${partMap.second} (Hora de Perú)`;
+  } catch (e) {
+    const d = new Date(ts - 5 * 60 * 60 * 1000);
+    return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}:${String(d.getUTCSeconds()).padStart(2, "0")} (Hora de Perú)`;
+  }
+}
 
 
 
@@ -20,7 +44,15 @@ function formatTimestampShort(ts: number): string {
 }
 
 export function SimulationPage() {
-  const { state, start, pauseSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
+  const { state, start, startRealtime, pauseSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
+
+  // Live clock tick for realtime mode (forces re-render every second)
+  const [liveClockTick, setLiveClockTick] = useState(0);
+  useEffect(() => {
+    if (state.scenario !== "realtime" || !state.running || state.realtimeFastForwarding) return;
+    const id = setInterval(() => setLiveClockTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [state.scenario, state.running, state.realtimeFastForwarding]);
   const { isDark } = useTheme();
   const [selectedBaggage, setSelectedBaggage] = useState<BaggageGroup | null>(null);
   const [showTracking, setShowTracking] = useState(true);
@@ -43,6 +75,7 @@ export function SimulationPage() {
   // Al completar 5 días sim: pausar y mostrar Highlights (una sola vez)
   useEffect(() => {
     if (
+      state.scenario !== "realtime" &&
       hasReachedWeeklySimEnd(state) &&
       state.hasStarted &&
       !weeklyEndHandledRef.current
@@ -70,6 +103,8 @@ export function SimulationPage() {
     window.addEventListener("resize", checkScroll);
     return () => window.removeEventListener("resize", checkScroll);
   }, [checkScroll]);
+
+  const isRealtime = state.scenario === "realtime";
 
   // Timeline: 6 calendar days anchored to state.startTime
   const totalDays = 6;
@@ -161,9 +196,18 @@ export function SimulationPage() {
     <div className={`h-[calc(100vh-3rem)] flex flex-col -m-4 relative transition-colors duration-200 ${rootBg}`}>
       {/* Barra de título */}
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center py-3 pointer-events-none">
-        <h1 className={`text-[18px] tracking-wider ${isDark ? "text-cyan-400" : "text-blue-800 font-bold"}`} style={{ textShadow: isDark ? "0 0 20px #00e5ff60" : "none" }}>
-          Panel de Simulación Logística Global
-        </h1>
+        <div className="flex items-center gap-3">
+          <h1 className={`text-[18px] tracking-wider ${isDark ? "text-cyan-400" : "text-blue-800 font-bold"}`} style={{ textShadow: isDark ? "0 0 20px #00e5ff60" : "none" }}>
+            {isRealtime ? "Simulación en Tiempo Real" : "Panel de Simulación Logística Global"}
+          </h1>
+          {/* EN VIVO badge */}
+          {isRealtime && state.running && !state.realtimeFastForwarding && (
+            <span className="pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse">
+              <Radio className="w-3 h-3" />
+              EN VIVO
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 flex relative overflow-hidden">
@@ -189,7 +233,33 @@ export function SimulationPage() {
             </div>
 
             {/* Línea de tiempo */}
-            {viewMode === "simulation" && state.scenario !== "collapse" && (
+            {/* Reloj en vivo para modo realtime */}
+            {viewMode === "simulation" && isRealtime && state.hasStarted && (
+            <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className={`w-3.5 h-3.5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />
+                <div className={`text-[12px] ${panelText}`}>Tiempo Real</div>
+              </div>
+              <div className={`text-[16px] font-mono tabular-nums ${isDark ? "text-white" : "text-[#0f172a]"}`} style={{ textShadow: isDark ? "0 0 10px #00e5ff30" : "none" }}>
+                {formatRealtimeClock(state.currentTime)}
+              </div>
+              {state.realtimeFastForwarding && (
+                <div className={`text-[10px] mt-1 flex items-center gap-1 ${isDark ? "text-amber-400" : "text-amber-600"}`}>
+                  <div className={`w-2 h-2 rounded-full border border-t-transparent animate-spin ${isDark ? "border-amber-400" : "border-amber-600"}`} />
+                  Avanzando al presente...
+                </div>
+              )}
+              {!state.realtimeFastForwarding && state.running && (
+                <div className={`text-[10px] mt-1 flex items-center gap-1 ${isDark ? "text-green-400" : "text-green-600"}`}>
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  Sincronizado
+                </div>
+              )}
+            </div>
+            )}
+
+            {/* Timeline de 6 días para modos weekly/collapse */}
+            {viewMode === "simulation" && !isRealtime && state.scenario !== "collapse" && (
             <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
               <div className={`text-[12px] mb-3 ${panelText}`}>
                 Simulación {state.scenario === "weekly" ? "5 Días" : "1 Día"}
@@ -270,30 +340,31 @@ export function SimulationPage() {
               </div>
             </div>
 
-            {/* Escenarios */}
             <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
               <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
               {([
-                { key: "tracking", label: "Simulación en tiempo real" },
+                { key: "realtime", label: "Simulación en tiempo real" },
                 { key: "weekly", label: "Simulación de 5 días" },
                 { key: "collapse", label: "Hasta el Colapso" },
               ] as const).map(s => (
                 <button
                   key={s.key}
                   onClick={() => {
-                    if (s.key === "tracking") {
-                      setViewMode("tracking");
+                    if (s.key === "realtime") {
+                      setViewMode("simulation");
+                      void startRealtime();
                     } else {
                       setViewMode("simulation");
                       setScenario(s.key);
                     }
                   }}
                   className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${
-                    (s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
+                    (s.key === "realtime" ? isRealtime : viewMode === "simulation" && state.scenario === s.key)
                       ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
                       : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
                   }`}
                 >
+                  {s.key === "realtime" && <Radio className="inline w-3 h-3 mr-1" />}
                   {s.label}
                 </button>
               ))}
@@ -330,26 +401,28 @@ export function SimulationPage() {
             <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
               <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
               {([
-                { key: "tracking", label: "Simulación en tiempo real" },
+                { key: "realtime", label: "Simulación en tiempo real" },
                 { key: "weekly", label: "Simulación de 5 días" },
                 { key: "collapse", label: "Hasta el Colapso" },
               ] as const).map(s => (
                 <button
                   key={s.key}
                   onClick={() => {
-                    if (s.key === "tracking") {
-                      setViewMode("tracking");
+                    if (s.key === "realtime") {
+                      setViewMode("simulation");
+                      void startRealtime();
                     } else {
                       setViewMode("simulation");
                       setScenario(s.key);
                     }
                   }}
                   className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${
-                    (s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
+                    (s.key === "realtime" ? isRealtime : viewMode === "simulation" && state.scenario === s.key)
                       ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
                       : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
                   }`}
                 >
+                  {s.key === "realtime" && <Radio className="inline w-3 h-3 mr-1" />}
                   {s.label}
                 </button>
               ))}
@@ -419,7 +492,7 @@ export function SimulationPage() {
                 <div className={`w-full h-3 rounded-full overflow-hidden ${isDark ? "bg-[#1e293b]" : "bg-[#e2e8f0]"}`}>
                   <div
                     className={`h-full rounded-full transition-all duration-1000 ease-linear ${isDark ? "bg-gradient-to-r from-cyan-600 to-cyan-400" : "bg-gradient-to-r from-blue-500 to-blue-400"}`}
-                    style={{ width: `${((INITIAL_WAIT_SECONDS - waitCountdown) / INITIAL_WAIT_SECONDS) * 100}%` }}
+                    style={{ width: `${(((isRealtime ? 30 : 60) - waitCountdown) / (isRealtime ? 30 : 60)) * 100}%` }}
                   />
                 </div>
               </div>
@@ -433,8 +506,89 @@ export function SimulationPage() {
                   </span>
                 </div>
                 <div className={`text-[10px] space-y-0.5 ${isDark ? "text-[#94a3b8]" : "text-[#64748b]"}`}>
-                  <div>Ventana de consumo: 4 horas simuladas cada 2 minutos reales</div>
-                  <div>Velocidad: 2 minutos simulados por cada segundo real</div>
+                  {isRealtime ? (
+                    <>
+                      <div>Modo: Tiempo Real (velocidad 1:1)</div>
+                      <div>Datos: 24h pasadas + 6h futuras</div>
+                    </>
+                  ) : (
+                    <>
+                      <div>Ventana de consumo: 4 horas simuladas cada 2 minutos reales</div>
+                      <div>Velocidad: 2 minutos simulados por cada segundo real</div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className={`flex items-center justify-end px-6 py-3 border-t ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
+              <button
+                onClick={cancelSimulation}
+                className={`px-4 py-1.5 rounded-lg text-[12px] border transition-colors ${isDark ? "border-red-500/30 text-red-400 hover:bg-red-500/10" : "border-red-300 text-red-600 hover:bg-red-50"}`}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Realtime fast-forward overlay — shown while advancing to present */}
+      {isRealtime && state.realtimeFastForwarding && state.running && (
+        <div className="absolute inset-0 z-50 bg-black/60 flex items-center justify-center">
+          <div className={`border rounded-2xl w-full max-w-md mx-4 overflow-hidden ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-white border-[#cbd5e1]"}`}>
+            {/* Header */}
+            <div className={`flex items-center gap-3 px-6 py-4 border-b ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
+              <div className={`w-5 h-5 rounded-full border-2 border-t-transparent animate-spin ${isDark ? "border-amber-400" : "border-amber-600"}`} />
+              <h2 className={`text-[16px] font-medium ${isDark ? "text-[#e2e8f0]" : "text-[#0f172a]"}`}>
+                Avanzando al presente...
+              </h2>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-5 space-y-4">
+              <p className={`text-[13px] ${isDark ? "text-[#94a3b8]" : "text-[#475569]"}`}>
+                El sistema está procesando las últimas 24 horas de datos para sincronizar con la hora real.
+                Una vez alcanzado el presente, la simulación continuará en tiempo real.
+              </p>
+
+              {/* Progress */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-[11px] ${isDark ? "text-[#64748b]" : "text-[#94a3b8]"}`}>
+                    Progreso
+                  </span>
+                  <span className={`text-[12px] font-mono ${isDark ? "text-amber-400" : "text-amber-600"}`}>
+                    {formatRealtimeClock(state.currentTime)}
+                  </span>
+                </div>
+                <div className={`w-full h-3 rounded-full overflow-hidden ${isDark ? "bg-[#1e293b]" : "bg-[#e2e8f0]"}`}>
+                  {(() => {
+                    const total = (state.realtimeAnchorMs || Date.now()) - state.startTime;
+                    const elapsed = state.currentTime - state.startTime;
+                    const pct = total > 0 ? Math.min(100, (elapsed / total) * 100) : 0;
+                    return (
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ease-linear ${isDark ? "bg-gradient-to-r from-amber-600 to-amber-400" : "bg-gradient-to-r from-amber-500 to-amber-400"}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Info box */}
+              <div className={`rounded-xl p-3 border ${isDark ? "border-[#1e293b] bg-[#1e293b]/50" : "border-[#e2e8f0] bg-[#f8fafc]"}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Radio className={`w-3.5 h-3.5 ${isDark ? "text-amber-400" : "text-amber-600"}`} />
+                  <span className={`text-[11px] font-medium ${isDark ? "text-[#e2e8f0]" : "text-[#0f172a]"}`}>
+                    Modo Tiempo Real
+                  </span>
+                </div>
+                <div className={`text-[10px] space-y-0.5 ${isDark ? "text-[#94a3b8]" : "text-[#64748b]"}`}>
+                  <div>Velocidad de avance: 3600x (1h sim / 1s real)</div>
+                  <div>Al llegar al presente: velocidad 1:1</div>
                 </div>
               </div>
             </div>
