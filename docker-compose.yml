@@ -27,10 +27,6 @@ services:
       MYSQL_DATABASE: suitchase
     volumes:
       - mysql-data:/var/lib/mysql
-      # 1. El schema crea las tablas
-      - ./Backend/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
-      # 2. El data inserta los datos (asegúrate de que la ruta sea correcta)
-      - ./Backend/data.sql:/docker-entrypoint-initdb.d/2-data.sql
     networks:
       - suitchase-net
     healthcheck:
