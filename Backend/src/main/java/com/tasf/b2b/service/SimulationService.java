@@ -38,6 +38,18 @@ public class SimulationService {
     /** Evita dos hilos @Async procesando la misma simulación (p. ej. al reanudar). */
     private final KeySetView<Long, Boolean> simulacionesEnEjecucion = ConcurrentHashMap.newKeySet();
 
+    /** Almacena el inputMaestro para cada simulación activa (mantiene estado entre pausas/reanudaciones). */
+    private final Map<Long, PlanificationProblemInput> inputMaestroMap = new ConcurrentHashMap<>();
+    
+    /** Almacena los aeropuertos para cada simulación (para reutilizar entre pausas). */
+    private final Map<Long, List<AeropuertoAlgoritmo>> aeropuertosMap = new ConcurrentHashMap<>();
+    
+    /** Almacena los vuelos para cada simulación (para reutilizar entre pausas). */
+    private final Map<Long, List<VueloAlgoritmo>> vuelosMap = new ConcurrentHashMap<>();
+    
+    /** Almacena los índices de vuelos para cada simulación (para reutilizar entre pausas). */
+    private final Map<Long, Map<String, VueloAlgoritmo>> indiceVuelosMap = new ConcurrentHashMap<>();
+
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
     private SimulationService self;
@@ -83,7 +95,7 @@ public class SimulationService {
                 .orElseThrow(() -> new RuntimeException("Simulación no encontrada"));
         sim.setEstado(EstadoSimulacion.PAUSADA);
         simulacionRepository.save(sim);
-        log.info("Simulación {} pausada", simulacionId);
+        log.info("Simulación {} pausada (inputMaestro preservado en memoria)", simulacionId);
     }
 
     // ========================================================
@@ -102,25 +114,31 @@ public class SimulationService {
             throw new RuntimeException("Solo se puede reanudar una simulación PAUSADA");
         }
 
+        // Verificar que el inputMaestro está en memoria
+        if (!inputMaestroMap.containsKey(simulacionId)) {
+            throw new RuntimeException("No se encontró el estado del inputMaestro para la simulación " + simulacionId + ". Se requiere reiniciar la simulación.");
+        }
+
         sim.setEstado(EstadoSimulacion.EJECUTANDO);
         simulacionRepository.save(sim);
         pauseFlags.put(simulacionId, false);
 
-        // Relanzar el loop asíncrono desde donde se quedó vía proxy Spring para habilitar @Async
-        self.ejecutarSimulacionAsync(simulacionId);
-        log.info("Simulación {} reanudada desde bloque {}", simulacionId, sim.getBloqueActual());
+        // NO relanzar el loop asíncrono; solo desestablecemos el flag de pausa
+        // El loop que estaba pausado continuará desde donde se quedó
+        log.info("Simulación {} reanudada desde bloque {} (inputMaestro reutilizado)", simulacionId, sim.getBloqueActual());
     }
 
     // ========================================================
     // CANCELAR
     // ========================================================
     public void cancelarSimulacion(Long simulacionId) {
-        pauseFlags.put(simulacionId, true);
+        pauseFlags.remove(simulacionId); // Remover para marcar como cancelada
         SimulacionEntity sim = simulacionRepository.findById(simulacionId)
                 .orElseThrow(() -> new RuntimeException("Simulación no encontrada"));
         sim.setEstado(EstadoSimulacion.CANCELADA);
         simulacionRepository.save(sim);
-        pauseFlags.remove(simulacionId);
+        
+        // Limpiar mapas de estado (se limpiarán en el finally de ejecutarSimulacionAsync)
         log.info("Simulación {} cancelada", simulacionId);
     }
 
@@ -153,10 +171,14 @@ public class SimulationService {
         try {
             ejecutarSimulacionAsyncInterno(simulacionId);
         } finally {
-            // Only finalize lectura when simulation is cancelled or completed, not when paused
+            // Limpiar solo cuando se cancela o finaliza; NO limpiar en pausa
             SimulacionEntity sim = simulacionRepository.findById(simulacionId).orElse(null);
-            if (sim == null || sim.getEstado() != EstadoSimulacion.PAUSADA) {
+            if (sim == null || (sim.getEstado() != EstadoSimulacion.PAUSADA && sim.getEstado() != EstadoSimulacion.EJECUTANDO)) {
                 envioFileReader.finalizarLecturaSimulacion(simulacionId);
+                inputMaestroMap.remove(simulacionId); // Limpiar inputMaestro solo en cancelación/finalización
+                aeropuertosMap.remove(simulacionId);
+                vuelosMap.remove(simulacionId);
+                indiceVuelosMap.remove(simulacionId);
             }
             simulacionesEnEjecucion.remove(simulacionId);
         }
@@ -168,37 +190,53 @@ public class SimulationService {
 
         int sa = sim.getSaltoAlgoritmoSa();
         int ta = sim.getTiempoAlgoritmoTa();
+        int bloqueActual = sim.getBloqueActual();
 
         TimeUtils.configurarRangoSimulacion(sim.getFechaInicioSim(), sim.getFechaFinSim());
+        if(bloqueActual == 0) {
+            envioFileReader.iniciarLecturaSimulacion(simulacionId, sim.getFechaInicioSim(), sim.getFechaFinSim());
+        }
 
-        // --- Cargar aeropuertos y vuelos (datos ligeros, se cargan una vez) ---
-        List<AeropuertoAlgoritmo> aeropuertos = aeropuertoRepository.findAll().stream()
-                .map(dataMapper::toAeropuertoAlgoritmo)
-                .collect(Collectors.toList());
+        // --- Obtener o crear inputMaestro (reutilizar si se está reanudando) ---
+        PlanificationProblemInput inputMaestro = inputMaestroMap.get(simulacionId);
+        List<AeropuertoAlgoritmo> aeropuertos = aeropuertosMap.get(simulacionId);
+        List<VueloAlgoritmo> vuelos = vuelosMap.get(simulacionId);
+        Map<String, VueloAlgoritmo> indiceVuelos = indiceVuelosMap.get(simulacionId);
+        
+        if (inputMaestro == null) {
+            // Primera ejecución: cargar aeropuertos y vuelos
+            aeropuertos = aeropuertoRepository.findAll().stream()
+                    .map(dataMapper::toAeropuertoAlgoritmo)
+                    .collect(Collectors.toList());
 
-        List<VueloAlgoritmo> vuelos = vueloRepository.findAll().stream()
-                .map(dataMapper::toVueloAlgoritmo)
-                .collect(Collectors.toList());
+            vuelos = vueloRepository.findAll().stream()
+                    .map(dataMapper::toVueloAlgoritmo)
+                    .collect(Collectors.toList());
 
-        // Construir input maestro (aeropuertos + vuelos + estado global compartido)
-        PlanificationProblemInput inputMaestro = new PlanificationProblemInput();
-        aeropuertos.forEach(inputMaestro::agregarAeropuerto);
-        vuelos.forEach(inputMaestro::agregarVuelo);
+            // Construir input maestro (aeropuertos + vuelos + estado global compartido)
+            inputMaestro = new PlanificationProblemInput();
+            aeropuertos.forEach(inputMaestro::agregarAeropuerto);
+            vuelos.forEach(inputMaestro::agregarVuelo);
+            
+            // Preparar índice de vuelos
+            indiceVuelos = new HashMap<>();
+            prepararIndiceVuelos(indiceVuelos, vuelos, sim.getFechaInicioSim(), sim.getFechaFinSim());
+            
+            // Guardar en los mapas para reutilizar en pausas/reanudaciones
+            inputMaestroMap.put(simulacionId, inputMaestro);
+            aeropuertosMap.put(simulacionId, aeropuertos);
+            vuelosMap.put(simulacionId, vuelos);
+            indiceVuelosMap.put(simulacionId, indiceVuelos);
+            log.info("InputMaestro creado para simulación {}", simulacionId);
+        } else {
+            log.info("InputMaestro reutilizado para simulación {} (continuando desde bloque {})", simulacionId, bloqueActual);
+        }
 
         Map<String, AeropuertoAlgoritmo> mapaAeropuertos = aeropuertos.stream()
                 .collect(Collectors.toMap(AeropuertoAlgoritmo::getOaci, a -> a, (a, b) -> a));
-        Map<String, VueloAlgoritmo> indiceVuelos = new HashMap<>();
-        prepararIndiceVuelos(indiceVuelos, vuelos, sim.getFechaInicioSim(), sim.getFechaFinSim());
 
         // Cursor: posición actual en el tiempo simulado
         LocalDateTime cursor = sim.getCursorTemporal();
-        int bloqueActual = sim.getBloqueActual();
-
-        // Only load envios if it's the first time running the simulation (bloqueActual is 0)
-        // On resume, reuse the already loaded data to avoid reloading all files
-        if (bloqueActual == 0) {
-            envioFileReader.iniciarLecturaSimulacion(simulacionId, sim.getFechaInicioSim(), sim.getFechaFinSim());
-        }
 
         log.info("Simulación {} iniciada/reanudada. Cursor: {}, Bloque: {}/{}",
                 simulacionId, cursor, bloqueActual, sim.getTotalBloquesEstimados());
@@ -217,9 +255,21 @@ public class SimulationService {
 
             // ¿Se pidió pausa o cancelación?
             Boolean paused = pauseFlags.get(simulacionId);
-            if (paused == null || paused) {
-                log.info("Simulación {} detenida en bloque {}", simulacionId, bloqueActual);
-                return; // Sale del hilo async, el estado ya está en PAUSADA/CANCELADA
+            if (paused == null) {
+                // Simulación fue cancelada/finalizada; salir del loop
+                log.info("Simulación {} - bandera de pausa removida, finalizando", simulacionId);
+                break;
+            }
+            
+            if (paused) {
+                // PAUSA: esperar aquí sin romper el loop, preservando inputMaestro
+                log.info("Simulación {} pausada en bloque {}. Esperando...", simulacionId, bloqueActual);
+                if (!esperarHastaDespausa(simulacionId)) {
+                    // La simulación fue cancelada durante la pausa
+                    break;
+                }
+                log.info("Simulación {} reanudada. Continuando desde bloque {}", simulacionId, bloqueActual);
+                continue; // Volver al inicio del loop
             }
 
             // --- Recargar K desde DB (por si cambió en caliente) ---
@@ -271,9 +321,14 @@ public class SimulationService {
 
                 // ¿Se pidió pausa o cancelación durante la ejecución del algoritmo?
                 paused = pauseFlags.get(simulacionId);
-                if (paused == null || paused) {
+                if (paused != null && paused) {
                     log.info("Simulación {} pausada/cancelada tras la planificación en el bloque {}. Descartando guardado.", simulacionId, bloqueActual);
-                    return;
+                    // NO hacer return; dejar que continúe el loop y entre a la pausa
+                    continue;
+                }
+                if (paused == null) {
+                    log.info("Simulación {} cancelada durante la planificación en bloque {}", simulacionId, bloqueActual);
+                    break;
                 }
 
                 long duracion = System.currentTimeMillis() - t0;
@@ -305,9 +360,14 @@ public class SimulationService {
                         String.format("%.2f", solucion.getPromedioConsumoSLA()), duracion);
             } else {
                 paused = pauseFlags.get(simulacionId);
-                if (paused == null || paused) {
-                    log.info("Simulación {} pausada/cancelada en el bloque {} (vacío).", simulacionId, bloqueActual);
-                    return;
+                if (paused != null && paused) {
+                    log.info("Simulación {} pausada en el bloque {} (vacío).", simulacionId, bloqueActual);
+                    // NO hacer return; dejar que continúe el loop y entre a la pausa
+                    continue;
+                }
+                if (paused == null) {
+                    log.info("Simulación {} cancelada en bloque {} (vacío).", simulacionId, bloqueActual);
+                    break;
                 }
                 bloqueRes.setDuracionMs(System.currentTimeMillis() - t0);
                 log.debug("Bloque {}/{} — sin envíos (K={}, Sc={}min), cursor {}",
@@ -587,13 +647,18 @@ public class SimulationService {
 
     /**
      * Espera hasta un instante de reloj real (interruptible por pausa/cancelación).
-     * @return false si la simulación fue pausada o cancelada durante la espera
+     * @return false si la simulación fue cancelada durante la espera (no pausa)
      */
     private boolean esperarHastaInterruptible(Long simulacionId, long targetEpochMs) {
         while (true) {
             Boolean paused = pauseFlags.get(simulacionId);
-            if (paused == null || paused) {
+            if (paused == null) {
+                // Fue cancelada
                 return false;
+            }
+            if (paused) {
+                // Fue pausada; retornar true para que el loop continúe y entre a esperarHastaDespausa
+                return true;
             }
             long remaining = targetEpochMs - System.currentTimeMillis();
             if (remaining <= 0) {
@@ -604,6 +669,31 @@ public class SimulationService {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.warn("Simulación {} — espera interrumpida", simulacionId);
+                return false;
+            }
+        }
+    }
+
+    /**
+     * Espera a que la simulación sea reanudada (pausa activa).
+     * @return false si la simulación fue cancelada durante la pausa
+     */
+    private boolean esperarHastaDespausa(Long simulacionId) {
+        while (true) {
+            Boolean paused = pauseFlags.get(simulacionId);
+            if (paused == null) {
+                // Fue cancelada
+                return false;
+            }
+            if (!paused) {
+                // Fue reanudada
+                return true;
+            }
+            try {
+                Thread.sleep(500L); // Chequear cada 500ms si se reanudó
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Simulación {} — espera de despausa interrumpida", simulacionId);
                 return false;
             }
         }
