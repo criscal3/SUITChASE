@@ -43,7 +43,8 @@ const statusConfig: Record<string, { color: string; bg: string; lightBg: string;
 function formatTimestamp(isoStr: string): string {
   if (!isoStr) return "—";
   try {
-    const d = new Date(isoStr);
+    const utc = isoStr.endsWith('Z') ? isoStr : isoStr + 'Z';
+    const d = new Date(utc);
     const day = String(d.getDate()).padStart(2, "0");
     const month = String(d.getMonth() + 1).padStart(2, "0");
     const year = d.getFullYear();
@@ -76,6 +77,7 @@ export function AirlineTracking() {
           country: a.pais,
           continent: a.continente || "America",
           timezone: `UTC${a.gmt >= 0 ? `+${a.gmt}` : a.gmt}`,
+          gmt: a.gmt,
           lat: a.latitud,
           lng: a.longitud,
           warehouseCapacity: a.capacidadAlmacen,
@@ -202,49 +204,83 @@ export function AirlineTracking() {
                   {selectedPedido.nombreAerolinea} | {selectedPedido.cantidadMaletas} maletas
                 </div>
 
-                {/* Línea de tiempo de la ruta */}
-                <div className="space-y-0 max-h-48 overflow-y-auto">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
-                    <div className="flex-1">
-                      <div className={`text-[10px] font-semibold ${titleCls}`}>
-                        Origen: {getCity(selectedPedido.origenOaci)} ({selectedPedido.origenOaci})
-                      </div>
-                      <div className={`text-[9px] ${mutedCls}`}>
-                        Registro: {formatTimestamp(selectedPedido.fechaHoraRegistro)}
-                      </div>
-                    </div>
-                  </div>
+                {/* Ruta / Línea de tiempo con huso horario por aeropuerto */}
+                {(() => {
+                  const tramos = selectedPedido.tramos || [];
+                  const fmtLocal = (isoStr: string, gmtOffset: number) => {
+                    if (!isoStr) return "—";
+                    try {
+                      const utc = isoStr.endsWith('Z') ? isoStr : isoStr + 'Z';
+                      const ms = new Date(utc).getTime() + gmtOffset * 3600_000;
+                      const d = new Date(ms);
+                      return `${String(d.getUTCDate()).padStart(2,"0")}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
+                    } catch { return "—"; }
+                  };
+                  const getGmt = (oaci: string) => airportsList.find((a: any) => a.code === oaci)?.gmt ?? 0;
+                  const gmtLabel = (g: number) => `GMT${g >= 0 ? `+${g}` : g}`;
+                  const registroAirport = selectedPedido.operarioOaci || selectedPedido.origenOaci;
+                  const registroGmt = getGmt(registroAirport);
 
-                  {selectedPedido.tramos && selectedPedido.tramos.map((leg, i) => {
-                    const isCompleted = leg.estado === "COMPLETADO";
-                    const isCurrent = leg.estado === "EN_VUELO";
-                    return (
-                      <React.Fragment key={i}>
-                        <div className={`ml-[4px] w-[2px] h-3.5 ${trackLineBg} relative`}>
-                          {(isCompleted || isCurrent) && (
-                            <div className="absolute inset-0 bg-cyan-500" style={{ height: isCurrent ? "50%" : "100%" }} />
+                  return (
+                    <div className="space-y-0 mt-2 max-h-56 overflow-y-auto">
+                      {/* Nodo origen */}
+                      <div className="flex items-start gap-2">
+                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
+                        <div className="flex-1">
+                          <div className={`text-[10px] font-semibold ${titleCls}`}>
+                            {getCity(selectedPedido.origenOaci)} ({selectedPedido.origenOaci})
+                          </div>
+                          <div className={`text-[9px] ${mutedCls}`}>
+                            Registro: {fmtLocal(selectedPedido.fechaHoraRegistro, registroGmt)} {gmtLabel(registroGmt)}
+                          </div>
+                          {tramos.length > 0 && (
+                            <div className={`text-[9px] ${isDark ? "text-cyan-400/80" : "text-cyan-700"}`}>
+                              Salida: {fmtLocal(tramos[0].fechaSalida, getGmt(tramos[0].origenOaci))} {gmtLabel(getGmt(tramos[0].origenOaci))}
+                            </div>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isCompleted ? "bg-green-500" : isCurrent ? "bg-cyan-500 animate-pulse" : dotInactive}`} />
-                          <div className="flex-1">
-                            <div className={`text-[10px] font-semibold ${titleCls}`}>
-                              Tramo {i+1}: {getCity(leg.destinoOaci)} ({leg.destinoOaci})
-                            </div>
-                            <div className={`text-[9px] ${mutedCls}`}>
-                              Salida: {formatTimestamp(leg.fechaSalida)} | Llegada: {formatTimestamp(leg.fechaLlegada)}
-                            </div>
-                          </div>
-                        </div>
-                      </React.Fragment>
-                    );
-                  })}
+                      </div>
 
-                  {(!selectedPedido.tramos || selectedPedido.tramos.length === 0) && (
-                    <div className={`pl-5 text-[10px] py-2 ${dimCls}`}>Sin ruta planificada</div>
-                  )}
-                </div>
+                      {/* Nodos intermedios y final */}
+                      {tramos.map((leg: any, i: number) => {
+                        const isCompleted = leg.estado === "COMPLETADO";
+                        const isCurrent = leg.estado === "EN_VUELO";
+                        const isLast = i === tramos.length - 1;
+                        const arriGmt = getGmt(leg.destinoOaci);
+                        const nextLeg = !isLast ? tramos[i + 1] : null;
+                        return (
+                          <React.Fragment key={i}>
+                            <div className={`ml-[4px] w-[2px] h-3.5 ${trackLineBg} relative`}>
+                              {(isCompleted || isCurrent) && (
+                                <div className="absolute inset-0 bg-cyan-500" style={{ height: isCurrent ? "50%" : "100%" }} />
+                              )}
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isCompleted ? "bg-green-500" : isCurrent ? "bg-cyan-500 animate-pulse" : dotInactive}`} />
+                              <div className="flex-1">
+                                <div className={`text-[10px] font-semibold ${titleCls}`}>
+                                  {getCity(leg.destinoOaci)} ({leg.destinoOaci})
+                                </div>
+                                <div className={`text-[9px] ${mutedCls}`}>
+                                  Llegada: {fmtLocal(leg.fechaLlegada, arriGmt)} {gmtLabel(arriGmt)}
+                                </div>
+                                {!isLast && nextLeg && (
+                                  <div className={`text-[9px] ${isDark ? "text-cyan-400/80" : "text-cyan-700"}`}>
+                                    Salida: {fmtLocal(nextLeg.fechaSalida, arriGmt)} {gmtLabel(arriGmt)}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </React.Fragment>
+                        );
+                      })}
+
+                      {tramos.length === 0 && (
+                        <div className={`pl-5 text-[10px] py-2 ${dimCls}`}>Sin ruta planificada</div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <button
                   onClick={handleClear}

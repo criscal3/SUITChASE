@@ -52,9 +52,10 @@ public class DataMapperService {
         envio.setOrigenOaci(entity.getOrigenOaci());
         envio.setDestinoOaci(entity.getDestinoOaci());
 
-        int gmtOrigen = aeropuertoRepository.findById(entity.getOrigenOaci())
-                .map(AeropuertoEntity::getGmt).orElse(0);
-        envio.setFechaHoraRegistro(entity.getFechaHoraRegistro().minusHours(gmtOrigen));
+        // fechaHoraRegistro ya está en UTC (guardado con LocalDateTime.now() en servidor UTC).
+        // NO aplicar offset de GMT del origen: los vuelos sí están en hora local y necesitan
+        // conversión a UTC, pero el registro ya es UTC.
+        envio.setFechaHoraRegistro(entity.getFechaHoraRegistro());
 
         envio.setCantidadMaletas(entity.getCantidadMaletas());
         envio.setClienteId(entity.getAerolineaId() != null ? String.valueOf(entity.getAerolineaId()) : "UNK");
@@ -67,9 +68,10 @@ public class DataMapperService {
         envio.setOrigenOaci(entity.getOrigenOaci());
         envio.setDestinoOaci(entity.getDestinoOaci());
 
-        int gmtOrigen = aeropuertoRepository.findById(entity.getOrigenOaci())
-                .map(AeropuertoEntity::getGmt).orElse(0);
-        envio.setFechaHoraRegistro(entity.getFechaHoraRegistro().minusHours(gmtOrigen));
+        // fechaHoraRegistro ya está en UTC (guardado con LocalDateTime.now() en servidor UTC).
+        // NO aplicar offset de GMT del origen: los vuelos sí están en hora local y necesitan
+        // conversión a UTC, pero el registro ya es UTC.
+        envio.setFechaHoraRegistro(entity.getFechaHoraRegistro());
 
         envio.setCantidadMaletas(entity.getCantidadMaletas());
         envio.setClienteId(entity.getAerolineaId() != null ? String.valueOf(entity.getAerolineaId()) : "UNK");

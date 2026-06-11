@@ -16,12 +16,12 @@ import { api } from "../services/api";
 import { ScrollArea } from "./ui/scroll-area";
 
 const statusConfigRT: Record<string, { color: string; bg: string; lightBg: string; lightColor: string; label: string; icon: React.ReactNode }> = {
-  PENDIENTE:   { color: "text-amber-500",  bg: "bg-amber-500/20",  lightBg: "bg-amber-100", lightColor: "text-amber-700", label: "Sin vuelo",   icon: <Clock className="w-3 h-3" /> },
-  PLANIFICADO: { color: "text-blue-500",   bg: "bg-blue-500/20",   lightBg: "bg-blue-100",  lightColor: "text-blue-800",  label: "Asignado",    icon: <CheckCircle className="w-3 h-3" /> },
-  EN_RUTA:     { color: "text-cyan-500",   bg: "bg-cyan-500/20",   lightBg: "bg-cyan-100",  lightColor: "text-cyan-800",  label: "En ruta",     icon: <Plane className="w-3 h-3" /> },
-  ENTREGADO:   { color: "text-green-500",  bg: "bg-green-500/20",  lightBg: "bg-green-100", lightColor: "text-green-700", label: "Entregado",   icon: <CheckCircle className="w-3 h-3" /> },
-  SIN_RUTA:    { color: "text-red-500",    bg: "bg-red-500/20",    lightBg: "bg-red-100",   lightColor: "text-red-700",   label: "Sin ruta",    icon: <AlertTriangle className="w-3 h-3" /> },
-  COLAPSO:     { color: "text-red-500",    bg: "bg-red-500/20",    lightBg: "bg-red-100",   lightColor: "text-red-700",   label: "Colapso",     icon: <AlertTriangle className="w-3 h-3" /> },
+  PENDIENTE: { color: "text-amber-500", bg: "bg-amber-500/20", lightBg: "bg-amber-100", lightColor: "text-amber-700", label: "Sin vuelo", icon: <Clock className="w-3 h-3" /> },
+  PLANIFICADO: { color: "text-blue-500", bg: "bg-blue-500/20", lightBg: "bg-blue-100", lightColor: "text-blue-800", label: "Asignado", icon: <CheckCircle className="w-3 h-3" /> },
+  EN_RUTA: { color: "text-cyan-500", bg: "bg-cyan-500/20", lightBg: "bg-cyan-100", lightColor: "text-cyan-800", label: "En ruta", icon: <Plane className="w-3 h-3" /> },
+  ENTREGADO: { color: "text-green-500", bg: "bg-green-500/20", lightBg: "bg-green-100", lightColor: "text-green-700", label: "Entregado", icon: <CheckCircle className="w-3 h-3" /> },
+  SIN_RUTA: { color: "text-red-500", bg: "bg-red-500/20", lightBg: "bg-red-100", lightColor: "text-red-700", label: "Sin ruta", icon: <AlertTriangle className="w-3 h-3" /> },
+  COLAPSO: { color: "text-red-500", bg: "bg-red-500/20", lightBg: "bg-red-100", lightColor: "text-red-700", label: "Colapso", icon: <AlertTriangle className="w-3 h-3" /> },
 };
 
 function RealTimeStatCard({ label, value, colorClass = "", isDark }: { label: string; value: number; colorClass?: string; isDark: boolean }) {
@@ -49,7 +49,7 @@ export function SimulationPage() {
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [viewMode, setViewMode] = useState<"simulation" | "tracking">("simulation");
-  
+
   // Real-time operations state
   const [realTimePedidos, setRealTimePedidos] = useState<any[]>([]);
   const [realTimeResumen, setRealTimeResumen] = useState<any | null>(null);
@@ -57,6 +57,8 @@ export function SimulationPage() {
   const [realTimeSearch, setRealTimeSearch] = useState("");
   const [showRealTimeRightPanel, setShowRealTimeRightPanel] = useState(true);
   const [realTimeAirports, setRealTimeAirports] = useState<any[]>([]);
+  const [selectedFlightKey, setSelectedFlightKey] = useState<string | null>(null);
+  const [selectedFlightPedidoIds, setSelectedFlightPedidoIds] = useState<string[] | null>(null);
 
   // Load real-time airports
   useEffect(() => {
@@ -68,6 +70,7 @@ export function SimulationPage() {
           country: a.pais,
           continent: a.continente || "America",
           timezone: `UTC${a.gmt >= 0 ? `+${a.gmt}` : a.gmt}`,
+          gmt: a.gmt,
           lat: a.latitud,
           lng: a.longitud,
           warehouseCapacity: a.capacidadAlmacen,
@@ -98,11 +101,7 @@ export function SimulationPage() {
         setRealTimePedidos(prev => {
           const map = new Map(prev.map(p => [p.id, p]));
           lista.forEach(p => {
-            if (["ENTREGADO", "SIN_RUTA", "COLAPSO"].includes(p.estado)) {
-              map.delete(p.id);
-            } else {
-              map.set(p.id, p);
-            }
+            map.set(p.id, p);
           });
           return Array.from(map.values()).sort((a, b) => new Date(b.fechaHoraRegistro).getTime() - new Date(a.fechaHoraRegistro).getTime());
         });
@@ -255,216 +254,193 @@ export function SimulationPage() {
       <div className="flex-1 flex relative overflow-hidden">
         {/* Panel izquierdo - solo visible en modo simulación */}
         {viewMode === "simulation" && (
-        <div className="absolute left-4 top-2 bottom-4 z-10 w-56 pointer-events-auto flex flex-col">
-          {/* Fade top */}
-          {canScrollUp && (
-            <div className={`absolute top-0 left-0 right-0 h-8 z-10 pointer-events-none rounded-t-xl ${isDark ? "bg-gradient-to-b from-[#1a2340ee] to-transparent" : "bg-gradient-to-b from-[#c8d0dcea] to-transparent"}`} />
-          )}
-          <div
-            ref={scrollRef}
-            onScroll={checkScroll}
-            className="flex-1 flex flex-col gap-3 overflow-y-auto hide-scrollbar"
-            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-          >
-            {/* Spacer top for centering */}
-            <div className="shrink-0 mt-auto" />
-            {/* Estado */}
-            <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-              <h4 className={`text-[12px] mb-2 ${panelText}`}>Estado</h4>
-              <OccupancyLegend isDark={isDark} subText={subText} />
-            </div>
-
-            {/* Línea de tiempo */}
-            {viewMode === "simulation" && state.scenario !== "collapse" && (
-            <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-              <div className={`text-[12px] mb-3 ${panelText}`}>
-                Simulación {state.scenario === "weekly" ? "5 Días" : "1 Día"}
-              </div>
-              <div className="space-y-1">
-                {days.map(d => {
-                  const isActive = currentCalDay === d;
-                  const isPast = currentCalDay > d;
-                  
-                  // timestamp for this day's label
-                  const dayTs = startDayFloor + (d - 1) * 86400000;
-                  const timeStr = isActive
-                    ? ` ${String(nowDate.getUTCHours()).padStart(2,"0")}:${String(nowDate.getUTCMinutes()).padStart(2,"0")}`
-                    : "";
-                  return (
-                    <div key={d} className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full shrink-0 ${
-                        isActive ? (isDark ? "bg-cyan-400 animate-pulse" : "bg-blue-600 animate-pulse") : isPast ? (isDark ? "bg-cyan-400" : "bg-blue-600") : isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"
-                      }`} />
-                      <div className={`flex-1 h-[1px] ${isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"}`}>
-                        {(isActive || isPast) && <div className={`h-full ${isDark ? "bg-cyan-400/30" : "bg-blue-600/30"}`} style={{ width: isActive ? `${currentHourFraction * 100}%` : "100%" }} />}
-                      </div>
-                      <span className={`text-[10px] ${isActive ? (isDark ? "text-cyan-400" : "text-blue-700") : isPast ? isDark ? "text-white/60" : "text-[#475569]" : mutedText}`}>
-                        {formatTimestampShort(dayTs)}{timeStr}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          <div className="absolute left-4 top-2 bottom-4 z-10 w-56 pointer-events-auto flex flex-col">
+            {/* Fade top */}
+            {canScrollUp && (
+              <div className={`absolute top-0 left-0 right-0 h-8 z-10 pointer-events-none rounded-t-xl ${isDark ? "bg-gradient-to-b from-[#1a2340ee] to-transparent" : "bg-gradient-to-b from-[#c8d0dcea] to-transparent"}`} />
             )}
-
-            {/* Tarjetas de estadísticas */}
-            <div className="space-y-2">
-              <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={activeFlightsCount.toLocaleString()} />
-              <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
-            </div>
-
-            {/* Controles */}
-            <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <button
-                  onClick={() => {
-                    if (!state.hasStarted) {
-                      start(pendingStartDate);
-                    } else if (!state.stopped) {
-                      togglePause();
-                    }
-                  }}
-                  className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${
-                    isDark ? "bg-cyan-500/20 border-cyan-500/40 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/30 hover:bg-blue-600/20"
-                  }`}
-                >
-                  {state.running ? <Pause className={`w-5 h-5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} /> : <Play className={`w-5 h-5 ml-0.5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
-                </button>
-                <button
-                  onClick={() => void handleStopSimulation()}
-                  disabled={!state.hasStarted && !state.waitingForFirstBlock}
-                  className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  <Square className="w-3 h-3 text-red-400" />
-                </button>
+            <div
+              ref={scrollRef}
+              onScroll={checkScroll}
+              className="flex-1 flex flex-col gap-3 overflow-y-auto hide-scrollbar"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
+              {/* Spacer top for centering */}
+              <div className="shrink-0 mt-auto" />
+              {/* Estado */}
+              <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
+                <h4 className={`text-[12px] mb-2 ${panelText}`}>Estado</h4>
+                <OccupancyLegend isDark={isDark} subText={subText} />
               </div>
-              {/* Export buttons */}
-              <div className="flex items-center gap-1 mb-2">
-                <button
-                  onClick={() => exportResults("json")}
-                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
-                >
-                  <Download className="w-3 h-3" /> JSON
-                </button>
-                <button
-                  onClick={() => exportResults("csv")}
-                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
-                >
-                  <Download className="w-3 h-3" /> CSV
-                </button>
-              </div>
-            </div>
 
-            {/* Escenarios */}
-            <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
-              <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
-              {([
-                { key: "tracking", label: "Simulación en tiempo real" },
-                { key: "weekly", label: "Simulación de 5 días" },
-                { key: "collapse", label: "Hasta el Colapso" },
-              ] as const).map(s => (
-                <button
-                  key={s.key}
-                  onClick={() => {
-                    if (s.key === "tracking") {
-                      setViewMode("tracking");
-                      setScenario("tracking");
-                    } else {
-                      setViewMode("simulation");
-                      setScenario(s.key);
-                    }
-                  }}
-                  className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${
-                    (s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
+              {/* Línea de tiempo */}
+              {viewMode === "simulation" && state.scenario !== "collapse" && (
+                <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
+                  <div className={`text-[12px] mb-3 ${panelText}`}>
+                    Simulación {state.scenario === "weekly" ? "5 Días" : "1 Día"}
+                  </div>
+                  <div className="space-y-1">
+                    {days.map(d => {
+                      const isActive = currentCalDay === d;
+                      const isPast = currentCalDay > d;
+
+                      // timestamp for this day's label
+                      const dayTs = startDayFloor + (d - 1) * 86400000;
+                      const timeStr = isActive
+                        ? ` ${String(nowDate.getUTCHours()).padStart(2, "0")}:${String(nowDate.getUTCMinutes()).padStart(2, "0")}`
+                        : "";
+                      return (
+                        <div key={d} className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${isActive ? (isDark ? "bg-cyan-400 animate-pulse" : "bg-blue-600 animate-pulse") : isPast ? (isDark ? "bg-cyan-400" : "bg-blue-600") : isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"
+                            }`} />
+                          <div className={`flex-1 h-[1px] ${isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"}`}>
+                            {(isActive || isPast) && <div className={`h-full ${isDark ? "bg-cyan-400/30" : "bg-blue-600/30"}`} style={{ width: isActive ? `${currentHourFraction * 100}%` : "100%" }} />}
+                          </div>
+                          <span className={`text-[10px] ${isActive ? (isDark ? "text-cyan-400" : "text-blue-700") : isPast ? isDark ? "text-white/60" : "text-[#475569]" : mutedText}`}>
+                            {formatTimestampShort(dayTs)}{timeStr}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Tarjetas de estadísticas */}
+              <div className="space-y-2">
+                <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={activeFlightsCount.toLocaleString()} />
+                <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
+              </div>
+
+              {/* Controles */}
+              <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    onClick={() => {
+                      if (!state.hasStarted) {
+                        start(pendingStartDate);
+                      } else if (!state.stopped) {
+                        togglePause();
+                      }
+                    }}
+                    className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${isDark ? "bg-cyan-500/20 border-cyan-500/40 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/30 hover:bg-blue-600/20"
+                      }`}
+                  >
+                    {state.running ? <Pause className={`w-5 h-5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} /> : <Play className={`w-5 h-5 ml-0.5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
+                  </button>
+                  <button
+                    onClick={() => void handleStopSimulation()}
+                    disabled={!state.hasStarted && !state.waitingForFirstBlock}
+                    className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <Square className="w-3 h-3 text-red-400" />
+                  </button>
+                </div>
+                {/* Export buttons */}
+                <div className="flex items-center gap-1 mb-2">
+                  <button
+                    onClick={() => exportResults("json")}
+                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
+                  >
+                    <Download className="w-3 h-3" /> JSON
+                  </button>
+                  <button
+                    onClick={() => exportResults("csv")}
+                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
+                  >
+                    <Download className="w-3 h-3" /> CSV
+                  </button>
+                </div>
+              </div>
+
+              {/* Escenarios */}
+              <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
+                <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
+                {([
+                  { key: "tracking", label: "Tiempo real" },
+                  { key: "weekly", label: "Simulación de 5 días" },
+                  { key: "collapse", label: "Hasta el Colapso" },
+                ] as const).map(s => (
+                  <button
+                    key={s.key}
+                    onClick={() => {
+                      if (s.key === "tracking") {
+                        setViewMode("tracking");
+                        setScenario("tracking");
+                      } else {
+                        setViewMode("simulation");
+                        setScenario(s.key);
+                      }
+                    }}
+                    className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${(s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
                       ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
                       : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
+                      }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
 
-            {/* Spacer bottom for centering */}
-            <div className="shrink-0 mb-auto" />
+              {/* Spacer bottom for centering */}
+              <div className="shrink-0 mb-auto" />
+            </div>
+            {/* Fade bottom */}
+            {canScrollDown && (
+              <div className={`absolute bottom-0 left-0 right-0 h-8 z-10 pointer-events-none rounded-b-xl ${isDark ? "bg-gradient-to-t from-[#1a2340ee] to-transparent" : "bg-gradient-to-t from-[#c8d0dcea] to-transparent"}`} />
+            )}
           </div>
-          {/* Fade bottom */}
-          {canScrollDown && (
-            <div className={`absolute bottom-0 left-0 right-0 h-8 z-10 pointer-events-none rounded-b-xl ${isDark ? "bg-gradient-to-t from-[#1a2340ee] to-transparent" : "bg-gradient-to-t from-[#c8d0dcea] to-transparent"}`} />
-          )}
-        </div>
         )}
 
         {/* Selector de modo flotante en tracking */}
         {viewMode === "tracking" && (
           <div className="absolute left-4 top-2 bottom-4 z-30 pointer-events-auto w-56 flex flex-col">
-          <div className="flex-1 flex flex-col gap-3 overflow-y-auto hide-scrollbar" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-            <div className="shrink-0 mt-auto" />
-            {/* Ocupación de Aeropuertos */}
-            <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-              <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Almacenes y Vuelos</h4>
-              <OccupancyLegend isDark={isDark} subText={subText} />
-            </div>
-
-            {/* Estado */}
-            <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-              <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Estados de Pedido</h4>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                  <span className={`text-[9px] ${subText}`}>Falta asignar vuelo (Pendiente)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                  <span className={`text-[9px] ${subText}`}>Vuelo asignado (Planificado)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
-                  <span className={`text-[9px] ${subText}`}>En tránsito (En ruta)</span>
-                </div>
+            <div className="flex-1 flex flex-col gap-3 overflow-y-auto hide-scrollbar" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+              <div className="shrink-0 mt-auto" />
+              {/* Ocupación de Aeropuertos */}
+              <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
+                <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Almacenes y Vuelos</h4>
+                <OccupancyLegend isDark={isDark} subText={subText} />
               </div>
-            </div>
 
-            {/* Stats */}
-            <div className="space-y-2">
-              <RealTimeStatCard isDark={isDark} label="Total Activos" value={realTimeResumen?.totalActivos ?? 0} />
-              <RealTimeStatCard isDark={isDark} label="Falta asignar vuelo" value={realTimeResumen?.pendientes ?? 0} colorClass="text-amber-500" />
-              <RealTimeStatCard isDark={isDark} label="Vuelo asignado" value={realTimeResumen?.planificados ?? 0} colorClass="text-blue-500" />
-              <RealTimeStatCard isDark={isDark} label="En tránsito" value={realTimeResumen?.enRuta ?? 0} colorClass="text-cyan-500" />
-            </div>
+              {/* Stats */}
+              <div className="space-y-2">
+                <RealTimeStatCard isDark={isDark} label="Total Activos" value={realTimeResumen?.totalActivos ?? 0} />
+                <RealTimeStatCard isDark={isDark} label="Falta asignar vuelo" value={realTimeResumen?.pendientes ?? 0} colorClass="text-amber-500" />
+                <RealTimeStatCard isDark={isDark} label="Vuelo asignado" value={realTimeResumen?.planificados ?? 0} colorClass="text-blue-500" />
+                <RealTimeStatCard isDark={isDark} label="En tránsito" value={realTimeResumen?.enRuta ?? 0} colorClass="text-cyan-500" />
+              </div>
 
-            {/* Escenarios */}
-            <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
-              <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
-              {([
-                { key: "tracking", label: "Simulación en tiempo real" },
-                { key: "weekly", label: "Simulación de 5 días" },
-                { key: "collapse", label: "Hasta el Colapso" },
-              ] as const).map(s => (
-                <button
-                  key={s.key}
-                  onClick={() => {
-                    if (s.key === "tracking") {
-                      setViewMode("tracking");
-                      setScenario("tracking");
-                    } else {
-                      setViewMode("simulation");
-                      setScenario(s.key);
-                    }
-                  }}
-                  className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${
-                    (s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
+              {/* Escenarios */}
+              <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
+                <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
+                {([
+                  { key: "tracking", label: "Tiempo real" },
+                  { key: "weekly", label: "Simulación de 5 días" },
+                  { key: "collapse", label: "Hasta el Colapso" },
+                ] as const).map(s => (
+                  <button
+                    key={s.key}
+                    onClick={() => {
+                      if (s.key === "tracking") {
+                        setViewMode("tracking");
+                        setScenario("tracking");
+                      } else {
+                        setViewMode("simulation");
+                        setScenario(s.key);
+                      }
+                    }}
+                    className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${(s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
                       ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
                       : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
+                      }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <div className="shrink-0 mb-auto" />
             </div>
-            <div className="shrink-0 mb-auto" />
-          </div>
           </div>
         )}
 
@@ -478,6 +454,11 @@ export function SimulationPage() {
                 selectedPedido={selectedRealTimePedido}
                 onSelectPedido={setSelectedRealTimePedido}
                 airportsList={realTimeAirports}
+                selectedFlightKey={selectedFlightKey}
+                onSelectFlight={(pedidoIds, key) => {
+                  setSelectedFlightPedidoIds(pedidoIds);
+                  setSelectedFlightKey(key);
+                }}
               />
             </div>
             {/* RealTime Right Panel */}
@@ -495,13 +476,25 @@ export function SimulationPage() {
                     <input
                       placeholder="Buscar ID, origen, destino..."
                       value={realTimeSearch}
-                      onChange={e => { setRealTimeSearch(e.target.value); setSelectedRealTimePedido(null); }}
-                      className={`w-full rounded-lg text-[11px] pl-7 pr-7 py-1.5 border transition-colors focus:outline-none ${
-                        isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white placeholder:text-white/30" : "bg-white border-[#cbd5e1] text-[#111827] placeholder:text-[#9ca3af]"
-                      }`}
+                      onChange={e => {
+                        setRealTimeSearch(e.target.value);
+                        setSelectedRealTimePedido(null);
+                        setSelectedFlightPedidoIds(null);
+                        setSelectedFlightKey(null);
+                      }}
+                      className={`w-full rounded-lg text-[11px] pl-7 pr-7 py-1.5 border transition-colors focus:outline-none ${isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white placeholder:text-white/30" : "bg-white border-[#cbd5e1] text-[#111827] placeholder:text-[#9ca3af]"
+                        }`}
                     />
                     {realTimeSearch && (
-                      <button onClick={() => { setRealTimeSearch(""); setSelectedRealTimePedido(null); }} className={`absolute right-2 top-1/2 -translate-y-1/2 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`}>
+                      <button
+                        onClick={() => {
+                          setRealTimeSearch("");
+                          setSelectedRealTimePedido(null);
+                          setSelectedFlightPedidoIds(null);
+                          setSelectedFlightKey(null);
+                        }}
+                        className={`absolute right-2 top-1/2 -translate-y-1/2 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`}
+                      >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -526,72 +519,86 @@ export function SimulationPage() {
                       {selectedRealTimePedido.nombreAerolinea} | {selectedRealTimePedido.cantidadMaletas} maletas
                     </div>
 
-                    {/* Ruta / Línea de tiempo */}
-                    <div className="space-y-0 mt-2 max-h-48 overflow-y-auto">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-cyan-500 shrink-0" />
-                        <div className="flex-1">
-                          <div className={`text-[10px] font-semibold ${isDark ? "text-white" : "text-[#0f172a]"}`}>
-                            Origen: {realTimeAirports.find(a => a.code === selectedRealTimePedido.origenOaci)?.city || selectedRealTimePedido.origenOaci} ({selectedRealTimePedido.origenOaci})
-                          </div>
-                          <div className={`text-[9px] ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>
-                            Registro: {(() => {
-                              const isoStr = selectedRealTimePedido.fechaHoraRegistro;
-                              if (!isoStr) return "—";
-                              try {
-                                const d = new Date(isoStr);
-                                return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-                              } catch(e) { return "—"; }
-                            })()}
-                          </div>
-                        </div>
-                      </div>
+                    {/* Ruta / Línea de tiempo con huso horario por aeropuerto */}
+                    {(() => {
+                      const tramos: any[] = selectedRealTimePedido.tramos || [];
+                      const fmtLocal = (isoStr: string, gmtOffset: number) => {
+                        if (!isoStr) return "—";
+                        try {
+                          const utc = isoStr.endsWith('Z') ? isoStr : isoStr + 'Z';
+                          const ms = new Date(utc).getTime() + gmtOffset * 3_600_000;
+                          const d = new Date(ms);
+                          return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+                        } catch { return "—"; }
+                      };
+                      const getGmt = (oaci: string) => realTimeAirports.find((a: any) => a.code === oaci)?.gmt ?? 0;
+                      const getCity2 = (oaci: string) => realTimeAirports.find((a: any) => a.code === oaci)?.city || oaci;
+                      const gmtLabel = (g: number) => `GMT${g >= 0 ? `+${g}` : g}`;
+                      const registroAirport = selectedRealTimePedido.operarioOaci || selectedRealTimePedido.origenOaci;
+                      const registroGmt = getGmt(registroAirport);
 
-                      {selectedRealTimePedido.tramos && selectedRealTimePedido.tramos.map((leg: any, i: number) => {
-                        const isCompleted = leg.estado === "COMPLETADO";
-                        const isCurrent = leg.estado === "EN_VUELO";
-                        return (
-                          <React.Fragment key={i}>
-                            <div className={`ml-[4px] w-[2px] h-3.5 ${isDark ? "bg-[#1e293b]" : "bg-[#c8d0d8]"} relative`}>
-                              {(isCompleted || isCurrent) && (
-                                <div className="absolute inset-0 bg-cyan-500" style={{ height: isCurrent ? "50%" : "100%" }} />
+                      return (
+                        <div className="space-y-0 mt-2 max-h-56 overflow-y-auto">
+                          {/* Nodo origen */}
+                          <div className="flex items-start gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full bg-cyan-500 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <div className={`text-[10px] font-semibold ${isDark ? "text-white" : "text-[#0f172a]"}`}>
+                                {getCity2(selectedRealTimePedido.origenOaci)} ({selectedRealTimePedido.origenOaci})
+                              </div>
+                              <div className={`text-[9px] ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>
+                                Registro: {fmtLocal(selectedRealTimePedido.fechaHoraRegistro, registroGmt)} {gmtLabel(registroGmt)}
+                              </div>
+                              {tramos.length > 0 && (
+                                <div className={`text-[9px] ${isDark ? "text-cyan-400/80" : "text-cyan-700"}`}>
+                                  Salida: {fmtLocal(tramos[0].fechaSalida, getGmt(tramos[0].origenOaci))} {gmtLabel(getGmt(tramos[0].origenOaci))}
+                                </div>
                               )}
                             </div>
-                            <div className="flex items-center gap-2">
-                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isCompleted ? "bg-green-500" : isCurrent ? "bg-cyan-500 animate-pulse" : (isDark ? "bg-[#334155]" : "bg-[#a0aec0]")}`} />
-                              <div className="flex-1">
-                                <div className={`text-[10px] font-semibold ${isDark ? "text-white" : "text-[#0f172a]"}`}>
-                                  Tramo {i+1}: {realTimeAirports.find(a => a.code === leg.destinoOaci)?.city || leg.destinoOaci} ({leg.destinoOaci})
-                                </div>
-                                <div className={`text-[9px] ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>
-                                  Salida: {(() => {
-                                    const isoStr = leg.fechaSalida;
-                                    if (!isoStr) return "—";
-                                    try {
-                                      const d = new Date(isoStr);
-                                      return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-                                    } catch(e) { return "—"; }
-                                  })()} | Llegada: {(() => {
-                                    const isoStr = leg.fechaLlegada;
-                                    if (!isoStr) return "—";
-                                    try {
-                                      const d = new Date(isoStr);
-                                      return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-                                    } catch(e) { return "—"; }
-                                  })()}
-                                </div>
-                              </div>
-                            </div>
-                          </React.Fragment>
-                        );
-                      })}
+                          </div>
 
-                      {(!selectedRealTimePedido.tramos || selectedRealTimePedido.tramos.length === 0) && (
-                        <div className={`pl-5 text-[10px] py-2 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`}>
-                          Esperando asignación de vuelo...
+                          {/* Nodos intermedios y final */}
+                          {tramos.map((leg: any, i: number) => {
+                            const isCompleted = leg.estado === "COMPLETADO";
+                            const isCurrent = leg.estado === "EN_VUELO";
+                            const isLast = i === tramos.length - 1;
+                            const arriGmt = getGmt(leg.destinoOaci);
+                            const nextLeg = !isLast ? tramos[i + 1] : null;
+                            return (
+                              <React.Fragment key={i}>
+                                <div className={`ml-[4px] w-[2px] h-3.5 ${isDark ? "bg-[#1e293b]" : "bg-[#c8d0d8]"} relative`}>
+                                  {(isCompleted || isCurrent) && (
+                                    <div className="absolute inset-0 bg-cyan-500" style={{ height: isCurrent ? "50%" : "100%" }} />
+                                  )}
+                                </div>
+                                <div className="flex items-start gap-2">
+                                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isCompleted ? "bg-green-500" : isCurrent ? "bg-cyan-500 animate-pulse" : (isDark ? "bg-[#334155]" : "bg-[#a0aec0]")}`} />
+                                  <div className="flex-1">
+                                    <div className={`text-[10px] font-semibold ${isDark ? "text-white" : "text-[#0f172a]"}`}>
+                                      {getCity2(leg.destinoOaci)} ({leg.destinoOaci})
+                                    </div>
+                                    <div className={`text-[9px] ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>
+                                      Llegada: {fmtLocal(leg.fechaLlegada, arriGmt)} {gmtLabel(arriGmt)}
+                                    </div>
+                                    {!isLast && nextLeg && (
+                                      <div className={`text-[9px] ${isDark ? "text-cyan-400/80" : "text-cyan-700"}`}>
+                                        Salida: {fmtLocal(nextLeg.fechaSalida, arriGmt)} {gmtLabel(arriGmt)}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </React.Fragment>
+                            );
+                          })}
+
+                          {tramos.length === 0 && (
+                            <div className={`pl-5 text-[10px] py-2 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`}>
+                              Esperando asignación de vuelo...
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()}
 
                     <button
                       onClick={() => setSelectedRealTimePedido(null)}
@@ -602,11 +609,30 @@ export function SimulationPage() {
                   </div>
                 )}
 
+                {/* Indicador de filtro de vuelo */}
+                {selectedFlightKey && (
+                  <div className={`mx-3 my-2 p-2 rounded-lg flex items-center justify-between text-[10px] shrink-0 ${isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"}`}>
+                    <span className="truncate">
+                      Filtrando vuelo: {selectedFlightKey.split("-")[0]} → {selectedFlightKey.split("-")[1]} ({realTimePedidos.filter(p => selectedFlightPedidoIds?.includes(p.id)).reduce((sum, p) => sum + p.cantidadMaletas, 0)} maletas)
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSelectedFlightKey(null);
+                        setSelectedFlightPedidoIds(null);
+                      }}
+                      className="ml-2 font-bold hover:underline shrink-0"
+                    >
+                      Ver todos
+                    </button>
+                  </div>
+                )}
+
                 {/* Lista de Pedidos */}
-                <ScrollArea className="flex-1">
+                <ScrollArea className="flex-1 min-h-0">
                   <div className="px-2 py-1">
                     {(() => {
                       const filteredRT = realTimePedidos.filter(p => {
+                        if (selectedFlightPedidoIds && !selectedFlightPedidoIds.includes(p.id)) return false;
                         if (!realTimeSearch) return true;
                         const s = realTimeSearch.toLowerCase();
                         return p.id.toLowerCase().includes(s) ||
@@ -630,9 +656,8 @@ export function SimulationPage() {
                           <button
                             key={p.id}
                             onClick={() => setSelectedRealTimePedido(isSelected ? null : p)}
-                            className={`w-full text-left px-2 py-2 rounded-md mb-1 flex items-center gap-2 transition-colors ${
-                              isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${isDark ? "hover:bg-[#0f172a]" : "hover:bg-[#cfd6df]"} border border-transparent`
-                            }`}
+                            className={`w-full text-left px-2 py-2 rounded-md mb-1 flex items-center gap-2 transition-colors ${isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${isDark ? "hover:bg-[#0f172a]" : "hover:bg-[#cfd6df]"} border border-transparent`
+                              }`}
                           >
                             <div className={`shrink-0 ${s.color}`}>{s.icon}</div>
                             <div className="flex-1 min-w-0">
@@ -949,9 +974,8 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
                       />
                     </div>
                     <span
-                      className={`text-[10px] w-16 text-right ${
-                        getOccupancyLevel(a.pct) === "saturated" ? "text-red-400" : textSecondary
-                      }`}
+                      className={`text-[10px] w-16 text-right ${getOccupancyLevel(a.pct) === "saturated" ? "text-red-400" : textSecondary
+                        }`}
                     >
                       {a.pct.toFixed(0)}% ({a.stock}/{a.cap})
                     </span>

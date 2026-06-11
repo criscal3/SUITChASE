@@ -7,6 +7,8 @@ import com.tasf.b2b.domain.AerolineaEntity;
 import com.tasf.b2b.repository.PedidoRealRepository;
 import com.tasf.b2b.repository.AsignacionRealRepository;
 import com.tasf.b2b.repository.AerolineaRepository;
+import com.tasf.b2b.repository.UsuarioRepository;
+import com.tasf.b2b.domain.UsuarioEntity;
 import com.tasf.b2b.api.dto.PedidoRealDTO;
 import com.tasf.b2b.api.dto.TramoDTO;
 import com.tasf.b2b.api.dto.ResumenOperacionesDTO;
@@ -30,6 +32,7 @@ public class RealTimeOperationsService {
     private final PedidoRealRepository pedidoRepo;
     private final AsignacionRealRepository asignacionRepo;
     private final AerolineaRepository aerolineaRepo;
+    private final UsuarioRepository usuarioRepo;
     private final SimpMessagingTemplate messagingTemplate;
 
     // === CACHÉ EN MEMORIA ===
@@ -39,7 +42,8 @@ public class RealTimeOperationsService {
     );
 
     private static final List<EstadoPedido> ESTADOS_ACTIVOS = List.of(
-            EstadoPedido.PENDIENTE, EstadoPedido.PLANIFICADO, EstadoPedido.EN_RUTA
+            EstadoPedido.PENDIENTE, EstadoPedido.PLANIFICADO, EstadoPedido.EN_RUTA,
+            EstadoPedido.ENTREGADO, EstadoPedido.SIN_RUTA, EstadoPedido.COLAPSO
     );
 
     @PostConstruct
@@ -111,11 +115,7 @@ public class RealTimeOperationsService {
         for (var p : planificados) {
             List<AsignacionRealEntity> tramos = cargarTramos(p.getId());
             PedidoRealDTO dto = toDTO(p, tramos);
-            if (p.getEstado() == EstadoPedido.ENTREGADO || p.getEstado() == EstadoPedido.SIN_RUTA || p.getEstado() == EstadoPedido.COLAPSO) {
-                cache.remove(p.getId());  // Sale de la vista "activos"
-            } else {
-                cache.put(p.getId(), dto);
-            }
+            cache.put(p.getId(), dto);
             aerolineasAfectadas.add(p.getAerolineaId());
         }
         recalcularResumen();
@@ -140,11 +140,7 @@ public class RealTimeOperationsService {
             pedidoRepo.findById(id).ifPresent(p -> {
                 List<AsignacionRealEntity> tramos = cargarTramos(id);
                 PedidoRealDTO dto = toDTO(p, tramos);
-                if (p.getEstado() == EstadoPedido.ENTREGADO || p.getEstado() == EstadoPedido.SIN_RUTA || p.getEstado() == EstadoPedido.COLAPSO) {
-                    cache.remove(id);
-                } else {
-                    cache.put(id, dto);
-                }
+                cache.put(id, dto);
                 // Push a la aerolínea
                 messagingTemplate.convertAndSend("/topic/mis-pedidos/" + p.getAerolineaId(),
                         getPedidosActivosAerolinea(p.getAerolineaId()));
@@ -183,12 +179,18 @@ public class RealTimeOperationsService {
                 t.getOrdenVuelo(), t.getOrigenOaci(), t.getDestinoOaci(),
                 t.getFechaSalida(), t.getFechaLlegada(), t.getEstado().name()
         )).toList();
+        String operarioOaci = null;
+        if (p.getOperarioId() != null) {
+            operarioOaci = usuarioRepo.findById(p.getOperarioId())
+                    .map(UsuarioEntity::getAeropuertoOaci).orElse(null);
+        }
         return new PedidoRealDTO(
                 p.getId(), p.getOrigenOaci(), p.getDestinoOaci(),
                 p.getFechaHoraRegistro(), p.getCantidadMaletas(),
                 p.getAerolineaId(), nombreAerolinea,
                 p.getEstado().name(), tramos.size(),
-                p.getUbicacionActual(), tramosDTO
+                p.getUbicacionActual(), tramosDTO,
+                operarioOaci
         );
     }
 }

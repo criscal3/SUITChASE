@@ -43,6 +43,8 @@ interface RealTimeMapProps {
   selectedPedido: Pedido | null;
   onSelectPedido: (p: Pedido | null) => void;
   airportsList: Airport[];
+  onSelectFlight?: (pedidoIds: string[] | null, flightKey: string | null) => void;
+  selectedFlightKey?: string | null;
 }
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
@@ -101,7 +103,16 @@ function getHeading(lat1: number, lng1: number, lat2: number, lng2: number) {
   return (brng + 360) % 360;
 }
 
-export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsList }: RealTimeMapProps) {
+function parseUTCDate(dateStr: any): number {
+  if (!dateStr || typeof dateStr !== "string") return 0;
+  let formatted = dateStr.replace(" ", "T");
+  if (!formatted.endsWith("Z") && !formatted.includes("+") && !/-\d{2}:\d{2}$/.test(formatted)) {
+    formatted += "Z";
+  }
+  return new Date(formatted).getTime();
+}
+
+export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsList, onSelectFlight, selectedFlightKey }: RealTimeMapProps) {
   const { isDark } = useTheme();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
   const [hovered, setHovered] = useState<any | null>(null);
@@ -116,6 +127,15 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
   const tooltipSub = isDark ? "text-white/70" : "text-[#374151]";
   const tooltipVal = isDark ? "text-white" : "text-[#111827]";
   const labelFill  = isDark ? "#fff" : "#1e3a5f";
+
+  const [nowMs, setNowMs] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (selectedPedido) {
@@ -132,10 +152,9 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
   // Arcs and Planes calculations
   const { arcsData, planesData } = useMemo(() => {
     const arcs: any[] = [];
-    const activePlanes: any[] = [];
-    const nowMs = Date.now();
+    const flightsMap = new Map<string, any>();
 
-    // 1. Draw paths for selected order
+    // 1. Draw paths for selected order (dashed orange line)
     if (selectedPedido && selectedPedido.tramos) {
       selectedPedido.tramos.forEach((leg, i) => {
         const from = airportsList.find((a) => a.code === leg.origenOaci);
@@ -153,11 +172,11 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
       });
     }
 
-    // 2. Compute flight progress and positions for active orders
+    // 2. Compute flight progress and positions for active orders, grouping overlapping ones
     const activePedidos = selectedPedido ? [selectedPedido] : pedidos;
 
     activePedidos.forEach(p => {
-      if (p.estado !== "EN_RUTA" || !p.tramos) return;
+      if (!p.tramos) return;
 
       p.tramos.forEach((leg, i) => {
         if (leg.estado !== "EN_VUELO") return;
@@ -166,44 +185,73 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
         const to = airportsList.find((a) => a.code === leg.destinoOaci);
         if (!from || !to) return;
 
-        const depTime = new Date(leg.fechaSalida).getTime();
-        const arrTime = new Date(leg.fechaLlegada).getTime();
+        const depTime = parseUTCDate(leg.fechaSalida);
+        const arrTime = parseUTCDate(leg.fechaLlegada);
         const total = arrTime - depTime;
         if (total <= 0) return;
 
         const progress = Math.min(1, Math.max(0, (nowMs - depTime) / total));
 
-        // Add flight path arc
-        arcs.push({
-          from: [from.lng, from.lat],
-          to: [to.lng, to.lat],
-          color: isDark ? "#22d3ee" : "#0891b2",
-          strokeWidth: 1.5,
-          key: `act-${p.id}-${i}`,
-        });
+        // Grouping key: unique for a specific flight leg at a specific time
+        const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${depTime}-${arrTime}-${p.nombreAerolinea}`;
 
-        // Add plane marker position
+        if (!flightsMap.has(flightKey)) {
+          flightsMap.set(flightKey, {
+            key: flightKey,
+            fromCode: leg.origenOaci,
+            toCode: leg.destinoOaci,
+            from: [from.lng, from.lat],
+            to: [to.lng, to.lat],
+            depTime,
+            arrTime,
+            progress: progress * 100,
+            aerolinea: p.nombreAerolinea,
+            cantMaletas: 0,
+            pedidoIds: [] as string[],
+            lat: 0,
+            lng: 0,
+            heading: 0,
+          });
+        }
+
+        const f = flightsMap.get(flightKey)!;
+        f.cantMaletas += p.cantidadMaletas;
+        f.pedidoIds.push(p.id);
+
         const pos = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, progress);
         const delta = Math.min(0.01, 1 - progress);
         const posAhead = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, progress + delta);
         const heading = getHeading(pos.lat, pos.lng, posAhead.lat, posAhead.lng);
 
-        activePlanes.push({
-          lat: pos.lat,
-          lng: pos.lng,
-          heading,
-          pedidoId: p.id,
-          fromCode: leg.origenOaci,
-          toCode: leg.destinoOaci,
-          cantMaletas: p.cantidadMaletas,
-          aerolinea: p.nombreAerolinea,
-          progress: progress * 100,
-        });
+        f.lat = pos.lat;
+        f.lng = pos.lng;
+        f.heading = heading;
       });
     });
 
+    // Add unique active flight arcs
+    flightsMap.forEach((f) => {
+      const fromAir = airportsList.find(a => a.code === f.fromCode);
+      const toAir = airportsList.find(a => a.code === f.toCode);
+      const sameContinent = fromAir && toAir ? fromAir.continent === toAir.continent : true;
+      const routeColor = sameContinent
+        ? (isDark ? "#22d3ee" : "#0891b2")
+        : (isDark ? "#fb7185" : "#e11d48");
+
+      if (f.from && f.to) {
+        arcs.push({
+          from: f.from,
+          to: f.to,
+          color: routeColor,
+          strokeWidth: 1.5,
+          key: `arc-${f.key}`,
+        });
+      }
+    });
+
+    const activePlanes = Array.from(flightsMap.values());
     return { arcsData: arcs, planesData: activePlanes };
-  }, [pedidos, selectedPedido, airportsList, isDark]);
+  }, [pedidos, selectedPedido, airportsList, isDark, nowMs]);
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative transition-colors duration-200" style={{ background: mapBg }}>
@@ -283,26 +331,31 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           ))}
 
           {/* Plane Markers */}
-          {planesData.map((plane, index) => {
+          {planesData.filter(plane => typeof plane.lng === "number" && typeof plane.lat === "number" && !isNaN(plane.lng) && !isNaN(plane.lat)).map((plane) => {
             return (
-              <Marker key={`plane-${plane.pedidoId}-${index}`} coordinates={[plane.lng, plane.lat]}>
+              <Marker key={`plane-${plane.key}`} coordinates={[plane.lng, plane.lat]}>
                 <g
                   style={{ cursor: "pointer" }}
                   transform={`scale(${s * PLANE_SCALE})`}
                   onMouseEnter={(e) => {
                     setHovered({
                       kind: "flight",
-                      pedidoId: plane.pedidoId,
                       from: plane.fromCode,
                       to: plane.toCode,
                       cantMaletas: plane.cantMaletas,
                       aerolinea: plane.aerolinea,
                       progress: plane.progress,
+                      pedidoIds: plane.pedidoIds,
                       x: e.clientX,
                       y: e.clientY,
                     });
                   }}
                   onMouseLeave={() => setHovered(null)}
+                  onClick={() => {
+                    if (onSelectFlight) {
+                      onSelectFlight(plane.pedidoIds, plane.key);
+                    }
+                  }}
                 >
                   <g transform={`rotate(${plane.heading})`}>
                     <PlaneIcon color={isDark ? "#a78bfa" : "#7c3aed"} stroke="#fff" />
@@ -335,16 +388,21 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           className={`fixed z-50 border rounded-lg px-3 py-2 pointer-events-none ${tooltipBg}`}
           style={{ left: hovered.x + 12, top: hovered.y - 10 }}
         >
-          <div className={`text-[11px] font-semibold ${tooltipTitle}`}>{hovered.pedidoId} ({hovered.aerolinea})</div>
+          <div className={`text-[11px] font-semibold ${tooltipTitle}`}>Vuelo de {hovered.aerolinea}</div>
           <div className={`text-[10px] mt-1 ${tooltipSub}`}>
             Ruta: <span className={tooltipVal}>{hovered.from} → {hovered.to}</span>
           </div>
           <div className={`text-[10px] ${tooltipSub}`}>
-            Maletas: <span className={tooltipVal}>{hovered.cantMaletas}</span>
+            Total Maletas: <span className={tooltipVal}>{hovered.cantMaletas}</span>
           </div>
           <div className={`text-[10px] ${tooltipSub}`}>
             Progreso: <span className="text-cyan-500 font-semibold">{hovered.progress.toFixed(1)}%</span>
           </div>
+          {hovered.pedidoIds && hovered.pedidoIds.length > 0 && (
+            <div className={`text-[9px] mt-1.5 border-t pt-1 ${tooltipSub}`}>
+              Pedidos: <span className={tooltipVal}>{hovered.pedidoIds.join(", ")}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

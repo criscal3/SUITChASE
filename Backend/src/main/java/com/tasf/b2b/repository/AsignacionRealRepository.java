@@ -3,14 +3,20 @@ package com.tasf.b2b.repository;
 import com.tasf.b2b.domain.AsignacionRealEntity;
 import com.tasf.b2b.domain.AsignacionRealEntity.EstadoTramo;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 
 public interface AsignacionRealRepository extends JpaRepository<AsignacionRealEntity, Long> {
 
     List<AsignacionRealEntity> findByPedidoIdOrderByOrdenVueloAsc(String pedidoId);
+
+    @Transactional
+    @Modifying
+    void deleteByPedidoId(String pedidoId);
 
     // Para actualizador de estados: tramos que deberían haber despegado
     @Query("SELECT a FROM AsignacionRealEntity a WHERE a.estado = 'PROGRAMADO' AND a.fechaSalida <= :ahora")

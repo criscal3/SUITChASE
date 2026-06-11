@@ -26,7 +26,7 @@ public class TramoStatusUpdaterService {
     private final PedidoRealRepository pedidoRepo;
     private final RealTimeOperationsService rtService;
 
-    @Scheduled(fixedDelay = 60_000)  // Cada minuto
+    @Scheduled(fixedDelay = 5_000)  // Cada 5 segundos
     public void actualizarEstadosTramos() {
         LocalDateTime ahora = LocalDateTime.now();
         Set<String> pedidosAfectados = new HashSet<>();
@@ -37,16 +37,32 @@ public class TramoStatusUpdaterService {
             t.setEstado(EstadoTramo.EN_VUELO);
             pedidosAfectados.add(t.getPedidoId());
         });
-        if (!despegados.isEmpty()) asignacionRepo.saveAll(despegados);
+        if (!despegados.isEmpty()) {
+            asignacionRepo.saveAllAndFlush(despegados);
+            despegados.forEach(t -> {
+                // Si el pedido aún está PLANIFICADO, cambiarlo a EN_RUTA
+                pedidoRepo.findById(t.getPedidoId()).ifPresent(p -> {
+                    if (p.getEstado() == EstadoPedido.PLANIFICADO) {
+                        p.setEstado(EstadoPedido.EN_RUTA);
+                        p.setUbicacionActual("EN_VUELO: " + t.getOrigenOaci() + " -> " + t.getDestinoOaci());
+                        pedidoRepo.save(p);
+                    }
+                });
+            });
+        }
 
         // Tramos EN_VUELO que ya deberían haber aterrizado
         List<AsignacionRealEntity> aterrizados = asignacionRepo.findTramosQueDeberianHaberAterrizado(ahora);
         aterrizados.forEach(t -> {
             t.setEstado(EstadoTramo.COMPLETADO);
             pedidosAfectados.add(t.getPedidoId());
-            actualizarEstadoPedidoSiCorresponde(t.getPedidoId(), t, ahora);
         });
-        if (!aterrizados.isEmpty()) asignacionRepo.saveAll(aterrizados);
+        if (!aterrizados.isEmpty()) {
+            asignacionRepo.saveAllAndFlush(aterrizados);
+            aterrizados.forEach(t -> {
+                actualizarEstadoPedidoSiCorresponde(t.getPedidoId(), t, ahora);
+            });
+        }
 
         // Actualizar caché solo si hubo cambios
         if (!pedidosAfectados.isEmpty()) {

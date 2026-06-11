@@ -54,24 +54,39 @@ public class RealTimeSchedulerService {
             inicializarInputMaestro();
         }
 
-        // 1. Obtener pedidos pendientes de tiempo real
+        // 1. Obtener pedidos PENDIENTES y SIN_RUTA (se reintentará planificarlos)
         LocalDateTime ahora = LocalDateTime.now();
         List<PedidoRealEntity> pedidosPendientes = pedidoRealRepository
-                .findByEstadoAndFechaHoraRegistroBeforeOrderByFechaHoraRegistroAsc(
-                        EstadoPedido.PENDIENTE, ahora);
+                .findByEstadoInOrderByFechaHoraRegistroDesc(
+                        List.of(EstadoPedido.PENDIENTE, EstadoPedido.SIN_RUTA));
 
         if (pedidosPendientes.isEmpty()) {
             return; // Nada que planificar
         }
 
-        log.info("[TiempoReal] Planificando {} pedidos pendientes", pedidosPendientes.size());
+        log.info("[TiempoReal] Planificando {} pedidos (PENDIENTE + SIN_RUTA)", pedidosPendientes.size());
 
         // 2. Convertir a formato algoritmo
         List<EnvioAlgoritmo> enviosAlg = pedidosPendientes.stream()
                 .map(dataMapper::toEnvioAlgoritmo)
                 .collect(Collectors.toList());
 
-        // 3. Crear sub-input y ejecutar ACS
+        // Asegurar que no se planifiquen vuelos en el pasado relativo a 'ahora'
+        for (EnvioAlgoritmo env : enviosAlg) {
+            if (env.getFechaHoraRegistro().isBefore(ahora)) {
+                env.setFechaHoraRegistro(ahora);
+            }
+        }
+
+        // 3. Configurar ventana temporal para el algoritmo (basada en "ahora")
+        // Esto es CRÍTICO: el algoritmo usa TimeUtils.getIndiceMinuto() que calcula
+        // diferencias desde FECHA_INICIO_SIM. Si FECHA_INICIO_SIM es 2027 y los pedidos
+        // son de 2026, todos los índices son negativos y el ACS no encuentra ninguna ruta.
+        LocalDateTime inicioVentana = ahora.withHour(0).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime finVentana = inicioVentana.plusDays(12); // ventana de 12 días hacia el futuro
+        com.tasf.b2b.core.TimeUtils.configurarRangoSimulacion(inicioVentana, finVentana);
+
+        // 4. Crear sub-input y ejecutar ACS
         PlanificationProblemInput subInput = inputMaestro.crearSubInput(enviosAlg);
         long tiempoMs = (long) taSegundos * 1000L;
         PlanificationSolutionOutput solucion = ACSAdapter.planificar(subInput, tiempoMs);
@@ -97,6 +112,9 @@ public class RealTimeSchedulerService {
                         ? EstadoPedido.PLANIFICADO : EstadoPedido.SIN_RUTA);
                 entity.setTotalTramos(ruta.vuelosUsados.size());
                 entity.setUbicacionActual(entity.getOrigenOaci());
+
+                // Limpiar asignaciones anteriores (puede venir de un intento SIN_RUTA previo)
+                asignacionRealRepository.deleteByPedidoId(envioAlg.getId());
 
                 // Guardar tramos de ruta
                 for (int i = 0; i < ruta.vuelosUsados.size(); i++) {

@@ -236,7 +236,7 @@ function LayoutInner() {
               </>
             ) : null}
           </div>
-          {isSimPage && (
+          {isSimPage && state.scenario !== "tracking" && (
           <div className="flex items-center gap-2 ml-auto">
             <Badge className={`text-[10px] ${state.running ? "bg-green-600/20 text-green-400" : isDark ? "bg-[#1e293b] text-white/60" : "bg-[#dde6f0] text-[#475569]"}`}>
               {state.scenario === "weekly" ? "Semanal" : state.scenario === "daily" ? "Diario" : "Colapso"}
@@ -274,7 +274,7 @@ function LayoutInner() {
             </button>
           </div>
           )}
-          {!isSimPage && (
+          {(!isSimPage || state.scenario === "tracking") && (
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={toggleTheme}
