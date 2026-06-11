@@ -77,11 +77,28 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
       const [aps, als, envs] = await Promise.all([
         api.getAirports(),
         api.getAirlines(),
-        api.getEnvios()
+        api.getOperacionesRT().catch(e => {
+          console.warn("Could not fetch RT ops (backend might be restarting or 403):", e);
+          return [];
+        })
       ]);
       setAirportsList(aps.map((a: any) => ({ code: a.oaci, city: a.ciudad })));
       setAirlines(als);
-      setBaggageGroups(envs);
+      const envsMapped = envs.map((e: any) => ({
+        id: e.id,
+        origin: e.origenOaci,
+        destination: e.destinoOaci,
+        quantity: e.cantidadMaletas,
+        airline: e.nombreAerolinea || als.find((a: any) => a.id === e.aerolineaId)?.nombre || e.aerolineaId,
+        status: e.estado === 'PENDIENTE' ? 'waiting' :
+                e.estado === 'PLANIFICADO' ? 'in_transit' :
+                e.estado === 'EN_RUTA' ? 'in_transit' :
+                e.estado === 'ENTREGADO' ? 'delivered' :
+                e.estado === 'COLAPSO' ? 'delayed' : 'failed',
+        currentLocation: e.ubicacionActual || e.origenOaci,
+        route: []
+      }));
+      setBaggageGroups(envsMapped);
     } catch (err) {
       console.error(err);
     } finally {
@@ -102,9 +119,9 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
 
     try {
       const al = airlines.find((a: any) => a.nombre === airline);
-      await api.registrarEnvio({
-        codigoOrigen: origin,
-        codigoDestino: destination,
+      await api.registrarPedidoRT({
+        origenOaci: origin,
+        destinoOaci: destination,
         cantidadMaletas: qty,
         aerolineaId: al?.id
       });
@@ -173,14 +190,14 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const filtered = state.baggageGroups.filter(bg => {
+  const filtered = baggageGroups.filter(bg => {
     if (statusFilter !== "all" && bg.status !== statusFilter) return false;
     if (!search) return true;
     const s = search.toLowerCase();
     return bg.id.toLowerCase().includes(s) ||
       bg.origin.toLowerCase().includes(s) ||
       bg.destination.toLowerCase().includes(s) ||
-      bg.airline.toLowerCase().includes(s);
+      String(bg.airline).toLowerCase().includes(s);
   });
 
   const statusColors: Record<string, string> = {

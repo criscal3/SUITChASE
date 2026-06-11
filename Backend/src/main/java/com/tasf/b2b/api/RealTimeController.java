@@ -34,7 +34,7 @@ public class RealTimeController {
 
     /** Lista operaciones activas (desde caché) — para el panel lateral */
     @GetMapping("/operaciones")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OPERARIO')")
     public ResponseEntity<List<PedidoRealDTO>> operaciones(
             @RequestParam(required = false) String estado,
             @RequestParam(required = false) Long aerolineaId) {

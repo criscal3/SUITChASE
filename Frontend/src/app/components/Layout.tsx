@@ -95,10 +95,10 @@ function LayoutInner() {
   // Real clock for dashboard page
   const [now, setNow] = useState(new Date());
   React.useEffect(() => {
-    if (!isDashboardPage) return;
+    if (!isDashboardPage && !(isSimPage && state.scenario === "tracking")) return;
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
-  }, [isDashboardPage]);
+  }, [isDashboardPage, isSimPage, state.scenario]);
   const dateStr = now.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
   const timeStr = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
@@ -191,7 +191,7 @@ function LayoutInner() {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3">
-            {isDashboardPage ? (
+            {isDashboardPage || (isSimPage && state.scenario === "tracking") ? (
               <>
                 <div className={`w-2.5 h-2.5 rounded-full shrink-0 animate-pulse ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
                 <span className={`text-[14px] ${isDark ? "text-white" : "text-[#0f172a]"}`}>En Vivo</span>

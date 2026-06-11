@@ -369,6 +369,7 @@ export function SimulationPage() {
                   onClick={() => {
                     if (s.key === "tracking") {
                       setViewMode("tracking");
+                      setScenario("tracking");
                     } else {
                       setViewMode("simulation");
                       setScenario(s.key);
@@ -400,6 +401,12 @@ export function SimulationPage() {
           <div className="absolute left-4 top-2 bottom-4 z-30 pointer-events-auto w-56 flex flex-col">
           <div className="flex-1 flex flex-col gap-3 overflow-y-auto hide-scrollbar" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
             <div className="shrink-0 mt-auto" />
+            {/* Ocupación de Aeropuertos */}
+            <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
+              <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Almacenes y Vuelos</h4>
+              <OccupancyLegend isDark={isDark} subText={subText} />
+            </div>
+
             {/* Estado */}
             <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
               <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Estados de Pedido</h4>
@@ -440,6 +447,7 @@ export function SimulationPage() {
                   onClick={() => {
                     if (s.key === "tracking") {
                       setViewMode("tracking");
+                      setScenario("tracking");
                     } else {
                       setViewMode("simulation");
                       setScenario(s.key);

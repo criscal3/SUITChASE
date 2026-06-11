@@ -45,7 +45,7 @@ public class SecurityConfig {
 
                 // --- Tiempo Real ---
                 .requestMatchers(HttpMethod.GET, "/api/tiempo-real/resumen").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.GET, "/api/tiempo-real/operaciones").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/tiempo-real/operaciones").hasAnyRole("ADMIN", "OPERARIO")
                 .requestMatchers(HttpMethod.GET, "/api/tiempo-real/mis-pedidos").hasRole("AEROLINEA")
                 .requestMatchers(HttpMethod.GET, "/api/tiempo-real/pedido/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/tiempo-real/pedidos").hasAnyRole("ADMIN", "OPERARIO")

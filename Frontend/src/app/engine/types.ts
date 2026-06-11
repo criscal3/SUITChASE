@@ -46,7 +46,7 @@ export interface SimulationState {
   hasStarted?: boolean;
   waitingForFirstBlock?: boolean;
   speed: number;
-  scenario: "daily" | "weekly" | "collapse";
+  scenario: "daily" | "weekly" | "collapse" | "tracking";
   turnaroundHours: number;
   fastForwardTarget?: number | null;
   fastForwardState?: "idle" | "running" | "reached";

@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup, Line } from "react-simple-maps";
 import { useTheme } from "../context/ThemeContext";
+import { getOccupancyColor, computeUtilizationPercent } from "../engine/occupancyStatus";
 
 interface Tramo {
   orden: number;
@@ -269,7 +270,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
                 }}
                 onMouseLeave={() => setHovered(null)}
               >
-                <circle r={4} fill={isDark ? "#22d3ee" : "#0891b2"} stroke="#fff" strokeWidth={1} />
+                <circle r={4} fill={getOccupancyColor(computeUtilizationPercent(point.currentStock, point.warehouseCapacity))} stroke="#fff" strokeWidth={1} />
                 <text
                   textAnchor="middle"
                   y={12}
