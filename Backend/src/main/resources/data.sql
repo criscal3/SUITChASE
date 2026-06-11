@@ -1,6 +1,17 @@
 USE suitchase;
 
-DELETE FROM vuelo; DELETE FROM aeropuerto; DELETE FROM aerolinea; DELETE FROM usuario;
+SET FOREIGN_KEY_CHECKS = 0;
+DELETE FROM asignacion_envio;
+DELETE FROM bloque_resultado;
+DELETE FROM envio;
+DELETE FROM simulacion;
+DELETE FROM vuelo;
+DELETE FROM aeropuerto;
+DELETE FROM aerolinea;
+DELETE FROM usuario;
+DELETE FROM asignacion_real;
+DELETE FROM pedido_real;
+SET FOREIGN_KEY_CHECKS = 1;
 
 -- Aeropuertos
 INSERT INTO aeropuerto (oaci, ciudad, pais, continente, gmt, capacidad_almacen, latitud, longitud) VALUES

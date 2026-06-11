@@ -44,8 +44,8 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
   }, []);
 
   const filteredAirlines = airlines.filter(a =>
-    a.nombre.toLowerCase().includes(airlineSearch.toLowerCase()) ||
-    a.codigo.toLowerCase().includes(airlineSearch.toLowerCase())
+    (a.nombre || "").toLowerCase().includes(airlineSearch.toLowerCase()) ||
+    (a.codigo || "").toLowerCase().includes(airlineSearch.toLowerCase())
   );
 
   // Theme classes
@@ -76,11 +76,7 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
     try {
       const [aps, als, envs] = await Promise.all([
         api.getAirports(),
-        // We don't have a getAirlines yet, let's assume api has it or we can list from somewhere
-        // For now let's use mock airlines if endpoint missing, or assume it exists
-        fetch("http://localhost:8090/api/aerolineas", {
-           headers: { "Authorization": `Bearer ${localStorage.getItem("suitchase_token")}` }
-        }).then(r => r.json()).catch(() => []),
+        api.getAirlines(),
         api.getEnvios()
       ]);
       setAirportsList(aps.map((a: any) => ({ code: a.oaci, city: a.ciudad })));
@@ -105,7 +101,7 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
     }
 
     try {
-      const al = airlines.find(a => a.nombre === airline);
+      const al = airlines.find((a: any) => a.nombre === airline);
       await api.registrarEnvio({
         codigoOrigen: origin,
         codigoDestino: destination,
@@ -244,13 +240,13 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
                     {filteredAirlines.length === 0 ? (
                       <div className={`px-3 py-2 text-[12px] ${subtleText}`}>Sin resultados</div>
                     ) : (
-                      filteredAirlines.map(a => (
+                      filteredAirlines.map((a: any) => (
                         <div
                           key={a.id}
-                          className={`px-3 py-1.5 text-[12px] cursor-pointer ${selectItemText} ${dropdownHover} ${airline === a.name ? (isDark ? "bg-blue-600/20" : "bg-blue-100") : ""}`}
-                          onClick={() => { setAirline(a.name); setAirlineOpen(false); setAirlineSearch(""); }}
+                          className={`px-3 py-1.5 text-[12px] cursor-pointer ${selectItemText} ${dropdownHover} ${airline === a.nombre ? (isDark ? "bg-blue-600/20" : "bg-blue-100") : ""}`}
+                          onClick={() => { setAirline(a.nombre); setAirlineOpen(false); setAirlineSearch(""); }}
                         >
-                          {a.name} <span className={subtlerText}>({a.code})</span>
+                          {a.nombre} <span className={subtlerText}>({a.codigo})</span>
                         </div>
                       ))
                     )}

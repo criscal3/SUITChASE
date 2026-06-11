@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "../context/ThemeContext";
 import { RealTimeMap } from "./RealTimeMap";
+import { RealTimeWebSocketClient } from "../services/realTimeWebSocket";
+import { api } from "../services/api";
 import { ScrollArea } from "./ui/scroll-area";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
-import { api } from "../services/api";
-import { RealTimeWebSocketClient } from "../services/realTimeWebSocket";
-import { Search, Package, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight, X } from "lucide-react";
+import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight, X, Radio } from "lucide-react";
 
 interface Tramo {
   orden: number;
@@ -29,6 +29,14 @@ interface Pedido {
   totalTramos: number;
   ubicacionActual: string;
   tramos: Tramo[];
+}
+
+interface Resumen {
+  totalActivos: number;
+  pendientes: number;
+  planificados: number;
+  enRuta: number;
+  ultimaActualizacion: string;
 }
 
 const statusConfig: Record<string, { color: string; bg: string; lightBg: string; lightColor: string; label: string; icon: React.ReactNode }> = {
@@ -55,19 +63,18 @@ function formatTimestamp(isoStr: string): string {
   }
 }
 
-export function AirlineTracking() {
+export function RealTimePage() {
   const { isDark } = useTheme();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [resumen, setResumen] = useState<Resumen | null>(null);
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null);
   const [airportsList, setAirportsList] = useState<any[]>([]);
   const [search, setSearch] = useState("");
-  const [showPanel, setShowPanel] = useState(true);
+  const [showRightPanel, setShowRightPanel] = useState(true);
 
-  const aerolineaIdStr = localStorage.getItem("suitchase_aerolinea_id");
-  const aerolineaId = aerolineaIdStr ? Number(aerolineaIdStr) : null;
-
+  // Load initial data
   useEffect(() => {
-    // 1. Fetch airports list
+    // 1. Fetch airports
     api.getAirports().then(data => {
       if (data) {
         setAirportsList(data.map((a: any) => ({
@@ -84,26 +91,42 @@ export function AirlineTracking() {
       }
     });
 
-    if (aerolineaId) {
-      // 2. Fetch initial real-time orders for this airline
-      api.getMisPedidosRT().then(setPedidos).catch(console.error);
+    // 2. Fetch real-time orders
+    api.getOperacionesRT().then(setPedidos).catch(console.error);
 
-      // 3. Connect to WebSocket
-      const ws = new RealTimeWebSocketClient("AEROLINEA", aerolineaId, {
-        onMisPedidos: (lista) => {
-          setPedidos(lista);
-          // If selected order was removed from active list, deselect it
-          setSelectedPedido(prev => {
-            if (!prev) return null;
-            const updated = lista.find(p => p.id === prev.id);
-            return updated || null;
+    // 3. Fetch summary KPIs
+    api.getResumenRT().then(setResumen).catch(console.error);
+
+    // 4. Setup Websocket client
+    const ws = new RealTimeWebSocketClient("ADMIN", undefined, {
+      onNuevoPedido: (p) => {
+        setPedidos(prev => {
+          if (prev.some(x => x.id === p.id)) return prev;
+          return [p, ...prev];
+        });
+      },
+      onActualizacion: (r) => {
+        setResumen(r);
+      },
+      onPedidosActualizados: (lista: Pedido[]) => {
+        setPedidos(prev => {
+          const map = new Map(prev.map(p => [p.id, p]));
+          lista.forEach(p => {
+            // If the order has finished, remove it from active list
+            if (["ENTREGADO", "SIN_RUTA", "COLAPSO"].includes(p.estado)) {
+              map.delete(p.id);
+            } else {
+              map.set(p.id, p);
+            }
           });
-        }
-      });
-      ws.connect();
-      return () => ws.disconnect();
-    }
-  }, [aerolineaId]);
+          return Array.from(map.values()).sort((a, b) => new Date(b.fechaHoraRegistro).getTime() - new Date(a.fechaHoraRegistro).getTime());
+        });
+      }
+    });
+
+    ws.connect();
+    return () => ws.disconnect();
+  }, []);
 
   const getCity = (code: string) => airportsList.find(a => a.code === code)?.city || code;
 
@@ -115,16 +138,6 @@ export function AirlineTracking() {
       p.destinoOaci.toLowerCase().includes(s) ||
       p.nombreAerolinea.toLowerCase().includes(s);
   });
-
-  const handleSelectPedido = (p: Pedido | null) => {
-    setSelectedPedido(p);
-    if (p) setSearch(p.id);
-  };
-
-  const handleClear = () => {
-    setSearch("");
-    setSelectedPedido(null);
-  };
 
   const rootBg = isDark ? "bg-[#080c18]" : "bg-[#eef2f7]";
   const panelBg = isDark ? "bg-[#0a0f1eee] border-[#1a2744]" : "bg-white/90 border-[#cbd5e1]";
@@ -143,32 +156,61 @@ export function AirlineTracking() {
   const sc = selectedPedido ? statusConfig[selectedPedido.estado] : null;
 
   return (
-    <div className={`h-full flex flex-col relative transition-colors duration-200 ${rootBg}`}>
-      {/* Título */}
+    <div className={`h-[calc(100vh-3rem)] -m-4 flex flex-col relative transition-colors duration-200 ${rootBg}`}>
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center py-3 pointer-events-none">
-        <h1 className={`text-[18px] tracking-wider ${isDark ? "text-cyan-400" : "text-blue-800 font-bold"}`} style={{ textShadow: isDark ? "0 0 20px #00e5ff60" : "none" }}>
-          Tracking de Equipaje — Aerolínea
+        <h1 className={`text-[18px] tracking-wider flex items-center gap-2 ${isDark ? "text-cyan-400" : "text-blue-800 font-bold"}`} style={{ textShadow: isDark ? "0 0 20px #00e5ff60" : "none" }}>
+          <Radio className="w-5 h-5 animate-pulse text-red-500" /> Operaciones en Tiempo Real
         </h1>
       </div>
 
       <div className="flex-1 flex relative overflow-hidden">
-        {/* Mapa */}
+        {/* Panel izquierdo - Stats y Leyenda */}
+        <div className="absolute left-4 top-14 bottom-4 z-10 w-52 pointer-events-auto flex flex-col gap-3 overflow-y-auto hide-scrollbar" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+          
+          {/* Leyenda de Estados */}
+          <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
+            <h4 className={`text-[11px] font-semibold mb-2 ${titleCls}`}>Estados de Pedido</h4>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                <span className={`text-[9px] ${subCls}`}>Falta asignar vuelo (Pendiente)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                <span className={`text-[9px] ${subCls}`}>Vuelo asignado (Planificado)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
+                <span className={`text-[9px] ${subCls}`}>En tránsito (En ruta)</span>
+              </div>
+            </div>
+          </div>
+
+          {/* KPIs Globales */}
+          <div className="space-y-2">
+            <StatCard isDark={isDark} label="Total Activos" value={resumen?.totalActivos ?? 0} />
+            <StatCard isDark={isDark} label="Falta asignar vuelo" value={resumen?.pendientes ?? 0} colorClass="text-amber-500" />
+            <StatCard isDark={isDark} label="Vuelo asignado" value={resumen?.planificados ?? 0} colorClass="text-blue-500" />
+            <StatCard isDark={isDark} label="En tránsito" value={resumen?.enRuta ?? 0} colorClass="text-cyan-500" />
+          </div>
+        </div>
+
+        {/* Mapa central */}
         <div className="flex-1">
           <RealTimeMap
             pedidos={pedidos}
             selectedPedido={selectedPedido}
-            onSelectPedido={handleSelectPedido}
+            onSelectPedido={setSelectedPedido}
             airportsList={airportsList}
           />
         </div>
 
-        {/* Panel derecho - Tracking */}
-        {showPanel && (
+        {/* Panel derecho - Rastreo y búsqueda */}
+        {showRightPanel && (
           <div className={`absolute right-4 top-14 bottom-4 z-10 w-72 border rounded-xl backdrop-blur-sm overflow-hidden flex flex-col pointer-events-auto ${panelBg}`}>
-            {/* Header */}
             <div className={`flex items-center gap-2 px-3 py-2 border-b ${headerBorder}`}>
               <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
-              <span className={`text-[13px] ${titleCls}`}>Rastreo de Pedidos</span>
+              <span className={`text-[13px] ${titleCls}`}>Monitoreo de Pedidos</span>
             </div>
 
             {/* Búsqueda */}
@@ -182,14 +224,14 @@ export function AirlineTracking() {
                   className={`pl-7 h-7 text-[11px] ${searchBg}`}
                 />
                 {search && (
-                  <button onClick={handleClear} className={`absolute right-2 top-1/2 -translate-y-1/2 ${dimCls} ${isDark ? "hover:text-cyan-500" : "hover:text-blue-700"}`}>
-                    <X className="w-3 h-3" />
+                  <button onClick={() => { setSearch(""); setSelectedPedido(null); }} className={`absolute right-2 top-1/2 -translate-y-1/2 ${dimCls}`}>
+                    <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Detalle de pedido seleccionado */}
+            {/* Detalle del pedido seleccionado */}
             {selectedPedido && sc && (
               <div className={`px-3 py-2 border-b ${headerBorder} ${detailBg}`}>
                 <div className="flex items-center justify-between mb-2">
@@ -202,10 +244,10 @@ export function AirlineTracking() {
                   {selectedPedido.nombreAerolinea} | {selectedPedido.cantidadMaletas} maletas
                 </div>
 
-                {/* Línea de tiempo de la ruta */}
-                <div className="space-y-0 max-h-48 overflow-y-auto">
+                {/* Ruta / Línea de tiempo */}
+                <div className="space-y-0 mt-2 max-h-48 overflow-y-auto">
                   <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
+                    <div className="w-2.5 h-2.5 rounded-full bg-cyan-500 shrink-0" />
                     <div className="flex-1">
                       <div className={`text-[10px] font-semibold ${titleCls}`}>
                         Origen: {getCity(selectedPedido.origenOaci)} ({selectedPedido.origenOaci})
@@ -242,43 +284,46 @@ export function AirlineTracking() {
                   })}
 
                   {(!selectedPedido.tramos || selectedPedido.tramos.length === 0) && (
-                    <div className={`pl-5 text-[10px] py-2 ${dimCls}`}>Sin ruta planificada</div>
+                    <div className={`pl-5 text-[10px] py-2 ${dimCls}`}>
+                      Esperando asignación de vuelo...
+                    </div>
                   )}
                 </div>
 
                 <button
-                  onClick={handleClear}
-                  className={`mt-2 text-[10px] transition-colors ${isDark ? "text-cyan-500 hover:text-cyan-400" : "text-blue-700 hover:text-blue-800"}`}
+                  onClick={() => setSelectedPedido(null)}
+                  className={`mt-2.5 text-[10px] transition-colors font-medium ${isDark ? "text-cyan-500 hover:text-cyan-400" : "text-blue-700 hover:text-blue-800"}`}
                 >
                   Cerrar detalle
                 </button>
               </div>
             )}
 
-            {/* Lista de resultados */}
+            {/* Lista de Pedidos */}
             <ScrollArea className="flex-1">
               <div className="px-2 py-1">
-                {filtered.length === 0 && (
-                  <div className={`text-[11px] text-center py-8 ${dimCls}`}>
-                    No se encontraron pedidos activos.
-                  </div>
-                )}
-                {!selectedPedido && filtered.map(p => {
+                {filtered.map(p => {
                   const s = statusConfig[p.estado] || statusConfig.PENDIENTE;
+                  const isSelected = selectedPedido?.id === p.id;
                   return (
                     <button
                       key={p.id}
-                      onClick={() => handleSelectPedido(p)}
-                      className={`w-full text-left px-2 py-1.5 rounded-md mb-0.5 flex items-center gap-2 transition-colors ${hoverRow} border border-transparent`}
+                      onClick={() => setSelectedPedido(isSelected ? null : p)}
+                      className={`w-full text-left px-2 py-2 rounded-md mb-1 flex items-center gap-2 transition-colors ${
+                        isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${hoverRow} border border-transparent`
+                      }`}
                     >
                       <div className={`shrink-0 ${s.color}`}>{s.icon}</div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1">
-                          <span className={`text-[10px] ${titleCls}`}>{p.id}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[10.5px] font-semibold ${titleCls}`}>{p.id}</span>
                           <span className={`text-[9px] ${dimCls}`}>x{p.cantidadMaletas}</span>
                         </div>
                         <div className={`text-[9px] truncate ${subCls}`}>
-                          {p.origenOaci} <ChevronRight className="w-2 h-2 inline" /> {p.destinoOaci}
+                          {p.origenOaci} <ChevronRight className="w-2.5 h-2.5 inline" /> {p.destinoOaci}
+                        </div>
+                        <div className={`text-[8.5px] ${mutedCls} truncate`}>
+                          {p.nombreAerolinea}
                         </div>
                       </div>
                       <span className={`text-[8.5px] px-1.5 py-0.5 rounded-full ${s.bg} ${s.color} font-medium`}>
@@ -287,19 +332,32 @@ export function AirlineTracking() {
                     </button>
                   );
                 })}
+                {filtered.length === 0 && (
+                  <div className={`text-[11px] text-center py-12 ${dimCls}`}>
+                    No hay pedidos activos en este momento.
+                  </div>
+                )}
               </div>
             </ScrollArea>
           </div>
         )}
 
-        {/* Botón toggle panel */}
         <button
-          onClick={() => setShowPanel(!showPanel)}
-          className={`absolute right-4 top-3 z-20 px-2 py-1 border rounded-lg text-[10px] transition-colors ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
+          onClick={() => setShowRightPanel(!showRightPanel)}
+          className={`absolute right-4 top-3 z-20 px-2.5 py-1 border rounded-lg text-[10px] transition-colors ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
         >
-          {showPanel ? "Ocultar" : "Rastreo"}
+          {showRightPanel ? "Ocultar" : "Monitoreo"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, colorClass = "", isDark }: { label: string; value: number; colorClass?: string; isDark: boolean }) {
+  return (
+    <div className={`border rounded-xl p-2.5 backdrop-blur-sm ${isDark ? "bg-[#0a0f1eee] border-[#1a2744]" : "bg-white/90 border-[#cbd5e1]"}`}>
+      <span className={`text-[9px] ${isDark ? "text-white/80" : "text-[#334155]"}`}>{label}</span>
+      <div className={`text-[18px] font-bold mt-0.5 ${colorClass} ${isDark && colorClass === "" ? "text-white" : ""}`}>{value}</div>
     </div>
   );
 }

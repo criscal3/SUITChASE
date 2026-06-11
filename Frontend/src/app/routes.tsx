@@ -15,6 +15,7 @@ import { AirlineTracking } from "./components/AirlineTracking";
 import { LoginPage } from "./components/LoginPage";
 import { OperariosPanel } from "./components/OperariosPanel";
 import { AirportMap } from "./components/AirportMap";
+import { RealTimePage } from "./components/RealTimePage";
 
 function OperatorRegistration() {
   return <Registration showBatchImport={false} />;
@@ -69,6 +70,7 @@ export const router = createBrowserRouter([
           { path: "vuelos", Component: FlightsPanel },
           { path: "aeropuertos", Component: AirportsPanel },
           { path: "simulacion", Component: SimulationPage },
+          { path: "tiempo-real", Component: RealTimePage },
           { path: "aerolineas", Component: AirlinesPanel },
           { path: "operarios", Component: OperariosPanel },
         ],

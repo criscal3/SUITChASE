@@ -60,4 +60,19 @@ public class DataMapperService {
         envio.setClienteId(entity.getAerolineaId() != null ? String.valueOf(entity.getAerolineaId()) : "UNK");
         return envio;
     }
+
+    public EnvioAlgoritmo toEnvioAlgoritmo(com.tasf.b2b.domain.PedidoRealEntity entity) {
+        EnvioAlgoritmo envio = new EnvioAlgoritmo();
+        envio.setId(entity.getId());
+        envio.setOrigenOaci(entity.getOrigenOaci());
+        envio.setDestinoOaci(entity.getDestinoOaci());
+
+        int gmtOrigen = aeropuertoRepository.findById(entity.getOrigenOaci())
+                .map(AeropuertoEntity::getGmt).orElse(0);
+        envio.setFechaHoraRegistro(entity.getFechaHoraRegistro().minusHours(gmtOrigen));
+
+        envio.setCantidadMaletas(entity.getCantidadMaletas());
+        envio.setClienteId(entity.getAerolineaId() != null ? String.valueOf(entity.getAerolineaId()) : "UNK");
+        return envio;
+    }
 }

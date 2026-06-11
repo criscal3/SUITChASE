@@ -2,14 +2,14 @@ package com.tasf.b2b.service;
 
 import com.tasf.b2b.core.*;
 import com.tasf.b2b.domain.AeropuertoEntity;
-import com.tasf.b2b.domain.AsignacionEnvioEntity;
-import com.tasf.b2b.domain.EnvioEntity;
-import com.tasf.b2b.domain.EnvioEntity.EstadoEnvio;
+import com.tasf.b2b.domain.AsignacionRealEntity;
+import com.tasf.b2b.domain.AsignacionRealEntity.EstadoTramo;
+import com.tasf.b2b.domain.PedidoRealEntity;
+import com.tasf.b2b.domain.PedidoRealEntity.EstadoPedido;
 import com.tasf.b2b.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -18,14 +18,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Servicio que se ejecuta periódicamente (cada Ta segundos) para consumir
- * envíos registrados por operarios en tiempo real.
- *
- * Flujo:
- *   1. Query envíos PENDIENTES con simulacion_id IS NULL
- *   2. Ejecutar ACS sobre el lote
- *   3. Persistir asignaciones y actualizar estados
- *   4. Notificar por WebSocket a /topic/tiempo-real y /topic/mis-envios/{aerolineaId}
+ * Servicio que se ejecuta periódicamente (cada Sa segundos) para consumir
+ * pedidos registrados por operarios en tiempo real.
  */
 @Service
 @RequiredArgsConstructor
@@ -34,10 +28,10 @@ public class RealTimeSchedulerService {
 
     private final AeropuertoRepository aeropuertoRepository;
     private final VueloRepository vueloRepository;
-    private final EnvioRepository envioRepository;
-    private final AsignacionEnvioRepository asignacionEnvioRepository;
+    private final PedidoRealRepository pedidoRealRepository;
+    private final AsignacionRealRepository asignacionRealRepository;
     private final DataMapperService dataMapper;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final RealTimeOperationsService rtService;
 
     @Value("${planificador.sa-segundos:120}")
     private int saSegundos;  // Sa: cada cuánto se ejecuta (intervalo)
@@ -60,20 +54,20 @@ public class RealTimeSchedulerService {
             inicializarInputMaestro();
         }
 
-        // 1. Obtener envíos pendientes de tiempo real
+        // 1. Obtener pedidos pendientes de tiempo real
         LocalDateTime ahora = LocalDateTime.now();
-        List<EnvioEntity> enviosPendientes = envioRepository
-                .findBySimulacionIdIsNullAndEstadoAndFechaHoraRegistroBeforeOrderByFechaHoraRegistroAsc(
-                        EstadoEnvio.PENDIENTE, ahora);
+        List<PedidoRealEntity> pedidosPendientes = pedidoRealRepository
+                .findByEstadoAndFechaHoraRegistroBeforeOrderByFechaHoraRegistroAsc(
+                        EstadoPedido.PENDIENTE, ahora);
 
-        if (enviosPendientes.isEmpty()) {
+        if (pedidosPendientes.isEmpty()) {
             return; // Nada que planificar
         }
 
-        log.info("[TiempoReal] Planificando {} envíos pendientes", enviosPendientes.size());
+        log.info("[TiempoReal] Planificando {} pedidos pendientes", pedidosPendientes.size());
 
         // 2. Convertir a formato algoritmo
-        List<EnvioAlgoritmo> enviosAlg = enviosPendientes.stream()
+        List<EnvioAlgoritmo> enviosAlg = pedidosPendientes.stream()
                 .map(dataMapper::toEnvioAlgoritmo)
                 .collect(Collectors.toList());
 
@@ -82,23 +76,27 @@ public class RealTimeSchedulerService {
         long tiempoMs = (long) taSegundos * 1000L;
         PlanificationSolutionOutput solucion = ACSAdapter.planificar(subInput, tiempoMs);
 
-        log.info("[TiempoReal] Resultado: {} envíos planificados, SLA: {}%",
+        log.info("[TiempoReal] Resultado: {} pedidos planificados, SLA: {}%",
                 solucion.enviosConRuta(), solucion.getPromedioConsumoSLA());
 
         // 4. Persistir asignaciones
-        Set<Long> aerolineasNotificadas = new HashSet<>();
+        List<PedidoRealEntity> planificados = new ArrayList<>();
 
         for (EnvioAlgoritmo envioAlg : solucion.getEnviosPlanificados()) {
             ResultadoRuta ruta = solucion.getRuta(envioAlg);
-            EnvioEntity entity = envioRepository.findById(envioAlg.getId()).orElse(null);
+            PedidoRealEntity entity = pedidoRealRepository.findById(envioAlg.getId()).orElse(null);
             if (entity == null) continue;
 
+            entity.setFechaPlanificacion(ahora);
+
             if (ruta == null || ruta.vuelosUsados.isEmpty()) {
-                entity.setEstado(EstadoEnvio.SIN_RUTA);
+                entity.setEstado(EstadoPedido.SIN_RUTA);
             } else {
                 String destinoAlcanzado = ruta.vuelosUsados.get(ruta.vuelosUsados.size() - 1).getDestinoOaci();
                 entity.setEstado(destinoAlcanzado.equals(envioAlg.getDestinoOaci())
-                        ? EstadoEnvio.ENTREGADO : EstadoEnvio.EN_RUTA);
+                        ? EstadoPedido.PLANIFICADO : EstadoPedido.SIN_RUTA);
+                entity.setTotalTramos(ruta.vuelosUsados.size());
+                entity.setUbicacionActual(entity.getOrigenOaci());
 
                 // Guardar tramos de ruta
                 for (int i = 0; i < ruta.vuelosUsados.size(); i++) {
@@ -107,35 +105,26 @@ public class RealTimeSchedulerService {
                     LocalDateTime fechaLlegada = fechaSalida.with(vuelo.getHoraLlegada());
                     if (fechaLlegada.isBefore(fechaSalida)) fechaLlegada = fechaLlegada.plusDays(1);
 
-                    AsignacionEnvioEntity asig = new AsignacionEnvioEntity();
-                    asig.setBloqueResultadoId(null); // Tiempo real, no hay bloque
-                    asig.setEnvioId(envioAlg.getId());
+                    AsignacionRealEntity asig = new AsignacionRealEntity();
+                    asig.setPedidoId(envioAlg.getId());
                     asig.setOrdenVuelo(i + 1);
                     asig.setVueloId(buscarVueloId(vuelo));
+                    asig.setOrigenOaci(vuelo.getOrigenOaci());
+                    asig.setDestinoOaci(vuelo.getDestinoOaci());
                     asig.setFechaSalida(fechaSalida);
                     asig.setFechaLlegada(fechaLlegada);
-                    asig.setEstado(AsignacionEnvioEntity.EstadoAsignacion.A_TIEMPO);
-                    asignacionEnvioRepository.save(asig);
+                    asig.setEstado(EstadoTramo.PROGRAMADO);
+                    asignacionRealRepository.save(asig);
                 }
             }
 
-            envioRepository.save(entity);
-            aerolineasNotificadas.add(entity.getAerolineaId());
+            pedidoRealRepository.save(entity);
+            planificados.add(entity);
         }
 
-        // 5. Notificar WebSocket
-        messagingTemplate.convertAndSend("/topic/tiempo-real", Map.of(
-                "timestamp", ahora.toString(),
-                "enviosPlanificados", solucion.enviosConRuta(),
-                "enviosSinRuta", enviosPendientes.size() - solucion.enviosConRuta(),
-                "sla", solucion.getPromedioConsumoSLA()
-        ));
-
-        // Notificar a cada aerolínea afectada
-        for (Long aerolineaId : aerolineasNotificadas) {
-            List<EnvioEntity> enviosAerolinea = envioRepository
-                    .findByAerolineaIdAndSimulacionIdIsNullOrderByFechaHoraRegistroDesc(aerolineaId);
-            messagingTemplate.convertAndSend("/topic/mis-envios/" + aerolineaId, enviosAerolinea);
+        // 5. Notificar RealTimeOperationsService
+        if (!planificados.isEmpty()) {
+            rtService.actualizarPedidosPlanificados(planificados);
         }
     }
 

@@ -12,6 +12,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -44,12 +45,14 @@ public class AuthController {
                     usuario.getAerolineaId()
             );
 
-            return ResponseEntity.ok(Map.of(
-                    "token", token,
-                    "correo", principalName,
-                    "role", usuario.getRol().name(),
-                    "nombreCompleto", usuario.getNombreCompleto()
-            ));
+            Map<String, Object> responseMap = new HashMap<>();
+            responseMap.put("token", token);
+            responseMap.put("correo", principalName);
+            responseMap.put("role", usuario.getRol().name());
+            responseMap.put("nombreCompleto", usuario.getNombreCompleto());
+            responseMap.put("aerolineaId", usuario.getAerolineaId());
+
+            return ResponseEntity.ok(responseMap);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "Credenciales inválidas"));

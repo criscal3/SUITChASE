@@ -9,7 +9,29 @@ import { hasReachedWeeklySimEnd } from "../engine/types";
 import { INITIAL_WAIT_SECONDS } from "../engine/useSimulation";
 import { OccupancyLegend } from "./OccupancyLegend";
 import { getOccupancyColor, getOccupancyLevel } from "../engine/occupancyStatus";
-import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse } from "lucide-react";
+import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse, Radio, ChevronRight, Search, X } from "lucide-react";
+import { RealTimeMap } from "./RealTimeMap";
+import { RealTimeWebSocketClient } from "../services/realTimeWebSocket";
+import { api } from "../services/api";
+import { ScrollArea } from "./ui/scroll-area";
+
+const statusConfigRT: Record<string, { color: string; bg: string; lightBg: string; lightColor: string; label: string; icon: React.ReactNode }> = {
+  PENDIENTE:   { color: "text-amber-500",  bg: "bg-amber-500/20",  lightBg: "bg-amber-100", lightColor: "text-amber-700", label: "Sin vuelo",   icon: <Clock className="w-3 h-3" /> },
+  PLANIFICADO: { color: "text-blue-500",   bg: "bg-blue-500/20",   lightBg: "bg-blue-100",  lightColor: "text-blue-800",  label: "Asignado",    icon: <CheckCircle className="w-3 h-3" /> },
+  EN_RUTA:     { color: "text-cyan-500",   bg: "bg-cyan-500/20",   lightBg: "bg-cyan-100",  lightColor: "text-cyan-800",  label: "En ruta",     icon: <Plane className="w-3 h-3" /> },
+  ENTREGADO:   { color: "text-green-500",  bg: "bg-green-500/20",  lightBg: "bg-green-100", lightColor: "text-green-700", label: "Entregado",   icon: <CheckCircle className="w-3 h-3" /> },
+  SIN_RUTA:    { color: "text-red-500",    bg: "bg-red-500/20",    lightBg: "bg-red-100",   lightColor: "text-red-700",   label: "Sin ruta",    icon: <AlertTriangle className="w-3 h-3" /> },
+  COLAPSO:     { color: "text-red-500",    bg: "bg-red-500/20",    lightBg: "bg-red-100",   lightColor: "text-red-700",   label: "Colapso",     icon: <AlertTriangle className="w-3 h-3" /> },
+};
+
+function RealTimeStatCard({ label, value, colorClass = "", isDark }: { label: string; value: number; colorClass?: string; isDark: boolean }) {
+  return (
+    <div className={`border rounded-xl p-2.5 backdrop-blur-sm ${isDark ? "bg-[#0a0f1eee] border-[#1a2744]" : "bg-white/90 border-[#cbd5e1]"}`}>
+      <span className={`text-[9px] ${isDark ? "text-white/80" : "text-[#334155]"}`}>{label}</span>
+      <div className={`text-[18px] font-bold mt-0.5 ${colorClass} ${isDark && colorClass === "" ? "text-white" : ""}`}>{value}</div>
+    </div>
+  );
+}
 
 
 
@@ -27,6 +49,70 @@ export function SimulationPage() {
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [viewMode, setViewMode] = useState<"simulation" | "tracking">("simulation");
+  
+  // Real-time operations state
+  const [realTimePedidos, setRealTimePedidos] = useState<any[]>([]);
+  const [realTimeResumen, setRealTimeResumen] = useState<any | null>(null);
+  const [selectedRealTimePedido, setSelectedRealTimePedido] = useState<any | null>(null);
+  const [realTimeSearch, setRealTimeSearch] = useState("");
+  const [showRealTimeRightPanel, setShowRealTimeRightPanel] = useState(true);
+  const [realTimeAirports, setRealTimeAirports] = useState<any[]>([]);
+
+  // Load real-time airports
+  useEffect(() => {
+    api.getAirports().then(data => {
+      if (data) {
+        setRealTimeAirports(data.map((a: any) => ({
+          code: a.oaci,
+          city: a.ciudad,
+          country: a.pais,
+          continent: a.continente || "America",
+          timezone: `UTC${a.gmt >= 0 ? `+${a.gmt}` : a.gmt}`,
+          lat: a.latitud,
+          lng: a.longitud,
+          warehouseCapacity: a.capacidadAlmacen,
+          currentStock: a.stockActual || 0
+        })));
+      }
+    });
+  }, []);
+
+  // WebSockets and REST initial load for real-time
+  useEffect(() => {
+    if (viewMode !== "tracking") return;
+
+    api.getOperacionesRT().then(setRealTimePedidos).catch(console.error);
+    api.getResumenRT().then(setRealTimeResumen).catch(console.error);
+
+    const ws = new RealTimeWebSocketClient("ADMIN", undefined, {
+      onNuevoPedido: (p) => {
+        setRealTimePedidos(prev => {
+          if (prev.some(x => x.id === p.id)) return prev;
+          return [p, ...prev];
+        });
+      },
+      onActualizacion: (r) => {
+        setRealTimeResumen(r);
+      },
+      onPedidosActualizados: (lista: any[]) => {
+        setRealTimePedidos(prev => {
+          const map = new Map(prev.map(p => [p.id, p]));
+          lista.forEach(p => {
+            if (["ENTREGADO", "SIN_RUTA", "COLAPSO"].includes(p.estado)) {
+              map.delete(p.id);
+            } else {
+              map.set(p.id, p);
+            }
+          });
+          return Array.from(map.values()).sort((a, b) => new Date(b.fechaHoraRegistro).getTime() - new Date(a.fechaHoraRegistro).getTime());
+        });
+      }
+    });
+
+    ws.connect();
+    return () => ws.disconnect();
+  }, [viewMode]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showHighlights, setShowHighlights] = useState(false);
   const weeklyEndHandledRef = useRef(false);
@@ -316,14 +402,29 @@ export function SimulationPage() {
             <div className="shrink-0 mt-auto" />
             {/* Estado */}
             <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-              <h4 className={`text-[12px] mb-2 ${panelText}`}>Estado</h4>
-              <OccupancyLegend isDark={isDark} subText={subText} />
+              <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Estados de Pedido</h4>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <span className={`text-[9px] ${subText}`}>Falta asignar vuelo (Pendiente)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                  <span className={`text-[9px] ${subText}`}>Vuelo asignado (Planificado)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
+                  <span className={`text-[9px] ${subText}`}>En tránsito (En ruta)</span>
+                </div>
+              </div>
             </div>
 
             {/* Stats */}
             <div className="space-y-2">
-              <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={activeFlightsCount.toLocaleString()} />
-              <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
+              <RealTimeStatCard isDark={isDark} label="Total Activos" value={realTimeResumen?.totalActivos ?? 0} />
+              <RealTimeStatCard isDark={isDark} label="Falta asignar vuelo" value={realTimeResumen?.pendientes ?? 0} colorClass="text-amber-500" />
+              <RealTimeStatCard isDark={isDark} label="Vuelo asignado" value={realTimeResumen?.planificados ?? 0} colorClass="text-blue-500" />
+              <RealTimeStatCard isDark={isDark} label="En tránsito" value={realTimeResumen?.enRuta ?? 0} colorClass="text-cyan-500" />
             </div>
 
             {/* Escenarios */}
@@ -361,8 +462,201 @@ export function SimulationPage() {
 
         {/* Mapa / Tracking view */}
         {viewMode === "tracking" ? (
-          <div className="flex-1">
-            <TrackingPage embedded />
+          <div className="flex-grow flex relative overflow-hidden h-full w-full">
+            {/* RealTime Map */}
+            <div className="flex-1 h-full w-full">
+              <RealTimeMap
+                pedidos={realTimePedidos}
+                selectedPedido={selectedRealTimePedido}
+                onSelectPedido={setSelectedRealTimePedido}
+                airportsList={realTimeAirports}
+              />
+            </div>
+            {/* RealTime Right Panel */}
+            {showRealTimeRightPanel && (
+              <div className={`absolute right-4 top-14 bottom-4 z-10 w-72 border rounded-xl backdrop-blur-sm overflow-hidden flex flex-col pointer-events-auto ${panelBg}`}>
+                <div className={`flex items-center gap-2 px-3 py-2 border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}`}>
+                  <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
+                  <span className={`text-[13px] ${isDark ? "text-white" : "text-[#111827]"}`}>Monitoreo de Pedidos</span>
+                </div>
+
+                {/* Búsqueda */}
+                <div className={`px-3 py-2 border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}`}>
+                  <div className="relative">
+                    <Search className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`} />
+                    <input
+                      placeholder="Buscar ID, origen, destino..."
+                      value={realTimeSearch}
+                      onChange={e => { setRealTimeSearch(e.target.value); setSelectedRealTimePedido(null); }}
+                      className={`w-full rounded-lg text-[11px] pl-7 pr-7 py-1.5 border transition-colors focus:outline-none ${
+                        isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white placeholder:text-white/30" : "bg-white border-[#cbd5e1] text-[#111827] placeholder:text-[#9ca3af]"
+                      }`}
+                    />
+                    {realTimeSearch && (
+                      <button onClick={() => { setRealTimeSearch(""); setSelectedRealTimePedido(null); }} className={`absolute right-2 top-1/2 -translate-y-1/2 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`}>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Detalle del pedido seleccionado */}
+                {selectedRealTimePedido && (
+                  <div className={`px-3 py-2 border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"} ${isDark ? "bg-[#0f172a]" : "bg-[#dde3ea]"}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-[12px] font-bold ${isDark ? "text-white" : "text-[#0f172a]"}`}>{selectedRealTimePedido.id}</span>
+                      {(() => {
+                        const sc = statusConfigRT[selectedRealTimePedido.estado] || statusConfigRT.PENDIENTE;
+                        return (
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded flex items-center gap-1 ${isDark ? sc.bg : sc.lightBg} ${isDark ? sc.color : sc.lightColor}`}>
+                            {sc.icon} <span className="ml-1">{sc.label}</span>
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <div className={`text-[10px] mb-2 ${isDark ? "text-white/70" : "text-[#374151]"}`}>
+                      {selectedRealTimePedido.nombreAerolinea} | {selectedRealTimePedido.cantidadMaletas} maletas
+                    </div>
+
+                    {/* Ruta / Línea de tiempo */}
+                    <div className="space-y-0 mt-2 max-h-48 overflow-y-auto">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-cyan-500 shrink-0" />
+                        <div className="flex-1">
+                          <div className={`text-[10px] font-semibold ${isDark ? "text-white" : "text-[#0f172a]"}`}>
+                            Origen: {realTimeAirports.find(a => a.code === selectedRealTimePedido.origenOaci)?.city || selectedRealTimePedido.origenOaci} ({selectedRealTimePedido.origenOaci})
+                          </div>
+                          <div className={`text-[9px] ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>
+                            Registro: {(() => {
+                              const isoStr = selectedRealTimePedido.fechaHoraRegistro;
+                              if (!isoStr) return "—";
+                              try {
+                                const d = new Date(isoStr);
+                                return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+                              } catch(e) { return "—"; }
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {selectedRealTimePedido.tramos && selectedRealTimePedido.tramos.map((leg: any, i: number) => {
+                        const isCompleted = leg.estado === "COMPLETADO";
+                        const isCurrent = leg.estado === "EN_VUELO";
+                        return (
+                          <React.Fragment key={i}>
+                            <div className={`ml-[4px] w-[2px] h-3.5 ${isDark ? "bg-[#1e293b]" : "bg-[#c8d0d8]"} relative`}>
+                              {(isCompleted || isCurrent) && (
+                                <div className="absolute inset-0 bg-cyan-500" style={{ height: isCurrent ? "50%" : "100%" }} />
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isCompleted ? "bg-green-500" : isCurrent ? "bg-cyan-500 animate-pulse" : (isDark ? "bg-[#334155]" : "bg-[#a0aec0]")}`} />
+                              <div className="flex-1">
+                                <div className={`text-[10px] font-semibold ${isDark ? "text-white" : "text-[#0f172a]"}`}>
+                                  Tramo {i+1}: {realTimeAirports.find(a => a.code === leg.destinoOaci)?.city || leg.destinoOaci} ({leg.destinoOaci})
+                                </div>
+                                <div className={`text-[9px] ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>
+                                  Salida: {(() => {
+                                    const isoStr = leg.fechaSalida;
+                                    if (!isoStr) return "—";
+                                    try {
+                                      const d = new Date(isoStr);
+                                      return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+                                    } catch(e) { return "—"; }
+                                  })()} | Llegada: {(() => {
+                                    const isoStr = leg.fechaLlegada;
+                                    if (!isoStr) return "—";
+                                    try {
+                                      const d = new Date(isoStr);
+                                      return `${String(d.getDate()).padStart(2,"0")}-${String(d.getMonth()+1).padStart(2,"0")}-${d.getFullYear()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+                                    } catch(e) { return "—"; }
+                                  })()}
+                                </div>
+                              </div>
+                            </div>
+                          </React.Fragment>
+                        );
+                      })}
+
+                      {(!selectedRealTimePedido.tramos || selectedRealTimePedido.tramos.length === 0) && (
+                        <div className={`pl-5 text-[10px] py-2 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`}>
+                          Esperando asignación de vuelo...
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => setSelectedRealTimePedido(null)}
+                      className={`mt-2.5 text-[10px] transition-colors font-medium ${isDark ? "text-cyan-500 hover:text-cyan-400" : "text-blue-700 hover:text-blue-800"}`}
+                    >
+                      Cerrar detalle
+                    </button>
+                  </div>
+                )}
+
+                {/* Lista de Pedidos */}
+                <ScrollArea className="flex-1">
+                  <div className="px-2 py-1">
+                    {(() => {
+                      const filteredRT = realTimePedidos.filter(p => {
+                        if (!realTimeSearch) return true;
+                        const s = realTimeSearch.toLowerCase();
+                        return p.id.toLowerCase().includes(s) ||
+                          p.origenOaci.toLowerCase().includes(s) ||
+                          p.destinoOaci.toLowerCase().includes(s) ||
+                          p.nombreAerolinea.toLowerCase().includes(s);
+                      });
+
+                      if (filteredRT.length === 0) {
+                        return (
+                          <div className={`text-[11px] text-center py-12 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`}>
+                            No hay pedidos activos en este momento.
+                          </div>
+                        );
+                      }
+
+                      return filteredRT.map(p => {
+                        const s = statusConfigRT[p.estado] || statusConfigRT.PENDIENTE;
+                        const isSelected = selectedRealTimePedido?.id === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => setSelectedRealTimePedido(isSelected ? null : p)}
+                            className={`w-full text-left px-2 py-2 rounded-md mb-1 flex items-center gap-2 transition-colors ${
+                              isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${isDark ? "hover:bg-[#0f172a]" : "hover:bg-[#cfd6df]"} border border-transparent`
+                            }`}
+                          >
+                            <div className={`shrink-0 ${s.color}`}>{s.icon}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[10.5px] font-semibold ${isDark ? "text-white" : "text-[#0f172a]"}`}>{p.id}</span>
+                                <span className={`text-[9px] ${isDark ? "text-white/40" : "text-[#9ca3af]"}`}>x{p.cantidadMaletas}</span>
+                              </div>
+                              <div className={`text-[9px] truncate ${isDark ? "text-white/70" : "text-[#374151]"}`}>
+                                {p.origenOaci} <ChevronRight className="w-2.5 h-2.5 inline" /> {p.destinoOaci}
+                              </div>
+                              <div className={`text-[8.5px] ${isDark ? "text-white/50" : "text-[#6b7280]"} truncate`}>
+                                {p.nombreAerolinea}
+                              </div>
+                            </div>
+                            <span className={`text-[8.5px] px-1.5 py-0.5 rounded-full ${s.bg} ${s.color} font-medium`}>
+                              {s.label}
+                            </span>
+                          </button>
+                        );
+                      });
+                    })()}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowRealTimeRightPanel(!showRealTimeRightPanel)}
+              className={`absolute right-4 top-3 z-20 px-2.5 py-1 border rounded-lg text-[10px] transition-colors ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
+            >
+              {showRealTimeRightPanel ? "Ocultar" : "Monitoreo"}
+            </button>
           </div>
         ) : (
           <>

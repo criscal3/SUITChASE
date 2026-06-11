@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -23,6 +24,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -41,11 +43,22 @@ public class SecurityConfig {
                 .requestMatchers("/ws/**").permitAll()   // WebSocket handshake
                 .requestMatchers("/actuator/health").permitAll()
 
+                // --- Tiempo Real ---
+                .requestMatchers(HttpMethod.GET, "/api/tiempo-real/resumen").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/tiempo-real/operaciones").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/tiempo-real/mis-pedidos").hasRole("AEROLINEA")
+                .requestMatchers(HttpMethod.GET, "/api/tiempo-real/pedido/**").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/tiempo-real/pedidos").hasAnyRole("ADMIN", "OPERARIO")
+
                 // --- ADMIN solamente ---
                 .requestMatchers("/api/auth/registro").hasRole("ADMIN")
                 .requestMatchers("/api/usuarios/**").hasRole("ADMIN")
                 .requestMatchers("/api/simulacion/**").hasRole("ADMIN")
                 .requestMatchers("/api/datos-sinteticos/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/vuelos/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/aerolineas/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/aerolineas/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/aerolineas/**").hasRole("ADMIN")
 
                 // --- OPERARIO puede registrar envíos ---
                 // --- Envios ---
@@ -54,6 +67,7 @@ public class SecurityConfig {
 
                 // --- Consultas generales (cualquier autenticado) ---
                 .requestMatchers(HttpMethod.GET, "/api/aeropuertos/**").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/aerolineas/**").authenticated()
                 .requestMatchers(HttpMethod.GET, "/api/envios/**").authenticated()
 
                 // --- Todo lo demás requiere autenticación ---

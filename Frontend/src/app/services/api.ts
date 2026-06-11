@@ -63,7 +63,15 @@ export const api = {
   createAirport: (data) => request("/aeropuertos", { method: "POST", body: data }),
   updateAirport: (oaci, data) => request(`/aeropuertos/${oaci}`, { method: "PUT", body: data }),
   deleteAirport: (oaci) => request(`/aeropuertos/${oaci}`, { method: "DELETE" }),
-  
+
+  getAirlines: () => request<any[]>("/aerolineas"),
+  createAirline: (data: { nombre: string; codigo: string; correo: string; password: string }) =>
+    request("/aerolineas", { method: "POST", body: data }),
+  updateAirline: (id: number, data: { nombre: string }) =>
+    request(`/aerolineas/${id}`, { method: "PUT", body: data }),
+  deleteAirline: (id: number) =>
+    request(`/aerolineas/${id}`, { method: "DELETE" }),
+
   getFlights: () => request<any[]>("/vuelos"),
   
   getEnvios: () => request<any[]>("/envios/mis-envios"),
@@ -83,4 +91,14 @@ export const api = {
   createOperario: (data) => request("/usuarios", { method: "POST", body: { ...data, rol: "OPERARIO" } }),
   updateOperario: (id, data) => request(`/usuarios/${id}`, { method: "PUT", body: data }),
   deleteOperario: (id) => request(`/usuarios/${id}`, { method: "DELETE" }),
+
+  // === TIEMPO REAL ===
+  getResumenRT: () => request<any>("/tiempo-real/resumen"),
+  getOperacionesRT: (params?: { estado?: string; aerolineaId?: number }) =>
+      request<any[]>("/tiempo-real/operaciones" + (params
+          ? "?" + new URLSearchParams(Object.entries(params).filter(([,v]) => v != null) as any).toString()
+          : "")),
+  getMisPedidosRT: () => request<any[]>("/tiempo-real/mis-pedidos"),
+  getDetallePedidoRT: (id: string) => request<any>(`/tiempo-real/pedido/${id}`),
+  registrarPedidoRT: (data: any) => request("/tiempo-real/pedidos", { method: "POST", body: data }),
 };

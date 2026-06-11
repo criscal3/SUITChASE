@@ -154,7 +154,7 @@ export function FlightsPanel() {
           <Plane className={`w-5 h-5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />
           <h1 className={`text-[20px] ${textPrimary}`}>Vuelos</h1>
           <span className={`text-[12px] px-2 py-0.5 rounded-full ${isDark ? "bg-[#1e293b] text-[#94a3b8]" : "bg-[#e2e8f0] text-[#64748b]"}`}>
-            {state.flights.length} registrados
+            {loading ? "..." : flightsList.length} registrados
           </span>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">

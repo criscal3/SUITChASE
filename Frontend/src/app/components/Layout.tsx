@@ -6,7 +6,7 @@ import { Badge } from "./ui/badge";
 import {
   LayoutDashboard, Package, Plane, Warehouse, Activity,
   Menu, ChevronsLeft, ChevronsRight, Globe, Building2,
-  Sun, Moon, Briefcase, CalendarDays, LogOut, Users
+  Sun, Moon, Briefcase, CalendarDays, LogOut, Users, Radio
 } from "lucide-react";
 import { Toaster } from "sonner";
 

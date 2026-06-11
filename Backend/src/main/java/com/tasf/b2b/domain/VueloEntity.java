@@ -5,6 +5,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Table;
+import jakarta.persistence.Column;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
@@ -27,4 +28,7 @@ public class VueloEntity {
     private LocalTime horaSalida;
     private LocalTime horaLlegada;
     private Integer capacidad;
+
+    @Column(name = "aerolinea_id")
+    private Long aerolineaId;
 }
