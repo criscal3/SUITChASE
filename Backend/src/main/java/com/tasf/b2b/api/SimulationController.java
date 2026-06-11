@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import com.tasf.b2b.repository.UsuarioRepository;
+import com.tasf.b2b.domain.UsuarioEntity;
 import java.util.List;
 import java.util.Map;
 
@@ -21,6 +23,7 @@ import java.util.Map;
 public class SimulationController {
 
     private final SimulationService simulationService;
+    private final UsuarioRepository usuarioRepository;
 
     // ========================================
     // INICIAR SIMULACIÓN — Solo ADMIN
@@ -28,8 +31,10 @@ public class SimulationController {
     @PostMapping("/iniciar")
     public ResponseEntity<?> iniciar(@RequestBody IniciarSimulacionRequest request,
                                      Authentication auth) {
-        // TODO: Extraer userId real del token
-        Long userId = 1L;
+        String correo = auth.getName();
+        Long userId = usuarioRepository.findByCorreo(correo)
+                .map(UsuarioEntity::getId)
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
 
         SimulacionEntity sim = simulationService.iniciarSimulacion(
                 userId, request.nombre(),
