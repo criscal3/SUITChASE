@@ -135,7 +135,7 @@ export function BaggageTracking({
   const emptyText    = isDark ? "text-white/30"    : "text-[#9ca3af]";
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       <div className={`flex items-center gap-2 px-3 py-2 border-b ${headerBorder}`}>
         <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
         <span className={`text-[13px] ${titleCls}`}>Monitoreo de Envíos</span>
@@ -259,7 +259,7 @@ export function BaggageTracking({
       )}
 
       {/* Lista */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="px-2 py-1">
           {filtered.map(bg => {
             const s = statusConfig[bg.status];

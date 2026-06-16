@@ -268,7 +268,7 @@ export function SimulationPage() {
               {/* Línea de tiempo */}
               {viewMode === "simulation" && state.scenario !== "collapse" && (
                 <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-                  <div className={`text-[12px] mb-3 ${panelText}`}>
+                  <div className={`text-[14px] font-semibold mb-3 ${panelText}`}>
                     Simulación {state.scenario === "weekly" ? "5 Días" : "1 Día"}
                   </div>
                   <div className="space-y-1">
@@ -285,10 +285,10 @@ export function SimulationPage() {
                         <div key={d} className="flex items-center gap-2">
                           <div className={`w-2 h-2 rounded-full shrink-0 ${isActive ? (isDark ? "bg-cyan-400 animate-pulse" : "bg-blue-600 animate-pulse") : isPast ? (isDark ? "bg-cyan-400" : "bg-blue-600") : isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"
                             }`} />
-                          <div className={`flex-1 h-[1px] ${isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"}`}>
-                            {(isActive || isPast) && <div className={`h-full ${isDark ? "bg-cyan-400/30" : "bg-blue-600/30"}`} style={{ width: isActive ? `${currentHourFraction * 100}%` : "100%" }} />}
+                          <div className={`flex-1 h-[3px] rounded-full ${isDark ? "bg-[#1e293b]" : "bg-[#cbd5e1]"}`}>
+                            {(isActive || isPast) && <div className={`h-full rounded-full ${isDark ? "bg-cyan-400" : "bg-blue-500"}`} style={{ width: isActive ? `${currentHourFraction * 100}%` : "100%" }} />}
                           </div>
-                          <span className={`text-[10px] ${isActive ? (isDark ? "text-cyan-400" : "text-blue-700") : isPast ? isDark ? "text-white/60" : "text-[#475569]" : mutedText}`}>
+                          <span className={`text-[12px] ${isActive ? (isDark ? "text-cyan-400 font-semibold" : "text-blue-700 font-semibold") : isPast ? isDark ? "text-white/60" : "text-[#475569]" : mutedText}`}>
                             {formatTimestampShort(dayTs)}{timeStr}
                           </span>
                         </div>
