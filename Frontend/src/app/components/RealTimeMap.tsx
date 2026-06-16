@@ -1,7 +1,12 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup, Line } from "react-simple-maps";
 import { useTheme } from "../context/ThemeContext";
-import { getOccupancyColor, computeUtilizationPercent } from "../engine/occupancyStatus";
+import {
+  getOccupancyColor,
+  getOccupancyPlaneStroke,
+  getOccupancyTextClass,
+  computeUtilizationPercent,
+} from "../engine/occupancyStatus";
 
 interface Tramo {
   orden: number;
@@ -45,6 +50,7 @@ interface RealTimeMapProps {
   airportsList: Airport[];
   onSelectFlight?: (pedidoIds: string[] | null, flightKey: string | null) => void;
   selectedFlightKey?: string | null;
+  flightsList?: any[];
 }
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
@@ -112,7 +118,83 @@ function parseUTCDate(dateStr: any): number {
   return new Date(formatted).getTime();
 }
 
-export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsList, onSelectFlight, selectedFlightKey }: RealTimeMapProps) {
+function Building3D({ color, util }: { color: string; util: number }) {
+  const h = 8 + (Math.min(100, util) / 100) * 16;
+  return (
+    <g>
+      <path d={`M0,3 L-6,0 L-6,-${h} L0,-${h + 3} Z`} fill={color} opacity={0.8} />
+      <path d={`M0,3 L6,0 L6,-${h} L0,-${h + 3} Z`} fill={color} opacity={0.6} />
+      <path d={`M0,-${h + 3} L-6,-${h} L0,-${h + 6} L6,-${h} Z`} fill={color} />
+    </g>
+  );
+}
+
+function getRealTimeFlightCapacity(
+  origin: string,
+  destination: string,
+  fechaSalida: string,
+  airportsList: Airport[],
+  flightsList: any[]
+): number {
+  if (!flightsList || flightsList.length === 0) return 1000;
+
+  // Find origin airport timezone offset
+  const port = airportsList.find(a => a.code === origin);
+  let gmt = 0;
+  if (port && port.timezone) {
+    const match = port.timezone.match(/UTC([+-]\d+(?:\.\d+|:\d+)?)/);
+    if (match) {
+      const val = match[1];
+      if (val.includes(":")) {
+        const parts = val.split(":");
+        const hours = parseInt(parts[0], 10);
+        const mins = parseInt(parts[1], 10);
+        const sign = hours < 0 ? -1 : 1;
+        gmt = hours + sign * (mins / 60);
+      } else {
+        gmt = parseFloat(val);
+      }
+    }
+  }
+
+  const depTime = parseUTCDate(fechaSalida);
+  const localMs = depTime + gmt * 3600_000;
+  const d = new Date(localMs);
+  const hour = d.getUTCHours();
+  const minute = d.getUTCMinutes();
+
+  let match = flightsList.find(f => {
+    const fOrigin = (f.origin || f.origenOaci || "").toUpperCase();
+    const fDest = (f.destination || f.destinoOaci || "").toUpperCase();
+    if (fOrigin !== origin.toUpperCase() || fDest !== destination.toUpperCase()) {
+      return false;
+    }
+    if (f.horaSalida) {
+      const parts = f.horaSalida.split(":");
+      if (parts.length >= 2) {
+        const fHour = parseInt(parts[0], 10);
+        const fMinute = parseInt(parts[1], 10);
+        return fHour === hour && Math.abs(fMinute - minute) < 15;
+      }
+    }
+    if (f.departureHour != null) {
+      return Math.round(f.departureHour) === hour;
+    }
+    return true;
+  });
+
+  if (!match) {
+    match = flightsList.find(f => {
+      const fOrigin = (f.origin || f.origenOaci || "").toUpperCase();
+      const fDest = (f.destination || f.destinoOaci || "").toUpperCase();
+      return fOrigin === origin.toUpperCase() && fDest === destination.toUpperCase();
+    });
+  }
+
+  return match ? (match.capacity || match.capacidad || 1000) : 1000;
+}
+
+export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsList, onSelectFlight, selectedFlightKey, flightsList }: RealTimeMapProps) {
   const { isDark } = useTheme();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
   const [hovered, setHovered] = useState<any | null>(null);
@@ -211,6 +293,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
             lat: 0,
             lng: 0,
             heading: 0,
+            fechaSalida: leg.fechaSalida,
           });
         }
 
@@ -249,9 +332,17 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
       }
     });
 
-    const activePlanes = Array.from(flightsMap.values());
+    const activePlanes = Array.from(flightsMap.values()).map(f => {
+      const capacity = getRealTimeFlightCapacity(f.fromCode, f.toCode, f.fechaSalida, airportsList, flightsList || []);
+      const utilization = computeUtilizationPercent(f.cantMaletas, capacity);
+      return {
+        ...f,
+        capacity,
+        utilization,
+      };
+    });
     return { arcsData: arcs, planesData: activePlanes };
-  }, [pedidos, selectedPedido, airportsList, isDark, nowMs]);
+  }, [pedidos, selectedPedido, airportsList, isDark, nowMs, flightsList]);
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative transition-colors duration-200" style={{ background: mapBg }}>
@@ -299,39 +390,47 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           ))}
 
           {/* Airport Markers */}
-          {airportsList.map((point) => (
-            <Marker key={point.code} coordinates={[point.lng, point.lat]}>
-              <g
-                style={{ cursor: "pointer" }}
-                transform={`scale(${s})`}
-                onClick={() => setPosition({ coordinates: [point.lng, point.lat], zoom: 3 })}
-                onMouseEnter={(e) => {
-                  setHovered({
-                    kind: "airport",
-                    code: point.code,
-                    city: point.city,
-                    country: point.country,
-                    timezone: point.timezone,
-                    x: e.clientX,
-                    y: e.clientY,
-                  });
-                }}
-                onMouseLeave={() => setHovered(null)}
-              >
-                <circle r={4} fill={getOccupancyColor(computeUtilizationPercent(point.currentStock, point.warehouseCapacity))} stroke="#fff" strokeWidth={1} />
-                <text
-                  textAnchor="middle"
-                  y={12}
-                  style={{ fill: labelFill, fontSize: `${Math.max(4, 3 + position.zoom * 0.8)}px`, pointerEvents: "none", textShadow: "0px 0px 2px rgba(0,0,0,0.5)" }}
+          {airportsList.map((point) => {
+            const util = computeUtilizationPercent(point.currentStock, point.warehouseCapacity);
+            const color = getOccupancyColor(util);
+            return (
+              <Marker key={point.code} coordinates={[point.lng, point.lat]}>
+                <g
+                  style={{ cursor: "pointer" }}
+                  transform={`scale(${s})`}
+                  onClick={() => setPosition({ coordinates: [point.lng, point.lat], zoom: 3 })}
+                  onMouseEnter={(e) => {
+                    setHovered({
+                      kind: "airport",
+                      code: point.code,
+                      city: point.city,
+                      stock: point.currentStock,
+                      capacity: point.warehouseCapacity,
+                      utilization: util,
+                      x: e.clientX,
+                      y: e.clientY,
+                    });
+                  }}
+                  onMouseLeave={() => setHovered(null)}
                 >
-                  {point.code}
-                </text>
-              </g>
-            </Marker>
-          ))}
+                  <Building3D color={color} util={util} />
+                  <text
+                    textAnchor="middle"
+                    y={10}
+                    style={{ fill: labelFill, fontSize: `${Math.max(4, 3 + position.zoom * 0.8)}px`, pointerEvents: "none", textShadow: "0px 0px 2px rgba(0,0,0,0.5)" }}
+                  >
+                    {point.code}
+                  </text>
+                </g>
+              </Marker>
+            );
+          })}
 
           {/* Plane Markers */}
           {planesData.filter(plane => typeof plane.lng === "number" && typeof plane.lat === "number" && !isNaN(plane.lng) && !isNaN(plane.lat)).map((plane) => {
+            const planeUtil = plane.utilization ?? 0;
+            const planeColor = getOccupancyColor(planeUtil);
+            const planeStroke = getOccupancyPlaneStroke(planeUtil);
             return (
               <Marker key={`plane-${plane.key}`} coordinates={[plane.lng, plane.lat]}>
                 <g
@@ -342,10 +441,9 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
                       kind: "flight",
                       from: plane.fromCode,
                       to: plane.toCode,
-                      cantMaletas: plane.cantMaletas,
-                      aerolinea: plane.aerolinea,
-                      progress: plane.progress,
-                      pedidoIds: plane.pedidoIds,
+                      load: plane.cantMaletas,
+                      capacity: plane.capacity,
+                      utilization: planeUtil,
                       x: e.clientX,
                       y: e.clientY,
                     });
@@ -358,7 +456,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
                   }}
                 >
                   <g transform={`rotate(${plane.heading})`}>
-                    <PlaneIcon color={isDark ? "#a78bfa" : "#7c3aed"} stroke="#fff" />
+                    <PlaneIcon color={planeColor} stroke={planeStroke} />
                   </g>
                 </g>
               </Marker>
@@ -375,10 +473,10 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
         >
           <div className={`text-[11px] font-semibold ${tooltipTitle}`}>{hovered.city} ({hovered.code})</div>
           <div className={`text-[10px] mt-1 ${tooltipSub}`}>
-            País: <span className={tooltipVal}>{hovered.country}</span>
+            Uso: <span className={tooltipVal}>{hovered.stock}</span> / {hovered.capacity} maletas
           </div>
           <div className={`text-[10px] ${tooltipSub}`}>
-            Zona Horaria: <span className={tooltipVal}>{hovered.timezone}</span>
+            Ocupación: <span className={getOccupancyTextClass(hovered.utilization)}>{hovered.utilization.toFixed(1)}%</span>
           </div>
         </div>
       )}
@@ -388,21 +486,13 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           className={`fixed z-50 border rounded-lg px-3 py-2 pointer-events-none ${tooltipBg}`}
           style={{ left: hovered.x + 12, top: hovered.y - 10 }}
         >
-          <div className={`text-[11px] font-semibold ${tooltipTitle}`}>Vuelo de {hovered.aerolinea}</div>
+          <div className={`text-[11px] font-semibold ${tooltipTitle}`}>{hovered.from} → {hovered.to}</div>
           <div className={`text-[10px] mt-1 ${tooltipSub}`}>
-            Ruta: <span className={tooltipVal}>{hovered.from} → {hovered.to}</span>
+            Uso: <span className={tooltipVal}>{hovered.load}</span> / {hovered.capacity} maletas
           </div>
           <div className={`text-[10px] ${tooltipSub}`}>
-            Total Maletas: <span className={tooltipVal}>{hovered.cantMaletas}</span>
+            Ocupación: <span className={getOccupancyTextClass(hovered.utilization)}>{hovered.utilization.toFixed(1)}%</span>
           </div>
-          <div className={`text-[10px] ${tooltipSub}`}>
-            Progreso: <span className="text-cyan-500 font-semibold">{hovered.progress.toFixed(1)}%</span>
-          </div>
-          {hovered.pedidoIds && hovered.pedidoIds.length > 0 && (
-            <div className={`text-[9px] mt-1.5 border-t pt-1 ${tooltipSub}`}>
-              Pedidos: <span className={tooltipVal}>{hovered.pedidoIds.join(", ")}</span>
-            </div>
-          )}
         </div>
       )}
     </div>

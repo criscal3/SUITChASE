@@ -31,12 +31,56 @@ function formatTimestamp(ts: number): string {
 interface BaggageTrackingProps {
   selectedBaggage: BaggageGroup | null;
   onSelectBaggage: (bg: BaggageGroup | null) => void;
+  selectedFlightBaggageIds?: string[] | null;
+  selectedFlightKey?: string | null;
+  onClearFlightFilter?: () => void;
 }
 
-export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTrackingProps) {
+export function BaggageTracking({
+  selectedBaggage,
+  onSelectBaggage,
+  selectedFlightBaggageIds,
+  selectedFlightKey,
+  onClearFlightFilter,
+}: BaggageTrackingProps) {
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
   const [search, setSearch] = useState("");
+
+  const getGmt = (oaci: string) => {
+    const ap = airportsList.find((a: any) => a.code === oaci);
+    if (!ap || !ap.timezone) return 0;
+    const match = ap.timezone.match(/UTC([+-]\d+(?:\.\d+|:\d+)?)/);
+    if (!match) return 0;
+    const val = match[1];
+    if (val.includes(":")) {
+      const parts = val.split(":");
+      const hours = parseInt(parts[0], 10);
+      const mins = parseInt(parts[1], 10);
+      const sign = hours < 0 ? -1 : 1;
+      return hours + sign * (mins / 60);
+    }
+    return parseFloat(val);
+  };
+
+  const gmtLabel = (oaci: string) => {
+    const ap = airportsList.find((a: any) => a.code === oaci);
+    if (!ap || !ap.timezone) return "GMT+0";
+    return ap.timezone.replace("UTC", "GMT");
+  };
+
+  const formatTimestampLocal = (ts: number, oaci: string): string => {
+    if (!ts || isNaN(ts)) return "—";
+    const offset = getGmt(oaci);
+    const localMs = ts + offset * 3600_000;
+    const d = new Date(localMs);
+    const day = String(d.getUTCDate()).padStart(2, "0");
+    const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const year = d.getUTCFullYear();
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    return `${day}-${month}-${year} ${hh}:${mm} ${gmtLabel(oaci)}`;
+  };
 
   const getCity = (code: string) => airportsList.find(a => a.code === code)?.city || code;
 
@@ -52,6 +96,10 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
 
   const filtered = state.baggageGroups
     .filter(bg => {
+      if (selectedFlightBaggageIds && !selectedFlightBaggageIds.includes(bg.id)) {
+        return false;
+      }
+
       const finalArrival = bg.route && bg.route.length > 0
         ? bg.route[bg.route.length - 1].arrivalTime
         : bg.deadlineAt;
@@ -90,7 +138,7 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
     <div className="flex flex-col h-full">
       <div className={`flex items-center gap-2 px-3 py-2 border-b ${headerBorder}`}>
         <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
-        <span className={`text-[13px] ${titleCls}`}>Rastreo de Maletas</span>
+        <span className={`text-[13px] ${titleCls}`}>Monitoreo de Envíos</span>
       </div>
 
       {/* Búsqueda */}
@@ -106,11 +154,26 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
         </div>
       </div>
 
+      {/* Indicador de filtro de vuelo */}
+      {selectedFlightKey && (
+        <div className={`mx-3 my-2 p-2 rounded-lg flex items-center justify-between text-[10px] shrink-0 ${isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"}`}>
+          <span className="truncate">
+            Filtrando vuelo: {selectedFlightKey.split("-")[0]} → {selectedFlightKey.split("-")[1]} ({state.baggageGroups.filter(bg => selectedFlightBaggageIds?.includes(bg.id)).reduce((sum, bg) => sum + bg.quantity, 0)} maletas)
+          </span>
+          <button
+            onClick={onClearFlightFilter}
+            className="ml-2 font-bold hover:underline shrink-0"
+          >
+            Ver todos
+          </button>
+        </div>
+      )}
+
       {/* Detalle de maleta seleccionada */}
       {selectedBaggage && sc && (
         <div className={`px-3 py-2 border-b ${headerBorder} ${detailBg}`}>
           <div className="flex items-center justify-between mb-2">
-            <span className={`text-[12px] ${titleCls}`}>{selectedBaggage.id}</span>
+            <span className={`text-[12px] font-bold ${titleCls}`}>{selectedBaggage.id}</span>
             <Badge className={`text-[9px] ${sc.bg} ${sc.color}`}>
               {sc.icon} <span className="ml-1">{sc.label}</span>
             </Badge>
@@ -120,19 +183,22 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
           </div>
 
           {/* Línea de tiempo de la ruta */}
-          <div className="space-y-0">
-            {/* Aeropuerto origen - solo muestra salida */}
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
+          <div className="space-y-0 max-h-56 overflow-y-auto mt-2">
+            {/* Aeropuerto origen */}
+            <div className="flex items-start gap-2">
+              <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
               <div className="flex-1">
-                <div className={`text-[10px] ${titleCls}`}>
+                <div className={`text-[10px] font-semibold ${titleCls}`}>
                   {getCity(selectedBaggage.origin)} ({selectedBaggage.origin})
                 </div>
                 <div className={`text-[9px] ${mutedCls}`}>
-                  {selectedBaggage.route.length > 0
-                    ? `Salida: ${formatTimestamp(selectedBaggage.route[0].departureTime)}`
-                    : `Registro: ${formatTimestamp(selectedBaggage.registeredAt)}`}
+                  Registro: {formatTimestampLocal(selectedBaggage.registeredAt, selectedBaggage.origin)}
                 </div>
+                {selectedBaggage.route.length > 0 && (
+                  <div className={`text-[9px] ${isDark ? "text-cyan-400/80" : "text-cyan-700"}`}>
+                    Salida: {formatTimestampLocal(selectedBaggage.route[0].departureTime, selectedBaggage.origin)}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -144,37 +210,41 @@ export function BaggageTracking({ selectedBaggage, onSelectBaggage }: BaggageTra
               
               return (
                 <React.Fragment key={i}>
-                  <div className={`ml-[3px] w-[2px] h-3 ${trackLineBg} relative`}>
+                  <div className={`ml-[4px] w-[2px] h-3.5 ${trackLineBg} relative`}>
                     {(isCompleted || isCurrent) && (
                       <div className={`absolute inset-0 ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} style={{ height: isCurrent ? "50%" : "100%" }} />
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full shrink-0 ${isCompleted ? (isDark ? "bg-cyan-500" : "bg-blue-600") : isCurrent ? (isDark ? "bg-cyan-500 animate-pulse" : "bg-blue-600 animate-pulse") : dotInactive}`} />
+                  <div className="flex items-start gap-2">
+                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isCompleted ? (isDark ? "bg-cyan-500" : "bg-blue-600") : isCurrent ? (isDark ? "bg-cyan-500 animate-pulse" : "bg-blue-600 animate-pulse") : dotInactive}`} />
                     <div className="flex-1">
-                      <div className={`text-[10px] ${titleCls}`}>
+                      <div className={`text-[10px] font-semibold ${titleCls}`}>
                         {getCity(leg.to)} ({leg.to})
                       </div>
                       <div className={`text-[9px] ${mutedCls}`}>
-                        {isLastLeg
-                          ? `Llegada: ${formatTimestamp(leg.arrivalTime)}`
-                          : `Llegada: ${formatTimestamp(leg.arrivalTime)} | Salida: ${formatTimestamp(nextLeg?.departureTime)}`
-                        }
+                        Llegada: {formatTimestampLocal(leg.arrivalTime, leg.to)}
                       </div>
+                      {!isLastLeg && nextLeg && (
+                        <div className={`text-[9px] ${isDark ? "text-cyan-400/80" : "text-cyan-700"}`}>
+                          Salida: {formatTimestampLocal(nextLeg.departureTime, leg.to)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </React.Fragment>
               );
             })}
 
-            <div className={`ml-[3px] w-[2px] h-2 ${trackLineBg}`} />
-            <div className="flex items-center gap-2">
+            <div className={`ml-[4px] w-[2px] h-3 ${trackLineBg}`} />
+            <div className="flex items-start gap-2">
               <div
-                className={`w-2 h-2 shrink-0 ${selectedBaggage.status === "delivered" ? "bg-green-500" : selectedBaggage.status === "failed" ? "bg-red-500" : dotInactive}`}
+                className={`w-2.5 h-2.5 shrink-0 mt-0.5 ${selectedBaggage.status === "delivered" ? "bg-green-500" : selectedBaggage.status === "failed" ? "bg-red-500" : dotInactive}`}
                 style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }}
               />
-              <div className={`text-[9px] ${mutedCls}`}>
-                Plazo: {formatTimestamp(getDeadline(selectedBaggage))}
+              <div className="flex-1">
+                <div className={`text-[9px] ${mutedCls}`}>
+                  Plazo: {formatTimestampLocal(getDeadline(selectedBaggage), selectedBaggage.destination)}
+                </div>
               </div>
             </div>
           </div>

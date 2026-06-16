@@ -7,6 +7,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight, X, Radio } from "lucide-react";
+import { OccupancyLegend } from "./OccupancyLegend";
 
 interface Tramo {
   orden: number;
@@ -72,11 +73,15 @@ export function RealTimePage() {
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null);
   const [airportsList, setAirportsList] = useState<any[]>([]);
+  const [flightsList, setFlightsList] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
 
   // Load initial data
   useEffect(() => {
+    // 1.5 Fetch flights
+    api.getFlights().then(setFlightsList).catch(console.error);
+
     // 1. Fetch airports
     api.getAirports().then(data => {
       if (data) {
@@ -173,21 +178,8 @@ export function RealTimePage() {
           
           {/* Leyenda de Estados */}
           <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-            <h4 className={`text-[11px] font-semibold mb-2 ${titleCls}`}>Estados de Pedido</h4>
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                <span className={`text-[9px] ${subCls}`}>Falta asignar vuelo (Pendiente)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                <span className={`text-[9px] ${subCls}`}>Vuelo asignado (Planificado)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-cyan-500" />
-                <span className={`text-[9px] ${subCls}`}>En tránsito (En ruta)</span>
-              </div>
-            </div>
+            <h4 className={`text-[11px] font-semibold mb-2 ${titleCls}`}>Almacenes y Vuelos</h4>
+            <OccupancyLegend isDark={isDark} subText={subCls} showFlightRoutes={true} borderClass={headerBorder} />
           </div>
 
           {/* KPIs Globales */}
@@ -206,6 +198,7 @@ export function RealTimePage() {
             selectedPedido={selectedPedido}
             onSelectPedido={setSelectedPedido}
             airportsList={airportsList}
+            flightsList={flightsList}
           />
         </div>
 
@@ -214,7 +207,7 @@ export function RealTimePage() {
           <div className={`absolute right-4 top-14 bottom-4 z-10 w-72 border rounded-xl backdrop-blur-sm overflow-hidden flex flex-col pointer-events-auto ${panelBg}`}>
             <div className={`flex items-center gap-2 px-3 py-2 border-b ${headerBorder}`}>
               <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
-              <span className={`text-[13px] ${titleCls}`}>Monitoreo de Pedidos</span>
+              <span className={`text-[13px] ${titleCls}`}>Monitoreo de Envíos</span>
             </div>
 
             {/* Búsqueda */}

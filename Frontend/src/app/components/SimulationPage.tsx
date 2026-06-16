@@ -59,6 +59,8 @@ export function SimulationPage() {
   const [realTimeAirports, setRealTimeAirports] = useState<any[]>([]);
   const [selectedFlightKey, setSelectedFlightKey] = useState<string | null>(null);
   const [selectedFlightPedidoIds, setSelectedFlightPedidoIds] = useState<string[] | null>(null);
+  const [selectedSimFlightKey, setSelectedSimFlightKey] = useState<string | null>(null);
+  const [selectedSimFlightBaggageIds, setSelectedSimFlightBaggageIds] = useState<string[] | null>(null);
 
   // Load real-time airports
   useEffect(() => {
@@ -466,7 +468,7 @@ export function SimulationPage() {
               <div className={`absolute right-4 top-14 bottom-4 z-10 w-72 border rounded-xl backdrop-blur-sm overflow-hidden flex flex-col pointer-events-auto ${panelBg}`}>
                 <div className={`flex items-center gap-2 px-3 py-2 border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}`}>
                   <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
-                  <span className={`text-[13px] ${isDark ? "text-white" : "text-[#111827]"}`}>Monitoreo de Pedidos</span>
+                  <span className={`text-[13px] ${isDark ? "text-white" : "text-[#111827]"}`}>Monitoreo de Envíos</span>
                 </div>
 
                 {/* Búsqueda */}
@@ -694,13 +696,30 @@ export function SimulationPage() {
         ) : (
           <>
             <div className="flex-1">
-              <SimulationMap selectedBaggage={selectedBaggage} onSelectBaggage={setSelectedBaggage} />
+              <SimulationMap
+                selectedBaggage={selectedBaggage}
+                onSelectBaggage={setSelectedBaggage}
+                selectedFlightKey={selectedSimFlightKey}
+                onSelectFlight={(baggageIds, key) => {
+                  setSelectedSimFlightBaggageIds(baggageIds);
+                  setSelectedSimFlightKey(key);
+                }}
+              />
             </div>
 
             {/* Panel derecho - Tracking */}
             {showTracking && (
               <div className={`absolute right-4 top-14 bottom-4 z-10 w-64 border rounded-xl backdrop-blur-sm overflow-hidden flex flex-col pointer-events-auto ${panelBg}`}>
-                <BaggageTracking selectedBaggage={selectedBaggage} onSelectBaggage={setSelectedBaggage} />
+                <BaggageTracking
+                  selectedBaggage={selectedBaggage}
+                  onSelectBaggage={setSelectedBaggage}
+                  selectedFlightBaggageIds={selectedSimFlightBaggageIds}
+                  selectedFlightKey={selectedSimFlightKey}
+                  onClearFlightFilter={() => {
+                    setSelectedSimFlightKey(null);
+                    setSelectedSimFlightBaggageIds(null);
+                  }}
+                />
               </div>
             )}
 
@@ -708,7 +727,7 @@ export function SimulationPage() {
               onClick={() => setShowTracking(!showTracking)}
               className={`absolute right-4 top-3 z-20 px-2 py-1 border rounded-lg text-[10px] transition-colors ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
             >
-              {showTracking ? "Ocultar" : "Rastreo"}
+              {showTracking ? "Ocultar" : "Monitoreo"}
             </button>
           </>
         )}

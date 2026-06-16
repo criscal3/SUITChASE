@@ -12,8 +12,10 @@ import {
 } from "../engine/occupancyStatus";
 
 interface SimMapProps {
-  onSelectBaggage?: (bg: BaggageGroup) => void;
+  onSelectBaggage?: (bg: BaggageGroup | null) => void;
   selectedBaggage?: BaggageGroup | null;
+  onSelectFlight?: (baggageGroupIds: string[] | null, flightKey: string | null) => void;
+  selectedFlightKey?: string | null;
 }
 
 interface HoveredAirport {
@@ -137,7 +139,7 @@ function PlaneIcon({ color, stroke }: { color: string; stroke: string }) {
   );
 }
 
-export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps) {
+export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight, selectedFlightKey }: SimMapProps) {
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
@@ -295,15 +297,24 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
           toCode: leg.to,
           claveVuelo: leg.claveVuelo,
           intercontinental,
+          baggageGroupIds: [bg.id],
           ...metrics,
         });
         break;
       }
     }
 
-    const uniquePlanes = Array.from(
-      new Map(activePlanes.map((p) => [p.routeKey || p.flightId, p])).values()
-    );
+    const planesMap = new Map<string, any>();
+    for (const p of activePlanes) {
+      const key = p.routeKey || p.flightId;
+      if (planesMap.has(key)) {
+        const existing = planesMap.get(key);
+        existing.baggageGroupIds.push(...p.baggageGroupIds);
+      } else {
+        planesMap.set(key, { ...p });
+      }
+    }
+    const uniquePlanes = Array.from(planesMap.values());
 
     const failedRouteColor = "#ef4444";
 
@@ -431,6 +442,11 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage }: SimMapProps)
                     }, e);
                   }}
                   onMouseLeave={() => setHovered(null)}
+                  onClick={() => {
+                    if (onSelectFlight) {
+                      onSelectFlight(plane.baggageGroupIds, plane.routeKey || plane.flightId);
+                    }
+                  }}
                 >
                   <g transform={`rotate(${plane.heading})`}>
                     <PlaneIcon color={planeColor} stroke={planeStroke} />
