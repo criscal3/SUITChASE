@@ -88,7 +88,6 @@ export const router = createBrowserRouter([
         Component: AirlineLayout,
         children: [
           { index: true, Component: AirlineTracking },
-          { path: "mapa", Component: AirportMap },
         ],
       },
     ]

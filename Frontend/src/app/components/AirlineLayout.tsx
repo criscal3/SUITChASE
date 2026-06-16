@@ -1,7 +1,7 @@
 import React from "react";
-import { Outlet, NavLink } from "react-router";
+import { Outlet, NavLink, useNavigate } from "react-router";
 import { useTheme } from "../context/ThemeContext";
-import { Briefcase, Radar, Sun, Moon, Map } from "lucide-react";
+import { Briefcase, Radar, Sun, Moon, LogOut } from "lucide-react";
 
 function useCurrentTime() {
   const [now, setNow] = React.useState(new Date());
@@ -14,6 +14,7 @@ function useCurrentTime() {
 
 function AirlineLayoutInner() {
   const { isDark, toggleTheme } = useTheme();
+  const navigate = useNavigate();
   const now = useCurrentTime();
   const dateStr = now.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
   const timeStr = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -47,40 +48,42 @@ function AirlineLayoutInner() {
             <Radar className="w-4 h-4 shrink-0" />
             Tracking
           </NavLink>
-
-          <NavLink
-            to="/aerolinea/mapa"
-            className={({ isActive }) =>
-              `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-colors ${
-                isActive
-                  ? "bg-blue-600/20 text-blue-400"
-                  : isDark
-                    ? "text-white/80 hover:bg-[#1e293b] hover:text-white"
-                    : "text-[#334155] hover:bg-[#d1dce8] hover:text-[#0f172a]"
-              }`
-            }
-          >
-            <Map className="w-4 h-4 shrink-0" />
-            Mapa
-          </NavLink>
         </nav>
-
-        <div className={`p-3 border-t ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}`}>
-          <button
-            onClick={toggleTheme}
-            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors ${isDark ? "text-[#94a3b8] hover:text-white hover:bg-[#1e293b]" : "text-[#64748b] hover:text-[#0f172a] hover:bg-[#d1dce8]"}`}
-          >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            {isDark ? "Modo claro" : "Modo oscuro"}
-          </button>
-        </div>
       </aside>
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className={`h-12 border-b flex items-center px-4 shrink-0 ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-[#e8edf5] border-[#cbd5e1]"}`}>
+        <header className={`h-12 border-b flex items-center px-4 gap-3 shrink-0 ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-[#e8edf5] border-[#cbd5e1]"}`}>
           <span className={`text-[14px] ${isDark ? "text-white" : "text-[#0f172a]"}`}>Tracking de Equipaje</span>
-          <span className={`text-[12px] ml-auto ${isDark ? "text-[#94a3b8]" : "text-[#64748b]"}`}>{dateStr} • {timeStr}</span>
+          <span className={`text-[12px] ${isDark ? "text-[#94a3b8]" : "text-[#64748b]"}`}>{dateStr} • {timeStr}</span>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={toggleTheme}
+              title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+              className={`
+                w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
+                ${isDark
+                  ? "bg-[#1e293b] border border-[#334155] text-amber-400 hover:bg-[#334155] hover:border-amber-400/40"
+                  : "bg-[#dde6f0] border border-[#b8ccd8] text-blue-600 hover:bg-[#c8d8e8] hover:border-blue-400"
+                }
+              `}
+            >
+              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => navigate("/login")}
+              title="Cerrar sesión"
+              className={`
+                w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
+                ${isDark
+                  ? "bg-[#1e293b] border border-[#334155] text-red-400 hover:bg-[#334155] hover:border-red-400/40"
+                  : "bg-[#dde6f0] border border-[#b8ccd8] text-red-500 hover:bg-[#c8d8e8] hover:border-red-400"
+                }
+              `}
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </header>
         <main className="flex-1 overflow-hidden">
           <Outlet />
