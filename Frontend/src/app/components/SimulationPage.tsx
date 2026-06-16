@@ -24,16 +24,6 @@ const statusConfigRT: Record<string, { color: string; bg: string; lightBg: strin
   COLAPSO: { color: "text-red-500", bg: "bg-red-500/20", lightBg: "bg-red-100", lightColor: "text-red-700", label: "Colapso", icon: <AlertTriangle className="w-3 h-3" /> },
 };
 
-function RealTimeStatCard({ label, value, colorClass = "", isDark }: { label: string; value: number; colorClass?: string; isDark: boolean }) {
-  return (
-    <div className={`border rounded-xl p-2.5 backdrop-blur-sm ${isDark ? "bg-[#0a0f1eee] border-[#1a2744]" : "bg-white/90 border-[#cbd5e1]"}`}>
-      <span className={`text-[9px] ${isDark ? "text-white/80" : "text-[#334155]"}`}>{label}</span>
-      <div className={`text-[18px] font-bold mt-0.5 ${colorClass} ${isDark && colorClass === "" ? "text-white" : ""}`}>{value}</div>
-    </div>
-  );
-}
-
-
 
 function formatTimestampShort(ts: number): string {
   if (!ts || isNaN(ts)) return "";
@@ -310,13 +300,13 @@ export function SimulationPage() {
 
               {/* Tarjetas de estadísticas */}
               <div className="space-y-2">
-                <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos Activos" value={activeFlightsCount.toLocaleString()} />
+                <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos en Tránsito" value={activeFlightsCount.toLocaleString()} />
                 <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
               </div>
 
               {/* Controles */}
               <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex justify-center items-center gap-2 mb-2">
                   <button
                     onClick={() => {
                       if (!state.hasStarted) {
@@ -339,29 +329,31 @@ export function SimulationPage() {
                   </button>
                 </div>
                 {/* Export buttons */}
-                <div className="flex items-center gap-1 mb-2">
-                  <button
-                    onClick={() => exportResults("json")}
-                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
-                  >
-                    <Download className="w-3 h-3" /> JSON
-                  </button>
-                  <button
-                    onClick={() => exportResults("csv")}
-                    className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
-                  >
-                    <Download className="w-3 h-3" /> CSV
-                  </button>
-                </div>
+                {state.scenario !== "weekly" && (
+                  <div className="flex items-center gap-1 mb-2">
+                    <button
+                      onClick={() => exportResults("json")}
+                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
+                    >
+                      <Download className="w-3 h-3" /> JSON
+                    </button>
+                    <button
+                      onClick={() => exportResults("csv")}
+                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
+                    >
+                      <Download className="w-3 h-3" /> CSV
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Escenarios */}
               <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
                 <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
                 {([
-                  { key: "tracking", label: "Tiempo real" },
+                  { key: "tracking", label: "Operaciones Día a Día" },
                   { key: "weekly", label: "Simulación de 5 días" },
-                  { key: "collapse", label: "Hasta el Colapso" },
+                  { key: "collapse", label: "Simulación Hasta el Colapso" },
                 ] as const).map(s => (
                   <button
                     key={s.key}
@@ -401,25 +393,24 @@ export function SimulationPage() {
               <div className="shrink-0 mt-auto" />
               {/* Ocupación de Aeropuertos */}
               <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-                <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Almacenes y Vuelos</h4>
+                <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Estado</h4>
                 <OccupancyLegend isDark={isDark} subText={subText} />
               </div>
 
               {/* Stats */}
               <div className="space-y-2">
-                <RealTimeStatCard isDark={isDark} label="Total Activos" value={realTimeResumen?.totalActivos ?? 0} />
-                <RealTimeStatCard isDark={isDark} label="Falta asignar vuelo" value={realTimeResumen?.pendientes ?? 0} colorClass="text-amber-500" />
-                <RealTimeStatCard isDark={isDark} label="Vuelo asignado" value={realTimeResumen?.planificados ?? 0} colorClass="text-blue-500" />
-                <RealTimeStatCard isDark={isDark} label="En tránsito" value={realTimeResumen?.enRuta ?? 0} colorClass="text-cyan-500" />
+                <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos En Tránsito" value={realTimeResumen?.enRuta ?? 0} />
+                <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos sin vuelos asignados" value={realTimeResumen?.pendientes ?? 0} />
+                <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos con vuelos asignados" value={realTimeResumen?.planificados ?? 0} />
               </div>
 
               {/* Escenarios */}
               <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
                 <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
                 {([
-                  { key: "tracking", label: "Tiempo real" },
+                  { key: "tracking", label: "Operaciones Día a Día" },
                   { key: "weekly", label: "Simulación de 5 días" },
-                  { key: "collapse", label: "Hasta el Colapso" },
+                  { key: "collapse", label: "Simulación Hasta el Colapso" },
                 ] as const).map(s => (
                   <button
                     key={s.key}
@@ -535,7 +526,7 @@ export function SimulationPage() {
                       };
                       const getGmt = (oaci: string) => realTimeAirports.find((a: any) => a.code === oaci)?.gmt ?? 0;
                       const getCity2 = (oaci: string) => realTimeAirports.find((a: any) => a.code === oaci)?.city || oaci;
-                      const gmtLabel = (g: number) => `GMT${g >= 0 ? `+${g}` : g}`;
+                      const gmtLabel = (g: number) => `UTC${g >= 0 ? `+${g}` : g}`;
                       const registroAirport = selectedRealTimePedido.operarioOaci || selectedRealTimePedido.origenOaci;
                       const registroGmt = getGmt(registroAirport);
 
