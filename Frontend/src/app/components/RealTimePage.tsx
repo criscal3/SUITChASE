@@ -168,7 +168,7 @@ export function RealTimePage() {
     <div className={`h-[calc(100vh-3rem)] -m-4 flex flex-col relative transition-colors duration-200 ${rootBg}`}>
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center py-3 pointer-events-none">
         <h1 className={`text-[18px] tracking-wider flex items-center gap-2 ${isDark ? "text-cyan-400" : "text-blue-800 font-bold"}`} style={{ textShadow: isDark ? "0 0 20px #00e5ff60" : "none" }}>
-          <Radio className="w-5 h-5 animate-pulse text-red-500" /> Operaciones en Tiempo Real
+          <Radio className="w-5 h-5 animate-pulse text-red-500" /> Operaciones Día a Día
         </h1>
       </div>
 
@@ -254,7 +254,7 @@ export function RealTimePage() {
                     } catch { return "—"; }
                   };
                   const getGmt = (oaci: string) => airportsList.find((a: any) => a.code === oaci)?.gmt ?? 0;
-                  const gmtLabel = (g: number) => `GMT${g >= 0 ? `+${g}` : g}`;
+                  const gmtLabel = (g: number) => `UTC${g >= 0 ? `+${g}` : g}`;
                   const registroAirport = selectedPedido.operarioOaci || selectedPedido.origenOaci;
                   const registroGmt = getGmt(registroAirport);
 

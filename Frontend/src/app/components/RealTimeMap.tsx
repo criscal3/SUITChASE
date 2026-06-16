@@ -54,7 +54,8 @@ interface RealTimeMapProps {
 }
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
-const PLANE_SCALE = 0.72;
+const PLANE_SCALE = 0.60;
+const WAREHOUSE_SCALE = 0.80;
 
 function PlaneIcon({ color, stroke }: { color: string; stroke: string }) {
   return (
@@ -397,7 +398,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
               <Marker key={point.code} coordinates={[point.lng, point.lat]}>
                 <g
                   style={{ cursor: "pointer" }}
-                  transform={`scale(${s})`}
+                  transform={`scale(${s * WAREHOUSE_SCALE})`}
                   onClick={() => setPosition({ coordinates: [point.lng, point.lat], zoom: 3 })}
                   onMouseEnter={(e) => {
                     setHovered({
@@ -455,7 +456,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
                     }
                   }}
                 >
-                  <g transform={`rotate(${plane.heading})`}>
+                  <g transform={`translate(0, 0.4) rotate(${plane.heading})`}>
                     <PlaneIcon color={planeColor} stroke={planeStroke} />
                   </g>
                 </g>

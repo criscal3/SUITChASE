@@ -114,7 +114,8 @@ function getHeading(lat1: number, lng1: number, lat2: number, lng2: number) {
 }
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
-const PLANE_SCALE = 0.72;
+const PLANE_SCALE = 0.60;
+const WAREHOUSE_SCALE = 0.80;
 
 function Building3D({ color, util }: { color: string; util: number }) {
   const h = 8 + (Math.min(100, util) / 100) * 16;
@@ -394,7 +395,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
             <Marker key={point.code} coordinates={[point.lng, point.lat]}>
               <g
                 style={{ cursor: "pointer" }}
-                transform={`scale(${s})`}
+                transform={`scale(${s * WAREHOUSE_SCALE})`}
                 onClick={() => setPosition({ coordinates: [point.lng, point.lat], zoom: 3 })}
                 onMouseEnter={(e) => {
                   const ap = state.airports[point.code];
@@ -448,7 +449,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
                     }
                   }}
                 >
-                  <g transform={`rotate(${plane.heading})`}>
+                  <g transform={`translate(0, 0.4) rotate(${plane.heading})`}>
                     <PlaneIcon color={planeColor} stroke={planeStroke} />
                   </g>
                 </g>
