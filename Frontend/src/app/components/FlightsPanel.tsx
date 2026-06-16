@@ -3,6 +3,7 @@ import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
 import {
   Search, Plane, XCircle, ChevronLeft, ChevronRight,
+  ChevronsLeft, ChevronsRight,
   AlertTriangle, Upload, FileText, CheckCircle2, Clock, Globe,
   ArrowUpDown, Trash2
 } from "lucide-react";
@@ -14,16 +15,13 @@ const ROWS_PER_PAGE = 12;
 
 type SortField = "none" | "departure" | "arrival" | "capacity";
 
-function formatFlightDateTime(departureHour: number): string {
+function formatFlightTime(departureHour: number): string {
   const d = new Date(SIM_BASE_DATE);
   const totalMinutes = Math.round(departureHour * 60);
   d.setMinutes(d.getMinutes() + totalMinutes);
-  const day = String(d.getDate()).padStart(2, "0");
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const year = d.getFullYear();
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${day}-${month}-${year} ${hh}:${mm}`;
+  return `${hh}:${mm}`;
 }
 
 export function FlightsPanel() {
@@ -79,11 +77,17 @@ export function FlightsPanel() {
 
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(f =>
-        f.id.toLowerCase().includes(q) ||
-        f.origin.toLowerCase().includes(q) ||
-        f.destination.toLowerCase().includes(q)
-      );
+      list = list.filter(f => {
+        const depTime = formatFlightTime(f.departureHour);
+        const arrTime = formatFlightTime(f.departureHour + (f.transitHours || 0));
+        return (
+          f.id.toLowerCase().includes(q) ||
+          f.origin.toLowerCase().includes(q) ||
+          f.destination.toLowerCase().includes(q) ||
+          depTime.includes(q) ||
+          arrTime.includes(q)
+        );
+      });
     }
     if (filterOrigin !== "all") list = list.filter(f => f.origin === filterOrigin);
     if (filterType === "inter") list = list.filter(f => f.intercontinental);
@@ -177,8 +181,8 @@ export function FlightsPanel() {
             <input
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(0); }}
-              placeholder="Buscar vuelo, origen o destino..."
-              className={`pl-8 pr-3 py-1.5 rounded-lg text-[12px] border w-full sm:w-56 ${
+              placeholder="Vuelo, origen, destino, hora..."
+              className={`pl-8 pr-3 py-1.5 rounded-lg text-[12px] border w-full sm:w-64 ${
                 isDark ? "bg-[#1e293b] border-[#334155] text-white placeholder:text-white/30" : "bg-white border-[#cbd5e1] text-[#0f172a] placeholder:text-[#94a3b8]"
               }`}
             />
@@ -237,6 +241,10 @@ export function FlightsPanel() {
                 </tr>
               ) : pageData.map(f => {
                 const arrivalHour = f.departureHour + (f.transitHours || 0);
+                const originAirport = airportsList.find((a: any) => a.code === f.origin);
+                const destAirport = airportsList.find((a: any) => a.code === f.destination);
+                const originTz = originAirport?.timezone ?? "";
+                const destTz = destAirport?.timezone ?? "";
                 return (
                   <tr key={f.id} className={`border-t ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"} ${f.cancelled ? "opacity-50" : rowHover} transition-colors`}>
                     <td className="px-3 py-2.5">
@@ -245,8 +253,14 @@ export function FlightsPanel() {
                     <td className="px-3 py-2.5">
                       <span className={`px-2 py-0.5 rounded text-[11px] font-mono ${isDark ? "bg-cyan-500/10 text-cyan-400" : "bg-blue-600/10 text-blue-800"}`}>{f.destination}</span>
                     </td>
-                    <td className={`px-3 py-2.5 ${textSecondary} hidden md:table-cell font-mono text-[11px]`}>{formatFlightDateTime(f.departureHour)}</td>
-                    <td className={`px-3 py-2.5 ${textSecondary} hidden md:table-cell font-mono text-[11px]`}>{formatFlightDateTime(arrivalHour)}</td>
+                    <td className={`px-3 py-2.5 hidden md:table-cell`}>
+                      <span className={`font-mono text-[11px] ${textSecondary}`}>{formatFlightTime(f.departureHour)}</span>
+                      {originTz && <span className={`ml-1.5 text-[10px] px-1 py-0.5 rounded ${isDark ? "bg-[#1e293b] text-[#64748b]" : "bg-[#e2e8f0] text-[#94a3b8]"}`}>{originTz}</span>}
+                    </td>
+                    <td className={`px-3 py-2.5 hidden md:table-cell`}>
+                      <span className={`font-mono text-[11px] ${textSecondary}`}>{formatFlightTime(arrivalHour)}</span>
+                      {destTz && <span className={`ml-1.5 text-[10px] px-1 py-0.5 rounded ${isDark ? "bg-[#1e293b] text-[#64748b]" : "bg-[#e2e8f0] text-[#94a3b8]"}`}>{destTz}</span>}
+                    </td>
                     <td className={`px-3 py-2.5 ${textPrimary}`}>{f.capacity}</td>
                     <td className="px-3 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-[11px] ${
@@ -282,16 +296,69 @@ export function FlightsPanel() {
         {/* Pagination */}
         {filtered.length > ROWS_PER_PAGE && (
           <div className={`flex items-center justify-between px-3 py-2 border-t ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
-            <span className={`text-[11px] ${textSecondary}`}>{page * ROWS_PER_PAGE + 1}–{Math.min((page + 1) * ROWS_PER_PAGE, filtered.length)} de {filtered.length}</span>
-            <div className="flex items-center gap-1">
+            <span className={`text-[11px] ${textSecondary}`}>
+              {page * ROWS_PER_PAGE + 1}–{Math.min((page + 1) * ROWS_PER_PAGE, filtered.length)} de {filtered.length}
+            </span>
+            <div className="flex items-center gap-0.5">
+              {/* First page */}
+              <button disabled={page === 0} onClick={() => setPage(0)}
+                title="Primera página"
+                className={`p-1 rounded transition-colors disabled:opacity-30 ${isDark ? "hover:bg-[#334155] text-white" : "hover:bg-[#e2e8f0] text-[#0f172a]"}`}>
+                <ChevronsLeft className="w-4 h-4" />
+              </button>
+              {/* Prev page */}
               <button disabled={page === 0} onClick={() => setPage(p => p - 1)}
+                title="Página anterior"
                 className={`p-1 rounded transition-colors disabled:opacity-30 ${isDark ? "hover:bg-[#334155] text-white" : "hover:bg-[#e2e8f0] text-[#0f172a]"}`}>
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className={`text-[11px] px-2 ${textSecondary}`}>{page + 1} / {totalPages}</span>
+
+              {/* Page number buttons with ±2 window */}
+              {(() => {
+                const pageBtnCls = (p: number) =>
+                  `min-w-[26px] h-[26px] flex items-center justify-center rounded text-[11px] transition-colors ${
+                    p === page
+                      ? isDark ? "bg-cyan-500/20 text-cyan-400 font-semibold" : "bg-blue-600/15 text-blue-700 font-semibold"
+                      : isDark ? "hover:bg-[#334155] text-[#94a3b8] hover:text-white" : "hover:bg-[#e2e8f0] text-[#64748b] hover:text-[#0f172a]"
+                  }`;
+                const ellipsisCls = `px-1 text-[11px] ${textSecondary} select-none`;
+
+                const pages: React.ReactNode[] = [];
+                const start = Math.max(0, page - 2);
+                const end = Math.min(totalPages - 1, page + 2);
+
+                // Always show page 0
+                if (start > 0) {
+                  pages.push(<button key={0} onClick={() => setPage(0)} className={pageBtnCls(0)}>1</button>);
+                  if (start > 1) pages.push(<span key="el-start" className={ellipsisCls}>…</span>);
+                }
+
+                for (let i = start; i <= end; i++) {
+                  pages.push(
+                    <button key={i} onClick={() => setPage(i)} className={pageBtnCls(i)}>{i + 1}</button>
+                  );
+                }
+
+                // Always show last page
+                if (end < totalPages - 1) {
+                  if (end < totalPages - 2) pages.push(<span key="el-end" className={ellipsisCls}>…</span>);
+                  pages.push(<button key={totalPages - 1} onClick={() => setPage(totalPages - 1)} className={pageBtnCls(totalPages - 1)}>{totalPages}</button>);
+                }
+
+                return pages;
+              })()}
+
+              {/* Next page */}
               <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
+                title="Página siguiente"
                 className={`p-1 rounded transition-colors disabled:opacity-30 ${isDark ? "hover:bg-[#334155] text-white" : "hover:bg-[#e2e8f0] text-[#0f172a]"}`}>
                 <ChevronRight className="w-4 h-4" />
+              </button>
+              {/* Last page */}
+              <button disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}
+                title="Última página"
+                className={`p-1 rounded transition-colors disabled:opacity-30 ${isDark ? "hover:bg-[#334155] text-white" : "hover:bg-[#e2e8f0] text-[#0f172a]"}`}>
+                <ChevronsRight className="w-4 h-4" />
               </button>
             </div>
           </div>
