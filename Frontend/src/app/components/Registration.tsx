@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { ScrollArea } from "./ui/scroll-area";
-import { Package, Plus, Search, Upload, FileText, ChevronDown } from "lucide-react";
+import { Package, Plus, Search, Upload, FileText, ChevronDown, Plane, MapPin, Hash } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../services/api";
 
@@ -220,15 +221,24 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
     <div className="space-y-4">
       {/* Formulario de registro */}
       <Card className={cardBg}>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <CardTitle className={`${titleColor} text-[14px] flex items-center gap-2`}>
-            <Plus className="w-4 h-4" /> Registrar Envío de Maletas
+            <Package className="w-4 h-4" /> Registrar Envío de Maletas
           </CardTitle>
+          <p className={`text-[12px] ${subtlerText} mt-0.5`}>
+            Complete los campos para registrar un nuevo lote de maletas al sistema.
+          </p>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            {/* Airline searchable combobox */}
-            <div ref={airlineRef} className="relative">
+        <CardContent className="pt-2">
+          {/* Fields grid: 2 cols on md, full on sm */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
+
+            {/* Aerolínea */}
+            <div ref={airlineRef} className="relative flex flex-col gap-1.5">
+              <Label className={`text-[12px] font-medium ${subtleText} flex items-center gap-1.5`}>
+                <Plane className="w-3.5 h-3.5" />
+                Aerolínea
+              </Label>
               {airlineOpen ? (
                 <div className={`flex items-center h-9 w-full rounded-md border px-3 text-[13px] ${inputBg}`}>
                   <input
@@ -246,7 +256,7 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
                   onClick={() => { setAirlineOpen(true); setAirlineSearch(""); }}
                 >
                   <span className={`flex-1 truncate ${!airline ? "text-muted-foreground" : ""}`}>
-                    {airline || "Aerolínea"}
+                    {airline || "Seleccionar aerolínea..."}
                   </span>
                   <ChevronDown className={`w-3.5 h-3.5 shrink-0 ${isDark ? "text-white/50" : "text-[#9ca3af]"}`} />
                 </div>
@@ -271,36 +281,71 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
                 </div>
               )}
             </div>
-            <Select value={origin} onValueChange={setOrigin}>
-              <SelectTrigger className={inputBg}>
-                <SelectValue placeholder="Origen" />
-              </SelectTrigger>
-              <SelectContent className={selectContentBg}>
-                {airportsList.map(a => (
-                  <SelectItem key={a.code} value={a.code} className={selectItemText}>{a.code} — {a.city}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={destination} onValueChange={setDestination}>
-              <SelectTrigger className={inputBg}>
-                <SelectValue placeholder="Destino" />
-              </SelectTrigger>
-              <SelectContent className={selectContentBg}>
-                {airportsList.map(a => (
-                  <SelectItem key={a.code} value={a.code} className={selectItemText}>{a.code} — {a.city}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              type="number"
-              min={1}
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              placeholder="Cantidad"
-              className={inputBg}
-            />
-            <Button onClick={handleRegister} className="bg-blue-600 hover:bg-blue-700">
-              <Package className="w-4 h-4 mr-1" /> Registrar
+
+            {/* Cantidad */}
+            <div className="flex flex-col gap-1.5">
+              <Label className={`text-[12px] font-medium ${subtleText} flex items-center gap-1.5`}>
+                <Hash className="w-3.5 h-3.5" />
+                Cantidad de maletas
+              </Label>
+              <Input
+                type="number"
+                min={1}
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                placeholder="Ej. 5"
+                className={inputBg}
+              />
+            </div>
+
+            {/* Origen */}
+            <div className="flex flex-col gap-1.5">
+              <Label className={`text-[12px] font-medium ${subtleText} flex items-center gap-1.5`}>
+                <MapPin className="w-3.5 h-3.5" />
+                Aeropuerto de origen
+              </Label>
+              <Select value={origin} onValueChange={setOrigin}>
+                <SelectTrigger className={inputBg}>
+                  <SelectValue placeholder="Seleccionar origen..." />
+                </SelectTrigger>
+                <SelectContent className={selectContentBg}>
+                  {airportsList.map(a => (
+                    <SelectItem key={a.code} value={a.code} className={selectItemText}>{a.code} — {a.city}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Destino */}
+            <div className="flex flex-col gap-1.5">
+              <Label className={`text-[12px] font-medium ${subtleText} flex items-center gap-1.5`}>
+                <MapPin className="w-3.5 h-3.5 text-blue-500" />
+                Aeropuerto de destino
+              </Label>
+              <Select value={destination} onValueChange={setDestination}>
+                <SelectTrigger className={inputBg}>
+                  <SelectValue placeholder="Seleccionar destino..." />
+                </SelectTrigger>
+                <SelectContent className={selectContentBg}>
+                  {airportsList.map(a => (
+                    <SelectItem key={a.code} value={a.code} className={selectItemText}>{a.code} — {a.city}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Divider + Action */}
+          <div className={`mt-4 pt-4 border-t flex items-center justify-between ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
+            <p className={`text-[11px] ${subtlerText}`}>
+              * Todos los campos son requeridos. Origen y destino deben ser distintos.
+            </p>
+            <Button
+              onClick={handleRegister}
+              className={`flex items-center gap-2 px-5 text-[13px] ${isDark ? "bg-blue-600 hover:bg-blue-500" : "bg-blue-600 hover:bg-blue-700"} text-white`}
+            >
+              <Plus className="w-4 h-4" />
+              Registrar envío
             </Button>
           </div>
         </CardContent>
