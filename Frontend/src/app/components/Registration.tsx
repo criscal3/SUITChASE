@@ -92,12 +92,12 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
         quantity: e.cantidadMaletas,
         airline: e.nombreAerolinea || als.find((a: any) => a.id === e.aerolineaId)?.nombre || e.aerolineaId,
         status: e.estado === 'PENDIENTE' ? 'waiting' :
-                e.estado === 'PLANIFICADO' ? 'in_transit' :
+                e.estado === 'PLANIFICADO' ? 'assigned' :
                 e.estado === 'EN_RUTA' ? 'in_transit' :
                 e.estado === 'ENTREGADO' ? 'delivered' :
                 e.estado === 'COLAPSO' ? 'delayed' : 'failed',
         currentLocation: e.ubicacionActual || e.origenOaci,
-        route: []
+        route: e.tramos ? e.tramos.map((t: any) => ({ from: t.origenOaci, to: t.destinoOaci })) : []
       }));
       setBaggageGroups(envsMapped);
     } catch (err) {
@@ -203,6 +203,7 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
 
   const statusColors: Record<string, string> = {
     waiting: isDark ? "bg-amber-500/20 text-amber-400" : "bg-amber-100 text-amber-700 border border-amber-300",
+    assigned: isDark ? "bg-cyan-500/20 text-cyan-400" : "bg-cyan-100 text-cyan-700 border border-cyan-300",
     in_transit: isDark ? "bg-blue-500/20 text-blue-400" : "bg-blue-100 text-blue-700 border border-blue-300",
     delivered: isDark ? "bg-green-500/20 text-green-400" : "bg-green-100 text-green-700 border border-green-300",
     delayed: isDark ? "bg-orange-500/20 text-orange-400" : "bg-orange-100 text-orange-700 border border-orange-300",
@@ -211,7 +212,8 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
 
   const statusLabels: Record<string, string> = {
     waiting: "En espera",
-    in_transit: "En tránsito",
+    assigned: "Asignado",
+    in_transit: "En ruta",
     delivered: "Entregado",
     delayed: "Retrasado",
     failed: "Fallido",
@@ -395,7 +397,8 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
                 <SelectContent className={selectContentBg}>
                   <SelectItem value="all" className={selectItemText}>Todos</SelectItem>
                   <SelectItem value="waiting" className={selectItemText}>En espera</SelectItem>
-                  <SelectItem value="in_transit" className={selectItemText}>En tránsito</SelectItem>
+                  <SelectItem value="assigned" className={selectItemText}>Asignado</SelectItem>
+                  <SelectItem value="in_transit" className={selectItemText}>En ruta</SelectItem>
                   <SelectItem value="delivered" className={selectItemText}>Entregado</SelectItem>
                   <SelectItem value="delayed" className={selectItemText}>Retrasado</SelectItem>
                   <SelectItem value="failed" className={selectItemText}>Fallido</SelectItem>
@@ -443,7 +446,9 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
                       </Badge>
                     </TableCell>
                     <TableCell className={`${subtlerText} text-[10px]`}>
-                      {bg.route.map(l => l.to).join(" → ") || "Sin ruta"}
+                      {bg.route.length > 0
+                        ? [bg.route[0].from, ...bg.route.map((l: any) => l.to)].join(" → ")
+                        : "Sin ruta"}
                     </TableCell>
                   </TableRow>
                 ))}
