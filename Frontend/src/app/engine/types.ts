@@ -51,6 +51,7 @@ export interface SimulationState {
   fastForwardTarget?: number | null;
   fastForwardState?: "idle" | "running" | "reached";
   targetDateStr?: string;
+  activeSimId?: number;
 }
 
 export function hasReachedWeeklySimEnd(

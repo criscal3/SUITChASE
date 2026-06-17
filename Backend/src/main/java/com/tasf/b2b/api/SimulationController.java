@@ -141,6 +141,35 @@ public class SimulationController {
         return ResponseEntity.ok(resultado);
     }
 
+    // ========================================
+    // CANCELACIÓN DE VUELOS (SIMULACIÓN)
+    // ========================================
+    @GetMapping("/{id}/pedidos-afectados-vuelo")
+    public ResponseEntity<List<Map<String, Object>>> pedidosAfectadosVuelo(
+            @PathVariable Long id,
+            @RequestParam String origen,
+            @RequestParam String destino,
+            @RequestParam String fechaSalida) {
+        LocalDateTime fecha = LocalDateTime.parse(fechaSalida, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        return ResponseEntity.ok(simulationService.obtenerPedidosAfectadosSimulacion(id, origen, destino, fecha));
+    }
+
+    @PostMapping("/{id}/cancelar-vuelo")
+    public ResponseEntity<Map<String, Object>> cancelarVuelo(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> request) {
+        String origen = request.get("origen");
+        String destino = request.get("destino");
+        LocalDateTime fecha = LocalDateTime.parse(request.get("fechaSalida"), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        
+        simulationService.cancelarVueloSimulacion(id, origen, destino, fecha);
+        
+        return ResponseEntity.ok(Map.of(
+                "simulacionId", id,
+                "mensaje", "Vuelo cancelado exitosamente para la simulación"
+        ));
+    }
+
     // --- DTO ---
     public record IniciarSimulacionRequest(String nombre,
                                            LocalDateTime fechaInicio, LocalDateTime fechaFin,

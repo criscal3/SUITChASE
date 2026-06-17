@@ -742,6 +742,7 @@ export function useSimulation() {
     togglePause,
     updateSpeed,
     waitCountdown,
+    activeSimId: activeSimIdRef.current,
     handleCancelFlight,
     registerBaggage,
     batchImportBaggage,

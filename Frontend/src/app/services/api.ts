@@ -92,6 +92,10 @@ export const api = {
   cancelarSimulacion: (id) => request(`/simulacion/${id}/cancelar`, { method: "POST" }),
   actualizarK: (id, k) => request(`/simulacion/${id}/k`, { method: "PUT", body: { k } }),
   getRutasBloque: (simId, bloqueId) => request<any[]>(`/simulacion/${simId}/bloques/${bloqueId}/rutas`),
+  getPedidosAfectadosSimulacion: (simId, origen, destino, fechaSalida) => 
+    request<any[]>(`/simulacion/${simId}/pedidos-afectados-vuelo?origen=${origen}&destino=${destino}&fechaSalida=${fechaSalida}`),
+  cancelarVueloSimulacion: (simId, origen, destino, fechaSalida) => 
+    request(`/simulacion/${simId}/cancelar-vuelo`, { method: "POST", body: { origen, destino, fechaSalida } }),
 
   // Operarios
   getOperarios: () => request<any[]>("/usuarios/operarios"),

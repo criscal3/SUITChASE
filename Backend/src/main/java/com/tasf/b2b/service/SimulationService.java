@@ -35,6 +35,9 @@ public class SimulationService {
     // Estado de simulaciones activas: simulacionId -> flag de pausa
     private final Map<Long, Boolean> pauseFlags = new ConcurrentHashMap<>();
 
+    // Almacena los vuelos cancelados por simulación. Clave: simulacionId, Valor: Set de claves de vuelo (ORIGEN-DESTINO-YYYY-MM-DDTHH:mm:ss)
+    private final Map<Long, Set<String>> vuelosCanceladosPorSimulacion = new ConcurrentHashMap<>();
+
     /** Evita dos hilos @Async procesando la misma simulación (p. ej. al reanudar). */
     private final KeySetView<Long, Boolean> simulacionesEnEjecucion = ConcurrentHashMap.newKeySet();
 
@@ -160,6 +163,66 @@ public class SimulationService {
     }
 
     // ========================================================
+    // CANCELACIÓN DE VUELOS EN SIMULACIÓN
+    // ========================================================
+    
+    public void cancelarVueloSimulacion(Long simulacionId, String origen, String destino, LocalDateTime fechaSalidaLocal) {
+        int gmtOrigen = aeropuertoRepository.findById(origen).map(AeropuertoEntity::getGmt).orElse(0);
+        LocalDateTime fechaSalidaUtc = fechaSalidaLocal.minusHours(gmtOrigen);
+        
+        String claveVuelo = origen + "-" + destino + "-" + fechaSalidaUtc.toString();
+        vuelosCanceladosPorSimulacion.computeIfAbsent(simulacionId, k -> ConcurrentHashMap.newKeySet()).add(claveVuelo);
+        log.info("Vuelo cancelado en simulación {}: {}", simulacionId, claveVuelo);
+    }
+
+    public List<Map<String, Object>> obtenerPedidosAfectadosSimulacion(Long simulacionId, String origen, String destino, LocalDateTime fechaSalidaLocal) {
+        // Encontrar el ID del vuelo
+        int gmtOrigen = aeropuertoRepository.findById(origen).map(AeropuertoEntity::getGmt).orElse(0);
+        java.time.LocalTime horaSalidaLocal = fechaSalidaLocal.toLocalTime();
+        LocalDateTime fechaSalidaUtc = fechaSalidaLocal.minusHours(gmtOrigen);
+        
+        List<VueloEntity> vuelos = vueloRepository.findAll().stream()
+                .filter(v -> v.getOrigenOaci().equals(origen) && v.getDestinoOaci().equals(destino))
+                .filter(v -> v.getHoraSalida().equals(horaSalidaLocal) || v.getHoraSalida().equals(fechaSalidaUtc.toLocalTime())) // fallback
+                .toList();
+                
+        if (vuelos.isEmpty()) return Collections.emptyList();
+        Long vueloId = vuelos.get(0).getId();
+
+        // Encontrar los últimos bloques procesados de la simulación
+        List<Long> bloquesSimulacion = bloqueResultadoRepository.findBySimulacionIdOrderByNumeroBloqueAsc(simulacionId)
+                .stream().map(BloqueResultadoEntity::getId).toList();
+                
+        if (bloquesSimulacion.isEmpty()) return Collections.emptyList();
+
+        // Buscar en las asignaciones
+        List<AsignacionEnvioEntity> asignaciones = asignacionEnvioRepository.findAll().stream()
+                .filter(a -> bloquesSimulacion.contains(a.getBloqueResultadoId()))
+                .filter(a -> a.getVueloId().equals(vueloId))
+                .filter(a -> a.getFechaSalida().equals(fechaSalidaUtc))
+                .toList();
+
+        List<Map<String, Object>> afectados = new ArrayList<>();
+        Set<String> enviosProcesados = new HashSet<>();
+        
+        for (AsignacionEnvioEntity asig : asignaciones) {
+            if (enviosProcesados.contains(asig.getEnvioId())) continue;
+            enviosProcesados.add(asig.getEnvioId());
+            
+            envioRepository.findById(asig.getEnvioId()).ifPresent(envio -> {
+                Map<String, Object> dto = new LinkedHashMap<>();
+                dto.put("id", envio.getId());
+                dto.put("cantidadMaletas", envio.getCantidadMaletas());
+                // Por defecto "SUITChASE Airlines" o buscar aerolinea
+                dto.put("nombreAerolinea", "SUITChASE Airlines"); 
+                afectados.add(dto);
+            });
+        }
+        
+        return afectados;
+    }
+
+    // ========================================================
     // LOOP ASÍNCRONO DE BLOQUES — el corazón del sistema
     // ========================================================
     @Async
@@ -202,6 +265,7 @@ public class SimulationService {
         List<AeropuertoAlgoritmo> aeropuertos = aeropuertosMap.get(simulacionId);
         List<VueloAlgoritmo> vuelos = vuelosMap.get(simulacionId);
         Map<String, VueloAlgoritmo> indiceVuelos = indiceVuelosMap.get(simulacionId);
+        Set<String> vuelosCancelados = vuelosCanceladosPorSimulacion.getOrDefault(simulacionId, Collections.emptySet());
         
         if (inputMaestro == null) {
             // Primera ejecución: cargar aeropuertos y vuelos
@@ -314,6 +378,7 @@ public class SimulationService {
             if (!enviosBloque.isEmpty()) {
                 // 2. Crear sub-input con los envíos del bloque
                 PlanificationProblemInput subInput = inputMaestro.crearSubInput(enviosBloque);
+                subInput.setVuelosCancelados(vuelosCancelados); // Inject cancelados
 
                 // 3. Ejecutar ACS
                 long tiempoMs = (long) ta * 1000L;

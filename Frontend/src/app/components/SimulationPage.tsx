@@ -4,6 +4,7 @@ import { useTheme } from "../context/ThemeContext";
 import { SimulationMap } from "./SimulationMap";
 import { BaggageTracking } from "./BaggageTracking";
 import { TrackingPage } from "./TrackingPage";
+import { FlightCancellationCard } from "./FlightCancellationCard";
 import type { BaggageGroup } from "../engine/types";
 import { hasReachedWeeklySimEnd } from "../engine/types";
 import { INITIAL_WAIT_SECONDS } from "../engine/useSimulation";
@@ -805,19 +806,27 @@ export function SimulationPage() {
               />
             </div>
 
-            {/* Panel derecho - Tracking */}
+            {/* Panel derecho - Tracking & Cancelación */}
             {showTracking && (
-              <div className={`absolute right-4 top-14 bottom-4 z-10 w-64 border rounded-xl backdrop-blur-sm overflow-hidden flex flex-col pointer-events-auto ${panelBg}`}>
-                <BaggageTracking
-                  selectedBaggage={selectedBaggage}
-                  onSelectBaggage={setSelectedBaggage}
-                  selectedFlightBaggageIds={selectedSimFlightBaggageIds}
-                  selectedFlightKey={selectedSimFlightKey}
-                  onClearFlightFilter={() => {
-                    setSelectedSimFlightKey(null);
-                    setSelectedSimFlightBaggageIds(null);
-                  }}
-                />
+              <div className={`absolute right-4 top-14 bottom-4 z-10 w-64 flex flex-col gap-2 pointer-events-none`}>
+                <div className={`flex-1 min-h-0 border rounded-xl backdrop-blur-sm overflow-hidden flex flex-col pointer-events-auto ${panelBg}`}>
+                  <BaggageTracking
+                    selectedBaggage={selectedBaggage}
+                    onSelectBaggage={setSelectedBaggage}
+                    selectedFlightBaggageIds={selectedSimFlightBaggageIds}
+                    selectedFlightKey={selectedSimFlightKey}
+                    onClearFlightFilter={() => {
+                      setSelectedSimFlightKey(null);
+                      setSelectedSimFlightBaggageIds(null);
+                    }}
+                  />
+                </div>
+                
+                {state.scenario !== "tracking" && (
+                  <div className={`shrink-0 border rounded-xl backdrop-blur-sm pointer-events-auto overflow-hidden ${panelBg}`}>
+                    <FlightCancellationCard />
+                  </div>
+                )}
               </div>
             )}
 
