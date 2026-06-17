@@ -94,7 +94,7 @@ export function OccupancyLegend({
   return (
     <>
       <div className="flex items-center justify-between mb-2">
-        <p className={`text-[9px] ${subText}`}>Almacenes y aviones</p>
+        <p className={`text-[9px] ${subText}`}>Almacenes y vuelos</p>
         {allOccupancySelected ? (
           <button
             onClick={() => {

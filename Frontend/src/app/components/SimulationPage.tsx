@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
 import { SimulationMap } from "./SimulationMap";
@@ -8,7 +8,7 @@ import type { BaggageGroup } from "../engine/types";
 import { hasReachedWeeklySimEnd } from "../engine/types";
 import { INITIAL_WAIT_SECONDS } from "../engine/useSimulation";
 import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
-import { getOccupancyColor, getOccupancyLevel } from "../engine/occupancyStatus";
+import { getOccupancyColor, getOccupancyLevel, computeUtilizationPercent } from "../engine/occupancyStatus";
 import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse, Radio, ChevronRight, Search, X } from "lucide-react";
 import { RealTimeMap } from "./RealTimeMap";
 import { RealTimeWebSocketClient } from "../services/realTimeWebSocket";
@@ -54,6 +54,7 @@ export function SimulationPage() {
   const [realTimeSearch, setRealTimeSearch] = useState("");
   const [showRealTimeRightPanel, setShowRealTimeRightPanel] = useState(true);
   const [realTimeAirports, setRealTimeAirports] = useState<any[]>([]);
+  const [realTimeFlights, setRealTimeFlights] = useState<any[]>([]);
   const [selectedFlightKey, setSelectedFlightKey] = useState<string | null>(null);
   const [selectedFlightPedidoIds, setSelectedFlightPedidoIds] = useState<string[] | null>(null);
   const [selectedSimFlightKey, setSelectedSimFlightKey] = useState<string | null>(null);
@@ -83,6 +84,7 @@ export function SimulationPage() {
   useEffect(() => {
     if (viewMode !== "tracking") return;
 
+    api.getFlights().then(setRealTimeFlights).catch(console.error);
     api.getOperacionesRT().then(setRealTimePedidos).catch(console.error);
     api.getResumenRT().then(setRealTimeResumen).catch(console.error);
 
@@ -114,6 +116,40 @@ export function SimulationPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showHighlights, setShowHighlights] = useState(false);
   const weeklyEndHandledRef = useRef(false);
+
+  // Calculate global warehouse and flight occupancy for tracking mode
+  const globalFlightOccupancy = useMemo(() => {
+    let totalFlightLoad = 0;
+    let totalFlightCapacity = 0;
+    realTimePedidos.forEach(p => {
+      if (p.estado === "EN_RUTA") {
+        p.tramos.forEach(t => {
+          if (t.estado === "EN_RUTA") {
+            const flight = realTimeFlights.find(f => 
+              f.origenOaci === t.origenOaci && 
+              f.destinoOaci === t.destinoOaci &&
+              f.fechaSalida === t.fechaSalida
+            );
+            if (flight) {
+              totalFlightLoad += p.cantidadMaletas;
+              totalFlightCapacity += flight.capacidad || 100;
+            }
+          }
+        });
+      }
+    });
+    return computeUtilizationPercent(totalFlightLoad, totalFlightCapacity);
+  }, [realTimePedidos, realTimeFlights]);
+
+  const globalWarehouseOccupancy = useMemo(() => {
+    let totalWarehouseStock = 0;
+    let totalWarehouseCapacity = 0;
+    realTimeAirports.forEach(a => {
+      totalWarehouseStock += a.currentStock || 0;
+      totalWarehouseCapacity += a.warehouseCapacity || 0;
+    });
+    return computeUtilizationPercent(totalWarehouseStock, totalWarehouseCapacity);
+  }, [realTimeAirports]);
 
   /** Detener: pausa (reanudable tras Cerrar) y abre Highlights. */
   const handleStopSimulation = useCallback(async () => {
@@ -314,6 +350,20 @@ export function SimulationPage() {
               <div className="space-y-2">
                 <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos en Tránsito" value={activeFlightsCount.toLocaleString()} />
                 <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
+                <StatCard 
+                  isDark={isDark} 
+                  icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
+                  label="Ocupación Global de Vuelos" 
+                  value={`${state.stats.flightUtilization.toFixed(1)}%`}
+                  valueColor={getOccupancyColor(state.stats.flightUtilization)}
+                />
+                <StatCard 
+                  isDark={isDark} 
+                  icon={<Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
+                  label="Ocupación Global de Almacenes" 
+                  value={`${state.stats.warehouseUtilization.toFixed(1)}%`}
+                  valueColor={getOccupancyColor(state.stats.warehouseUtilization)}
+                />
               </div>
 
               {/* Controles */}
@@ -419,6 +469,20 @@ export function SimulationPage() {
                 <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos En Tránsito" value={realTimeResumen?.enRuta ?? 0} />
                 <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos sin vuelos asignados" value={realTimeResumen?.pendientes ?? 0} />
                 <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos con vuelos asignados" value={realTimeResumen?.planificados ?? 0} />
+                <StatCard 
+                  isDark={isDark} 
+                  icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
+                  label="Ocupación Global de Vuelos" 
+                  value={`${globalFlightOccupancy.toFixed(1)}%`}
+                  valueColor={getOccupancyColor(globalFlightOccupancy)}
+                />
+                <StatCard 
+                  isDark={isDark} 
+                  icon={<Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
+                  label="Ocupación Global de Almacenes" 
+                  value={`${globalWarehouseOccupancy.toFixed(1)}%`}
+                  valueColor={getOccupancyColor(globalWarehouseOccupancy)}
+                />
               </div>
 
               {/* Escenarios */}
@@ -899,14 +963,14 @@ export function SimulationPage() {
   );
 }
 
-function StatCard({ icon, label, value, sub, isDark }: { icon: React.ReactNode; label: string; value: string; sub?: string; isDark: boolean }) {
+function StatCard({ icon, label, value, sub, isDark, valueColor }: { icon: React.ReactNode; label: string; value: string; sub?: string; isDark: boolean; valueColor?: string }) {
   return (
     <div className={`border rounded-xl p-3 backdrop-blur-sm ${isDark ? "bg-[#0a0f1eee] border-[#1a2744]" : "bg-white/90 border-[#cbd5e1]"}`}>
       <div className="flex items-center gap-2 mb-1">
         {icon}
         <span className={`text-[10px] ${isDark ? "text-white/80" : "text-[#334155]"}`}>{label}</span>
       </div>
-      <div className={`text-[20px] ${isDark ? "text-white" : "text-[#0f172a]"}`} style={{ textShadow: isDark ? "0 0 10px #00e5ff30" : "none" }}>{value}</div>
+      <div className={`text-[20px] ${isDark ? "text-white" : "text-[#0f172a]"}`} style={{ color: valueColor, textShadow: isDark && !valueColor ? "0 0 10px #00e5ff30" : "none" }}>{value}</div>
       {sub && <div className={`text-[10px] ${isDark ? "text-white/50" : "text-[#64748b]"}`}>{sub}</div>}
     </div>
   );

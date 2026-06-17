@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useTheme } from "../context/ThemeContext";
 import { RealTimeMap } from "./RealTimeMap";
 import { RealTimeWebSocketClient } from "../services/realTimeWebSocket";
@@ -6,8 +6,9 @@ import { api } from "../services/api";
 import { ScrollArea } from "./ui/scroll-area";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
-import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight, X, Radio } from "lucide-react";
+import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight, X, Radio, Warehouse } from "lucide-react";
 import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
+import { computeUtilizationPercent, getOccupancyColor } from "../engine/occupancyStatus";
 
 interface Tramo {
   orden: number;
@@ -146,6 +147,45 @@ export function RealTimePage() {
 
   const getCity = (code: string) => airportsList.find(a => a.code === code)?.city || code;
 
+  // Calculate global warehouse and flight occupancy
+  const globalOccupancy = useMemo(() => {
+    // Calculate warehouse occupancy
+    let totalWarehouseStock = 0;
+    let totalWarehouseCapacity = 0;
+    airportsList.forEach(a => {
+      totalWarehouseStock += a.currentStock || 0;
+      totalWarehouseCapacity += a.warehouseCapacity || 0;
+    });
+    const warehouseUtilization = computeUtilizationPercent(totalWarehouseStock, totalWarehouseCapacity);
+
+    // Calculate flight occupancy from active flights (en_ruta)
+    let totalFlightLoad = 0;
+    let totalFlightCapacity = 0;
+    pedidos.forEach(p => {
+      if (p.estado === "EN_RUTA") {
+        p.tramos.forEach(t => {
+          if (t.estado === "EN_RUTA") {
+            const flight = flightsList.find(f => 
+              f.origenOaci === t.origenOaci && 
+              f.destinoOaci === t.destinoOaci &&
+              f.fechaSalida === t.fechaSalida
+            );
+            if (flight) {
+              totalFlightLoad += p.cantidadMaletas;
+              totalFlightCapacity += flight.capacidad || 100;
+            }
+          }
+        });
+      }
+    });
+    const flightUtilization = computeUtilizationPercent(totalFlightLoad, totalFlightCapacity);
+
+    return {
+      flightUtilization,
+      warehouseUtilization
+    };
+  }, [airportsList, pedidos, flightsList]);
+
   const filtered = pedidos.filter(p => {
     if (!search) return true;
     const s = search.toLowerCase();
@@ -198,10 +238,21 @@ export function RealTimePage() {
 
           {/* KPIs Globales */}
           <div className="space-y-2">
-            <StatCard isDark={isDark} label="Total Activos" value={resumen?.totalActivos ?? 0} />
-            <StatCard isDark={isDark} label="Falta asignar vuelo" value={resumen?.pendientes ?? 0} colorClass="text-amber-500" />
-            <StatCard isDark={isDark} label="Vuelo asignado" value={resumen?.planificados ?? 0} colorClass="text-blue-500" />
-            <StatCard isDark={isDark} label="En tránsito" value={resumen?.enRuta ?? 0} colorClass="text-cyan-500" />
+            <StatCard isDark={isDark} label="Vuelos En Tránsito" value={resumen?.enRuta ?? 0} colorClass="text-cyan-500" />
+            <StatCard isDark={isDark} label="Envíos sin vuelos asignados" value={resumen?.pendientes ?? 0} colorClass="text-amber-500" />
+            <StatCard isDark={isDark} label="Envíos con vuelos asignados" value={resumen?.planificados ?? 0} colorClass="text-blue-500" />
+            <StatCard 
+              isDark={isDark} 
+              label="Ocupación Global de Vuelos" 
+              value={parseFloat(globalOccupancy.flightUtilization.toFixed(1))}
+              valueColor={getOccupancyColor(globalOccupancy.flightUtilization)}
+            />
+            <StatCard 
+              isDark={isDark} 
+              label="Ocupación Global de Almacenes" 
+              value={parseFloat(globalOccupancy.warehouseUtilization.toFixed(1))}
+              valueColor={getOccupancyColor(globalOccupancy.warehouseUtilization)}
+            />
           </div>
         </div>
 
@@ -397,11 +448,11 @@ export function RealTimePage() {
   );
 }
 
-function StatCard({ label, value, colorClass = "", isDark }: { label: string; value: number; colorClass?: string; isDark: boolean }) {
+function StatCard({ label, value, colorClass = "", isDark, valueColor }: { label: string; value: number; colorClass?: string; isDark: boolean; valueColor?: string }) {
   return (
     <div className={`border rounded-xl p-2.5 backdrop-blur-sm ${isDark ? "bg-[#0a0f1eee] border-[#1a2744]" : "bg-white/90 border-[#cbd5e1]"}`}>
       <span className={`text-[9px] ${isDark ? "text-white/80" : "text-[#334155]"}`}>{label}</span>
-      <div className={`text-[18px] font-bold mt-0.5 ${colorClass} ${isDark && colorClass === "" ? "text-white" : ""}`}>{value}</div>
+      <div className={`text-[18px] font-bold mt-0.5 ${colorClass} ${isDark && !valueColor && colorClass === "" ? "text-white" : ""}`} style={{ color: valueColor }}>{value}</div>
     </div>
   );
 }
