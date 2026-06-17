@@ -85,6 +85,27 @@ export function useSimulation() {
 
   useEffect(() => {
     airportsListRef.current = airportsList;
+    // Update the airports in the simulation state with the latest capacities
+    setState(prev => {
+      // Only update if we haven't started the simulation yet
+      if (prev.hasStarted) return prev;
+      
+      const updatedAirports: Record<string, any> = {};
+      airportsList.forEach(a => {
+        updatedAirports[a.code] = {
+          code: a.code,
+          currentStock: 0,
+          capacity: a.warehouseCapacity,
+          incoming: 0,
+          outgoing: 0,
+        };
+      });
+      
+      return {
+        ...prev,
+        airports: updatedAirports,
+      };
+    });
   }, [airportsList]);
 
   const fetchAirports = useCallback(async () => {

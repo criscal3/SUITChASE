@@ -1,5 +1,4 @@
-import { AIRPORTS, getAirportByCode, isSameContinent } from "../data/airports";
-import { FLIGHT_SCHEDULES, getTransitTimeHours, getDeadlineHours } from "../data/flights";
+import { getTransitTimeHours } from "../data/flights";
 import type { BaggageGroup, RouteLeg } from "./types";
 
 interface GraphEdge {

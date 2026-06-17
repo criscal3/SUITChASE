@@ -1,5 +1,3 @@
-import { AIRPORTS } from "../data/airports";
-import { FLIGHT_SCHEDULES, getDeadlineHours } from "../data/flights";
 import { planRoute, replanRoute } from "./planner";
 import type { SimulationState, BaggageGroup, AirportState, FlightState, SimEvent, SimStats } from "./types";
 

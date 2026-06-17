@@ -6,7 +6,6 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, PieChart, Pie, Cell, Legend
 } from "recharts";
-import { AIRPORTS } from "../data/airports";
 
 export function StatsCharts() {
   const { state } = useSim();
@@ -18,17 +17,35 @@ export function StatsCharts() {
     _key: idx,
   }));
 
+  // Build continent data from state.airports (actual simulation data)
+  const airportsList = Object.values(state.airports) as any[];
+  const continentMap = new Map<string, { stock: number; capacity: number }>();
+  
+  for (const airport of airportsList) {
+    // We need to determine the continent based on the airport code and stored data
+    // For now, we'll use a mapping of codes to continents
+    const continentByCode: Record<string, "America" | "Europa" | "Asia"> = {
+      "GRU": "America", "EZE": "America", "BOG": "America", "MEX": "America", "MIA": "America",
+      "JFK": "America", "LAX": "America", "LIM": "America", "SCL": "America", "YYZ": "America",
+      "MAD": "Europa", "CDG": "Europa", "FRA": "Europa", "FCO": "Europa", "LHR": "Europa",
+      "AMS": "Europa", "NRT": "Asia", "PEK": "Asia", "ICN": "Asia", "SIN": "Asia",
+      "BKK": "Asia", "DEL": "Asia", "DXB": "Asia"
+    };
+    
+    const continent = continentByCode[airport.code] || "America";
+    const current = continentMap.get(continent) || { stock: 0, capacity: 0 };
+    continentMap.set(continent, {
+      stock: current.stock + airport.currentStock,
+      capacity: current.capacity + airport.capacity
+    });
+  }
+  
   const continentData = (["America", "Europa", "Asia"] as const).map(cont => {
-    const airports = AIRPORTS.filter(a => a.continent === cont);
-    let stock = 0, cap = 0;
-    for (const a of airports) {
-      const s = state.airports[a.code];
-      if (s) { stock += s.currentStock; cap += s.capacity; }
-    }
-    return { name: cont, utilización: cap > 0 ? Math.round((stock / cap) * 100) : 0 };
+    const data = continentMap.get(cont) || { stock: 0, capacity: 0 };
+    return { name: cont, utilización: data.capacity > 0 ? Math.round((data.stock / data.capacity) * 100) : 0 };
   });
 
-  const topAirports = Object.values(state.airports)
+  const topAirports = (Object.values(state.airports) as any[])
     .sort((a, b) => b.currentStock - a.currentStock)
     .slice(0, 8)
     .map(a => ({ code: a.code, maletas: a.currentStock, capacidad: a.capacity }));

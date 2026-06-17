@@ -7,7 +7,7 @@ import { TrackingPage } from "./TrackingPage";
 import type { BaggageGroup } from "../engine/types";
 import { hasReachedWeeklySimEnd } from "../engine/types";
 import { INITIAL_WAIT_SECONDS } from "../engine/useSimulation";
-import { OccupancyLegend } from "./OccupancyLegend";
+import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
 import { getOccupancyColor, getOccupancyLevel } from "../engine/occupancyStatus";
 import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse, Radio, ChevronRight, Search, X } from "lucide-react";
 import { RealTimeMap } from "./RealTimeMap";
@@ -39,6 +39,12 @@ export function SimulationPage() {
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [viewMode, setViewMode] = useState<"simulation" | "tracking">("simulation");
+  const [occupancyFilters, setOccupancyFilters] = useState<OccupancyFilters>({
+    empty: { warehouse: true, flight: true },
+    normal: { warehouse: true, flight: true },
+    moderate: { warehouse: true, flight: true },
+    saturated: { warehouse: true, flight: true },
+  });
 
   // Real-time operations state
   const [realTimePedidos, setRealTimePedidos] = useState<any[]>([]);
@@ -262,7 +268,12 @@ export function SimulationPage() {
               {/* Estado */}
               <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
                 <h4 className={`text-[12px] mb-2 ${panelText}`}>Estado</h4>
-                <OccupancyLegend isDark={isDark} subText={subText} />
+                <OccupancyLegend
+                  isDark={isDark}
+                  subText={subText}
+                  filters={occupancyFilters}
+                  onFiltersChange={setOccupancyFilters}
+                />
               </div>
 
               {/* Línea de tiempo */}
@@ -394,7 +405,12 @@ export function SimulationPage() {
               {/* Ocupación de Aeropuertos */}
               <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
                 <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Estado</h4>
-                <OccupancyLegend isDark={isDark} subText={subText} />
+                <OccupancyLegend
+                  isDark={isDark}
+                  subText={subText}
+                  filters={occupancyFilters}
+                  onFiltersChange={setOccupancyFilters}
+                />
               </div>
 
               {/* Stats */}
@@ -695,6 +711,7 @@ export function SimulationPage() {
                   setSelectedSimFlightBaggageIds(baggageIds);
                   setSelectedSimFlightKey(key);
                 }}
+                filters={occupancyFilters}
               />
             </div>
 

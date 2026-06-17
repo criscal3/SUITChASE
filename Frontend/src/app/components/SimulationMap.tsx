@@ -9,13 +9,16 @@ import {
   getOccupancyColor,
   getOccupancyPlaneStroke,
   getOccupancyTextClass,
+  getOccupancyLevel,
 } from "../engine/occupancyStatus";
+import type { OccupancyFilters } from "./OccupancyLegend";
 
 interface SimMapProps {
   onSelectBaggage?: (bg: BaggageGroup | null) => void;
   selectedBaggage?: BaggageGroup | null;
   onSelectFlight?: (baggageGroupIds: string[] | null, flightKey: string | null) => void;
   selectedFlightKey?: string | null;
+  filters?: OccupancyFilters;
 }
 
 interface HoveredAirport {
@@ -140,11 +143,20 @@ function PlaneIcon({ color, stroke }: { color: string; stroke: string }) {
   );
 }
 
-export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight, selectedFlightKey }: SimMapProps) {
+export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight, selectedFlightKey, filters }: SimMapProps) {
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
   const [hovered, setHovered] = useState<HoveredItem | null>(null);
+
+  const defaultFilters: OccupancyFilters = {
+    empty: { warehouse: true, flight: true },
+    normal: { warehouse: true, flight: true },
+    moderate: { warehouse: true, flight: true },
+    saturated: { warehouse: true, flight: true },
+  };
+
+  const activeFilters = filters ?? defaultFilters;
 
   const s = 1 / position.zoom;
   const mapBg      = isDark ? "#060a15"  : "#c8d8e8";
@@ -170,19 +182,26 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
   }, [selectedBaggage, airportsList]);
 
   const pointsData = useMemo(() => {
-    return airportsList.map((a) => {
-      const ap = state.airports[a.code];
-      const util = ap
-        ? computeUtilizationPercent(ap.currentStock, ap.capacity)
-        : 0;
-      return {
-        ...a,
-        utilization: util,
-        color: getOccupancyColor(util),
-        label: `${a.city} (${a.code}) - ${ap?.currentStock || 0}/${ap?.capacity || 0} maletas`,
-      };
-    });
-  }, [state.airports, state.currentTime, airportsList]);
+    return airportsList
+      .map((a) => {
+        const ap = state.airports[a.code];
+        const util = ap
+          ? computeUtilizationPercent(ap.currentStock, ap.capacity)
+          : 0;
+        const level = getOccupancyLevel(util);
+        return {
+          ...a,
+          utilization: util,
+          color: getOccupancyColor(util),
+          label: `${a.city} (${a.code}) - ${ap?.currentStock || 0}/${ap?.capacity || 0} maletas`,
+          level,
+        };
+      })
+      .filter((point) => {
+        // Filter warehouses based on active filters
+        return activeFilters[point.level].warehouse;
+      });
+  }, [state.airports, state.currentTime, airportsList, activeFilters]);
 
   const showFlightHover = (flight: Omit<HoveredFlight, "kind" | "x" | "y">, e: React.MouseEvent) => {
     setHovered({ kind: "flight", ...flight, x: e.clientX, y: e.clientY });
@@ -315,7 +334,12 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
         planesMap.set(key, { ...p });
       }
     }
-    const uniquePlanes = Array.from(planesMap.values());
+    
+    const uniquePlanes = Array.from(planesMap.values()).filter((plane) => {
+      // Filter flights based on occupancy level and active filters
+      const planeLevel = getOccupancyLevel(plane.utilization ?? 0);
+      return activeFilters[planeLevel].flight;
+    });
 
     const failedRouteColor = "#ef4444";
 
@@ -345,7 +369,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
     }
 
     return { arcsData: arcs, planesData: uniquePlanes };
-  }, [state.baggageGroups, state.currentTime, state.flightOccupancy, state.flightCapacities, selectedBaggage, isDark, airportsList]);
+  }, [state.baggageGroups, state.currentTime, state.flightOccupancy, state.flightCapacities, selectedBaggage, isDark, airportsList, activeFilters]);
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative transition-colors duration-200" style={{ background: mapBg }}>

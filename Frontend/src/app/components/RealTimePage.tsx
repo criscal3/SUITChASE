@@ -7,7 +7,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
 import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight, X, Radio } from "lucide-react";
-import { OccupancyLegend } from "./OccupancyLegend";
+import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
 
 interface Tramo {
   orden: number;
@@ -76,6 +76,12 @@ export function RealTimePage() {
   const [flightsList, setFlightsList] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
+  const [occupancyFilters, setOccupancyFilters] = useState<OccupancyFilters>({
+    empty: { warehouse: true, flight: true },
+    normal: { warehouse: true, flight: true },
+    moderate: { warehouse: true, flight: true },
+    saturated: { warehouse: true, flight: true },
+  });
 
   // Load initial data
   useEffect(() => {
@@ -179,7 +185,14 @@ export function RealTimePage() {
           {/* Leyenda de Estados */}
           <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
             <h4 className={`text-[11px] font-semibold mb-2 ${titleCls}`}>Almacenes y Vuelos</h4>
-            <OccupancyLegend isDark={isDark} subText={subCls} showFlightRoutes={true} borderClass={headerBorder} />
+            <OccupancyLegend
+              isDark={isDark}
+              subText={subCls}
+              showFlightRoutes={true}
+              borderClass={headerBorder}
+              filters={occupancyFilters}
+              onFiltersChange={setOccupancyFilters}
+            />
           </div>
 
           {/* KPIs Globales */}
@@ -199,6 +212,7 @@ export function RealTimePage() {
             onSelectPedido={setSelectedPedido}
             airportsList={airportsList}
             flightsList={flightsList}
+            filters={occupancyFilters}
           />
         </div>
 
