@@ -7,6 +7,7 @@ export type OccupancyFilters = {
   normal: { warehouse: boolean; flight: boolean };
   moderate: { warehouse: boolean; flight: boolean };
   saturated: { warehouse: boolean; flight: boolean };
+  routes: { intracontinental: boolean; intercontinental: boolean };
 };
 
 interface OccupancyLegendProps {
@@ -32,6 +33,7 @@ export function OccupancyLegend({
     normal: { warehouse: true, flight: true },
     moderate: { warehouse: true, flight: true },
     saturated: { warehouse: true, flight: true },
+    routes: { intracontinental: true, intercontinental: true },
   };
 
   const [internalFilters, setInternalFilters] = useState<OccupancyFilters>(defaultFilters);
@@ -48,12 +50,40 @@ export function OccupancyLegend({
     updateFilters(updated);
   };
 
+  const toggleRouteFilter = (type: "intracontinental" | "intercontinental") => {
+    const updated = { ...filters };
+    updated.routes[type] = !updated.routes[type];
+    updateFilters(updated);
+  };
+
   const allSelected = useMemo(() => {
     return Object.values(filters).every((f) => f.warehouse && f.flight);
   }, [filters]);
 
+  const allOccupancySelected = useMemo(() => {
+    return filters.empty.warehouse && filters.empty.flight &&
+           filters.normal.warehouse && filters.normal.flight &&
+           filters.moderate.warehouse && filters.moderate.flight &&
+           filters.saturated.warehouse && filters.saturated.flight;
+  }, [filters]);
+
+  const allRoutesSelected = useMemo(() => {
+    return filters.routes.intracontinental && filters.routes.intercontinental;
+  }, [filters]);
+
   const clearAll = () => {
     updateFilters(defaultFilters);
+  };
+
+  const deselectAll = () => {
+    const clearedFilters: OccupancyFilters = {
+      empty: { warehouse: false, flight: false },
+      normal: { warehouse: false, flight: false },
+      moderate: { warehouse: false, flight: false },
+      saturated: { warehouse: false, flight: false },
+      routes: { intracontinental: false, intercontinental: false },
+    };
+    updateFilters(clearedFilters);
   };
 
   const divider = borderClass ?? (isDark ? "border-[#1a2744]" : "border-[#cbd5e1]");
@@ -65,15 +95,49 @@ export function OccupancyLegend({
     <>
       <div className="flex items-center justify-between mb-2">
         <p className={`text-[9px] ${subText}`}>Almacenes y aviones</p>
-        {!allSelected && (
+        {allOccupancySelected ? (
           <button
-            onClick={clearAll}
+            onClick={() => {
+              const updated = { ...filters };
+              updated.empty.warehouse = false;
+              updated.empty.flight = false;
+              updated.normal.warehouse = false;
+              updated.normal.flight = false;
+              updated.moderate.warehouse = false;
+              updated.moderate.flight = false;
+              updated.saturated.warehouse = false;
+              updated.saturated.flight = false;
+              updateFilters(updated);
+            }}
             className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${
               isDark
                 ? "bg-[#2d3748] hover:bg-[#4a5568] text-[#cbd5e1]"
                 : "bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#475569]"
             }`}
-            title="Seleccionar todos"
+            title="Deseleccionar todas las opciones de ocupación"
+          >
+            Deseleccionar todas
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              const updated = { ...filters };
+              updated.empty.warehouse = true;
+              updated.empty.flight = true;
+              updated.normal.warehouse = true;
+              updated.normal.flight = true;
+              updated.moderate.warehouse = true;
+              updated.moderate.flight = true;
+              updated.saturated.warehouse = true;
+              updated.saturated.flight = true;
+              updateFilters(updated);
+            }}
+            className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${
+              isDark
+                ? "bg-[#2d3748] hover:bg-[#4a5568] text-[#cbd5e1]"
+                : "bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#475569]"
+            }`}
+            title="Restablecer opciones de ocupación"
           >
             Restablecer
           </button>
@@ -182,14 +246,69 @@ export function OccupancyLegend({
 
       {showFlightRoutes && (
         <div className={`border-t pt-2 mb-1 ${divider}`}>
-          <p className={`text-[9px] mb-1.5 ${subText}`}>Rutas de vuelo</p>
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className={`text-[9px] ${subText}`}>Rutas de vuelo</p>
+            {allRoutesSelected ? (
+              <button
+                onClick={() => {
+                  const updated = { ...filters };
+                  updated.routes.intracontinental = false;
+                  updated.routes.intercontinental = false;
+                  updateFilters(updated);
+                }}
+                className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${
+                  isDark
+                    ? "bg-[#2d3748] hover:bg-[#4a5568] text-[#cbd5e1]"
+                    : "bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#475569]"
+                }`}
+                title="Deseleccionar todas las rutas"
+              >
+                Deseleccionar todas
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  const updated = { ...filters };
+                  updated.routes.intracontinental = true;
+                  updated.routes.intercontinental = true;
+                  updateFilters(updated);
+                }}
+                className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${
+                  isDark
+                    ? "bg-[#2d3748] hover:bg-[#4a5568] text-[#cbd5e1]"
+                    : "bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#475569]"
+                }`}
+                title="Seleccionar todas las rutas"
+              >
+                Restablecer
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 mb-1 ml-auto">
             <div className={`w-5 h-0.5 rounded ${isDark ? "bg-[#22d3ee]" : "bg-[#0891b2]"}`} />
             <span className={`text-[10px] ${subText}`}>Mismo continente</span>
+            <div className="ml-auto flex gap-1">
+              <button
+                onClick={() => toggleRouteFilter("intracontinental")}
+                className={`${btnBase} ${filters.routes.intracontinental ? btnActive : btnInactive}`}
+                title="Filtrar rutas intracontinentales"
+              >
+                {filters.routes.intracontinental ? "✓" : "✕"}
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 ml-auto">
             <div className={`w-5 h-0.5 rounded ${isDark ? "bg-[#fb7185]" : "bg-[#e11d48]"}`} />
             <span className={`text-[10px] ${subText}`}>Distinto continente</span>
+            <div className="ml-auto flex gap-1">
+              <button
+                onClick={() => toggleRouteFilter("intercontinental")}
+                className={`${btnBase} ${filters.routes.intercontinental ? btnActive : btnInactive}`}
+                title="Filtrar rutas intercontinentales"
+              >
+                {filters.routes.intercontinental ? "✓" : "✕"}
+              </button>
+            </div>
           </div>
         </div>
       )}

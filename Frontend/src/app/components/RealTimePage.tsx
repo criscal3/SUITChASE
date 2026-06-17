@@ -81,6 +81,7 @@ export function RealTimePage() {
     normal: { warehouse: true, flight: true },
     moderate: { warehouse: true, flight: true },
     saturated: { warehouse: true, flight: true },
+    routes: { intracontinental: true, intercontinental: true },
   });
 
   // Load initial data

@@ -6,7 +6,9 @@ import {
   getOccupancyPlaneStroke,
   getOccupancyTextClass,
   computeUtilizationPercent,
+  getOccupancyLevel,
 } from "../engine/occupancyStatus";
+import type { OccupancyFilters } from "./OccupancyLegend";
 
 interface Tramo {
   orden: number;
@@ -51,6 +53,7 @@ interface RealTimeMapProps {
   onSelectFlight?: (pedidoIds: string[] | null, flightKey: string | null) => void;
   selectedFlightKey?: string | null;
   flightsList?: any[];
+  filters?: OccupancyFilters;
 }
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
@@ -195,10 +198,20 @@ function getRealTimeFlightCapacity(
   return match ? (match.capacity || match.capacidad || 1000) : 1000;
 }
 
-export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsList, onSelectFlight, selectedFlightKey, flightsList }: RealTimeMapProps) {
+export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsList, onSelectFlight, selectedFlightKey, flightsList, filters }: RealTimeMapProps) {
   const { isDark } = useTheme();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
   const [hovered, setHovered] = useState<any | null>(null);
+
+  const defaultFilters: OccupancyFilters = {
+    empty: { warehouse: true, flight: true },
+    normal: { warehouse: true, flight: true },
+    moderate: { warehouse: true, flight: true },
+    saturated: { warehouse: true, flight: true },
+    routes: { intracontinental: true, intercontinental: true },
+  };
+
+  const activeFilters = filters ?? defaultFilters;
 
   const s = 1 / position.zoom;
   const mapBg      = isDark ? "#060a15"  : "#c8d8e8";
@@ -323,27 +336,60 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
         : (isDark ? "#fb7185" : "#e11d48");
 
       if (f.from && f.to) {
-        arcs.push({
-          from: f.from,
-          to: f.to,
-          color: routeColor,
-          strokeWidth: 1.5,
-          key: `arc-${f.key}`,
-        });
+        // Calculate utilization for filtering
+        const capacity = getRealTimeFlightCapacity(f.fromCode, f.toCode, f.fechaSalida, airportsList, flightsList || []);
+        const utilization = computeUtilizationPercent(f.cantMaletas, capacity);
+        const level = getOccupancyLevel(utilization);
+        
+        // Filter arcs based on flight occupancy level
+        if (activeFilters[level].flight) {
+          // Filter based on route type (intracontinental vs intercontinental)
+          if (!sameContinent && activeFilters.routes.intercontinental) {
+            arcs.push({
+              from: f.from,
+              to: f.to,
+              color: routeColor,
+              strokeWidth: 1.5,
+              key: `arc-${f.key}`,
+            });
+          } else if (sameContinent && activeFilters.routes.intracontinental) {
+            arcs.push({
+              from: f.from,
+              to: f.to,
+              color: routeColor,
+              strokeWidth: 1.5,
+              key: `arc-${f.key}`,
+            });
+          }
+        }
       }
     });
 
     const activePlanes = Array.from(flightsMap.values()).map(f => {
       const capacity = getRealTimeFlightCapacity(f.fromCode, f.toCode, f.fechaSalida, airportsList, flightsList || []);
       const utilization = computeUtilizationPercent(f.cantMaletas, capacity);
+      const fromAir = airportsList.find(a => a.code === f.fromCode);
+      const toAir = airportsList.find(a => a.code === f.toCode);
+      const sameContinent = fromAir && toAir ? fromAir.continent === toAir.continent : true;
       return {
         ...f,
         capacity,
         utilization,
+        intercontinental: !sameContinent,
       };
+    }).filter((plane) => {
+      // Filter flights based on occupancy level and active filters
+      const planeLevel = getOccupancyLevel(plane.utilization ?? 0);
+      if (!activeFilters[planeLevel].flight) return false;
+
+      // Filter based on route type (intracontinental vs intercontinental)
+      if (plane.intercontinental && !activeFilters.routes.intercontinental) return false;
+      if (!plane.intercontinental && !activeFilters.routes.intracontinental) return false;
+
+      return true;
     });
     return { arcsData: arcs, planesData: activePlanes };
-  }, [pedidos, selectedPedido, airportsList, isDark, nowMs, flightsList]);
+  }, [pedidos, selectedPedido, airportsList, isDark, nowMs, flightsList, activeFilters]);
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative transition-colors duration-200" style={{ background: mapBg }}>
@@ -393,7 +439,10 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           {/* Airport Markers */}
           {airportsList.map((point) => {
             const util = computeUtilizationPercent(point.currentStock, point.warehouseCapacity);
+            const level = getOccupancyLevel(util);
             const color = getOccupancyColor(util);
+            // Filter warehouses based on occupancy level
+            if (!activeFilters[level].warehouse) return null;
             return (
               <Marker key={point.code} coordinates={[point.lng, point.lat]}>
                 <g

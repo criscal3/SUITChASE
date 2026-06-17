@@ -44,6 +44,7 @@ export function SimulationPage() {
     normal: { warehouse: true, flight: true },
     moderate: { warehouse: true, flight: true },
     saturated: { warehouse: true, flight: true },
+    routes: { intracontinental: true, intercontinental: true },
   });
 
   // Real-time operations state
@@ -468,6 +469,7 @@ export function SimulationPage() {
                   setSelectedFlightPedidoIds(pedidoIds);
                   setSelectedFlightKey(key);
                 }}
+                filters={occupancyFilters}
               />
             </div>
             {/* RealTime Right Panel */}

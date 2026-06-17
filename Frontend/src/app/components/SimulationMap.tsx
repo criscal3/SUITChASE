@@ -154,6 +154,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
     normal: { warehouse: true, flight: true },
     moderate: { warehouse: true, flight: true },
     saturated: { warehouse: true, flight: true },
+    routes: { intracontinental: true, intercontinental: true },
   };
 
   const activeFilters = filters ?? defaultFilters;
@@ -338,20 +339,42 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
     const uniquePlanes = Array.from(planesMap.values()).filter((plane) => {
       // Filter flights based on occupancy level and active filters
       const planeLevel = getOccupancyLevel(plane.utilization ?? 0);
-      return activeFilters[planeLevel].flight;
+      if (!activeFilters[planeLevel].flight) return false;
+
+      // Filter based on route type (intracontinental vs intercontinental)
+      if (plane.intercontinental && !activeFilters.routes.intercontinental) return false;
+      if (!plane.intercontinental && !activeFilters.routes.intracontinental) return false;
+
+      return true;
     });
 
     const failedRouteColor = "#ef4444";
 
     for (const [key, val] of Array.from(activeRoutesMap.entries())) {
-      arcs.push({
-        from: [val.from.lng, val.from.lat],
-        to: [val.to.lng, val.to.lat],
-        color: getArcColor(val.intercontinental, isDark),
-        strokeWidth: 1 + Math.min(2, val.qty / 100),
-        isActive: true,
-        key: `act-${key}`,
-      });
+      // Filter arcs based on flight occupancy level
+      const routeLevel = getOccupancyLevel(val.utilization ?? 0);
+      if (activeFilters[routeLevel].flight) {
+        // Filter based on route type (intracontinental vs intercontinental)
+        if (val.intercontinental && activeFilters.routes.intercontinental) {
+          arcs.push({
+            from: [val.from.lng, val.from.lat],
+            to: [val.to.lng, val.to.lat],
+            color: getArcColor(val.intercontinental, isDark),
+            strokeWidth: 1 + Math.min(2, val.qty / 100),
+            isActive: true,
+            key: `act-${key}`,
+          });
+        } else if (!val.intercontinental && activeFilters.routes.intracontinental) {
+          arcs.push({
+            from: [val.from.lng, val.from.lat],
+            to: [val.to.lng, val.to.lat],
+            color: getArcColor(val.intercontinental, isDark),
+            strokeWidth: 1 + Math.min(2, val.qty / 100),
+            isActive: true,
+            key: `act-${key}`,
+          });
+        }
+      }
     }
 
     for (const [key, val] of Array.from(failedRoutesMap.entries())) {
