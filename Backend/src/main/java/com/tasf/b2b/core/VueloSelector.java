@@ -116,6 +116,10 @@ public class VueloSelector {
                 // Calcular tiempos
                 LocalDateTime salida = actual.tiempoDisponible.toLocalDate().atTime(v.getHoraSalida());
                 if (salida.isBefore(actual.tiempoDisponible)) salida = salida.plusDays(1);
+                // Si este vuelo está cancelado para este día, probar al día siguiente
+                while (input.isVueloCancelado(v.getOrigen() + "-" + v.getDestino() + "-" + salida)) {
+                    salida = salida.plusDays(1);
+                }
                 LocalDateTime llegada = salida.toLocalDate().atTime(v.getHoraLlegada());
                 if (llegada.isBefore(salida)) llegada = llegada.plusDays(1);
                 LocalDateTime dispSiguiente = llegada.plusMinutes(HANDLING_MINUTES);
@@ -269,6 +273,10 @@ public class VueloSelector {
 
             LocalDateTime salida = disp.with(v.getHoraSalida());
             if (salida.isBefore(disp)) salida = salida.plusDays(1);
+            // Si este vuelo está cancelado para este día, probar al día siguiente
+            while (input.isVueloCancelado(v.getOrigen() + "-" + v.getDestino() + "-" + salida)) {
+                salida = salida.plusDays(1);
+            }
             LocalDateTime llegada = salida.with(v.getHoraLlegada());
             if (llegada.isBefore(salida)) llegada = llegada.plusDays(1);
 

@@ -79,6 +79,7 @@ export const api = {
     request<{ vueloId: number; pedidosAfectados: number; mensaje: string }>(
       `/vuelos/${vueloId}/cancelar-hoy`, { method: "POST" }
     ),
+  getCancelacionesActivas: () => request<number[]>("/vuelos/cancelaciones-activas"),
   
   getEnvios: () => request<any[]>("/envios/mis-envios"),
   registrarEnvio: (data) => request("/envios", { method: "POST", body: data }),

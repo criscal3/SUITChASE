@@ -30,6 +30,7 @@ public class RealTimeSchedulerService {
     private final VueloRepository vueloRepository;
     private final PedidoRealRepository pedidoRealRepository;
     private final AsignacionRealRepository asignacionRealRepository;
+    private final CancelacionVueloRepository cancelacionVueloRepo;
     private final DataMapperService dataMapper;
     private final RealTimeOperationsService rtService;
 
@@ -53,6 +54,12 @@ public class RealTimeSchedulerService {
         if (!initialized) {
             inicializarInputMaestro();
         }
+
+        // Actualizar cancelaciones activas
+        Set<String> cancelados = cancelacionVueloRepo.findAll().stream()
+                .map(c -> c.getOrigenOaci() + "-" + c.getDestinoOaci() + "-" + c.getFechaSalida())
+                .collect(Collectors.toSet());
+        inputMaestro.setVuelosCancelados(cancelados);
 
         // 1. Obtener pedidos PENDIENTES y SIN_RUTA (se reintentará planificarlos)
         LocalDateTime ahora = LocalDateTime.now();

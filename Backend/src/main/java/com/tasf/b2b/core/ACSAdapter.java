@@ -67,7 +67,8 @@ public class ACSAdapter {
             vuelosACS, 
             pedidosACS, 
             capVuelos,
-            capAlmacenes
+            capAlmacenes,
+            input.getVuelosCancelados()
         );
 
         // --- 5. Ejecutar ACS ---

@@ -18,6 +18,8 @@ public class PlanificationProblemInput {
     private Map<String, Integer> ocupacionGlobalVuelos;
     // OcupaciÃ³n acumulada de almacenes (clave: oaciAlmacen, valor: array de ocupaciÃ³n por minuto)
     private Map<String, int[]> ocupacionGlobalAlmacenes;
+    // Cancelaciones activas (clave: origen-destino-fechaSalida)
+    private Set<String> vuelosCancelados;
 
     public PlanificationProblemInput() {
         this.aeropuertos            = new HashMap<>();
@@ -26,6 +28,15 @@ public class PlanificationProblemInput {
         this.envios                 = new ArrayList<>();
         this.ocupacionGlobalVuelos  = new HashMap<>();
         this.ocupacionGlobalAlmacenes = new HashMap<>();
+        this.vuelosCancelados       = new HashSet<>();
+    }
+
+    public void setVuelosCancelados(Set<String> cancelados) {
+        this.vuelosCancelados = new HashSet<>(cancelados);
+    }
+
+    public Set<String> getVuelosCancelados() {
+        return vuelosCancelados;
     }
 
     // ---- Aeropuertos ----
@@ -99,6 +110,7 @@ public class PlanificationProblemInput {
         sub.envios                  = new ArrayList<>(subEnvios);
         sub.ocupacionGlobalVuelos   = this.ocupacionGlobalVuelos;
         sub.ocupacionGlobalAlmacenes = this.ocupacionGlobalAlmacenes;
+        sub.vuelosCancelados        = this.vuelosCancelados;
         return sub;
     }
 }

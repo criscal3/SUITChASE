@@ -16,6 +16,9 @@ import com.tasf.b2b.api.dto.ResumenOperacionesDTO;
 import com.tasf.b2b.api.dto.RegistroPedidoRequest;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import com.tasf.b2b.repository.VueloRepository;
+import com.tasf.b2b.repository.CancelacionVueloRepository;
+import com.tasf.b2b.domain.CancelacionVueloEntity;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -35,6 +38,7 @@ public class RealTimeOperationsService {
     private final AerolineaRepository aerolineaRepo;
     private final UsuarioRepository usuarioRepo;
     private final SimpMessagingTemplate messagingTemplate;
+    private final CancelacionVueloRepository cancelacionVueloRepo;
 
     // === CACHÉ EN MEMORIA ===
     private final ConcurrentHashMap<String, PedidoRealDTO> cache = new ConcurrentHashMap<>();
@@ -144,7 +148,21 @@ public class RealTimeOperationsService {
                 .min(LocalDateTime::compareTo)
                 .orElse(null);
 
-        if (proximaSalida == null) return 0;
+        if (proximaSalida == null) {
+            // Si no hay tramos programados, no podemos saber la hora exacta de salida de este vuelo hoy.
+            // Para ser robustos, podríamos usar la hora actual combinada con la hora de salida del VueloEntity,
+            // pero asumiremos que el frontend proveerá la fecha y hora si es estrictamente necesario.
+            // Por ahora solo usamos el primer tramo encontrado si proximaSalida es null.
+            return 0;
+        }
+
+        // Registrar la cancelación de esta ocurrencia exacta para que el algoritmo ACS la ignore.
+        CancelacionVueloEntity cancelacion = new CancelacionVueloEntity();
+        cancelacion.setVueloId(vuelo.getId());
+        cancelacion.setOrigenOaci(vuelo.getOrigenOaci());
+        cancelacion.setDestinoOaci(vuelo.getDestinoOaci());
+        cancelacion.setFechaSalida(proximaSalida);
+        cancelacionVueloRepo.save(cancelacion);
 
         List<AsignacionRealEntity> tramosAfectados = todosTramos.stream()
                 .filter(t -> t.getFechaSalida().equals(proximaSalida))

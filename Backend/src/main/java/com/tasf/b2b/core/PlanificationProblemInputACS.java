@@ -13,6 +13,7 @@ public class PlanificationProblemInputACS {
     private final List<Pedido> pedidos;
     private final Map<String, Integer> ocupacionGlobalVuelos;
     private final Map<String, int[]> ocupacionGlobalAlmacenes;
+    private final Set<String> vuelosCancelados;
     private final Map<String, Double> cacheHeuristicaHoras = new HashMap<>();
 
     public PlanificationProblemInputACS(
@@ -20,11 +21,13 @@ public class PlanificationProblemInputACS {
             List<Vuelo> vuelos,
             List<Pedido> pedidos,
             Map<String, Integer> ocupacionGlobalVuelos,
-            Map<String, int[]> ocupacionGlobalAlmacenes) {
+            Map<String, int[]> ocupacionGlobalAlmacenes,
+            Set<String> vuelosCancelados) {
 
         this.aeropuertos           = aeropuertos;
         this.pedidos               = pedidos;
         this.ocupacionGlobalVuelos = ocupacionGlobalVuelos;
+        this.vuelosCancelados      = vuelosCancelados != null ? vuelosCancelados : Collections.emptySet();
 
         this.vuelosPorOrigen = new HashMap<>();
         for (Vuelo v : vuelos) {
@@ -53,6 +56,10 @@ public class PlanificationProblemInputACS {
 
     public int getOcupacionGlobalVuelos(String flightKey) {
         return ocupacionGlobalVuelos.getOrDefault(flightKey, 0);
+    }
+
+    public boolean isVueloCancelado(String flightKey) {
+        return vuelosCancelados.contains(flightKey);
     }
 
     public int[] getOcupacionGlobalAlmacenes(String warehouseKey) {

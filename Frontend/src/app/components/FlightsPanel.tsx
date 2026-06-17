@@ -46,6 +46,7 @@ export function FlightsPanel() {
   const [cancelHoyLoading, setCancelHoyLoading] = useState(false);
   const [affectedOrders, setAffectedOrders] = useState<any[]>([]);
   const [affectedOrdersLoading, setAffectedOrdersLoading] = useState(false);
+  const [canceledFlights, setCanceledFlights] = useState<number[]>([]);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importResult, setImportResult] = useState<{ count: number; visible: boolean } | null>(null);
@@ -63,9 +64,12 @@ export function FlightsPanel() {
   const fetchFlights = async () => {
     setLoading(true);
     try {
-      const data = await api.getFlights();
-      // Map backend to frontend format if needed, but assuming they match enough or we fix usage
+      const [data, cancelaciones] = await Promise.all([
+        api.getFlights(),
+        api.getCancelacionesActivas()
+      ]);
       setFlightsList(data);
+      setCanceledFlights(cancelaciones);
     } catch (err) {
       console.error(err);
     } finally {
@@ -164,6 +168,9 @@ export function FlightsPanel() {
           : `Vuelo del día cancelado. No había pedidos afectados.`,
         { duration: 6000 }
       );
+      // Reload active cancellations after success
+      const cancelaciones = await api.getCancelacionesActivas();
+      setCanceledFlights(cancelaciones);
     } catch (err: any) {
       toast.error(err?.message ?? "Error al cancelar el vuelo del día");
     } finally {
@@ -345,21 +352,27 @@ export function FlightsPanel() {
                     <td className="px-3 py-2.5">
                       <div className="flex items-center justify-center">
                         {!f.cancelled && (
-                          <button
-                            onClick={() => handleCancelHoy(f.id, f.origin, f.destination, f.departureHour)}
-                            title="Cancelar la ocurrencia de HOY de este vuelo"
-                            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition-colors ${isNext
-                                ? isDark
-                                  ? "bg-orange-500/15 border-orange-500/40 text-orange-400 hover:bg-orange-500/25"
-                                  : "bg-orange-100 border-orange-300 text-orange-700 hover:bg-orange-200"
-                                : isDark
-                                  ? "border-[#334155] text-[#64748b] hover:border-red-500/40 hover:text-red-400"
-                                  : "border-[#cbd5e1] text-[#94a3b8] hover:border-red-300 hover:text-red-600"
-                              }`}
-                          >
-                            <CalendarX2 className="w-3.5 h-3.5" />
-                            <span className="hidden sm:inline">Cancelar hoy</span>
-                          </button>
+                          canceledFlights.includes(f.id) ? (
+                            <span className={`text-[10px] italic ${textSecondary}`}>
+                              Ya cancelado hoy
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleCancelHoy(f.id, f.origin, f.destination, f.departureHour)}
+                              title="Cancelar la ocurrencia de HOY de este vuelo"
+                              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition-colors ${isNext
+                                  ? isDark
+                                    ? "bg-orange-500/15 border-orange-500/40 text-orange-400 hover:bg-orange-500/25"
+                                    : "bg-orange-100 border-orange-300 text-orange-700 hover:bg-orange-200"
+                                  : isDark
+                                    ? "border-[#334155] text-[#64748b] hover:border-red-500/40 hover:text-red-400"
+                                    : "border-[#cbd5e1] text-[#94a3b8] hover:border-red-300 hover:text-red-600"
+                                }`}
+                            >
+                              <CalendarX2 className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Cancelar hoy</span>
+                            </button>
+                          )
                         )}
                       </div>
                     </td>

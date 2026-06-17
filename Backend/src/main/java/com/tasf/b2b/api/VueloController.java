@@ -19,6 +19,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import com.tasf.b2b.repository.AsignacionRealRepository;
 import com.tasf.b2b.domain.AsignacionRealEntity;
+import com.tasf.b2b.repository.CancelacionVueloRepository;
+import com.tasf.b2b.domain.CancelacionVueloEntity;
+import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/vuelos")
@@ -30,6 +33,18 @@ public class VueloController {
     private final AeropuertoRepository aeropuertoRepository;
     private final RealTimeOperationsService rtService;
     private final AsignacionRealRepository asignacionRealRepository;
+    private final CancelacionVueloRepository cancelacionVueloRepo;
+
+    @GetMapping("/cancelaciones-activas")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<Long>> getCancelacionesActivas() {
+        LocalDateTime inicioDia = LocalDateTime.now().with(LocalTime.MIN);
+        List<Long> cancelados = cancelacionVueloRepo.findByFechaSalidaAfter(inicioDia).stream()
+                .map(CancelacionVueloEntity::getVueloId)
+                .distinct()
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(cancelados);
+    }
 
     @GetMapping("/debug-asignaciones")
     @PreAuthorize("permitAll()")
