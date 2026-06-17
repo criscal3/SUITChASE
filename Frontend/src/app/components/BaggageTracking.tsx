@@ -104,8 +104,12 @@ export function BaggageTracking({
         ? bg.route[bg.route.length - 1].arrivalTime
         : bg.deadlineAt;
 
+      // Include delivered orders from last 4 hours of simulation time
       if (finalArrival && finalArrival < state.currentTime) {
-        return false;
+        const fourHoursInMs = 4 * 60 * 60 * 1000;
+        if (finalArrival < state.currentTime - fourHoursInMs) {
+          return false;
+        }
       }
 
       if (!search) return true;

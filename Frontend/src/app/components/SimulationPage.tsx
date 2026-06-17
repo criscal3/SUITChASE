@@ -101,8 +101,32 @@ export function SimulationPage() {
       onPedidosActualizados: (lista: any[]) => {
         setRealTimePedidos(prev => {
           const map = new Map(prev.map(p => [p.id, p]));
+          const now = new Date();
+          const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+          
           lista.forEach(p => {
-            map.set(p.id, p);
+            // If the order has finished, check if it was delivered within last 4 hours
+            if (["ENTREGADO", "SIN_RUTA", "COLAPSO"].includes(p.estado)) {
+              if (p.estado === "ENTREGADO") {
+                // Check if delivered within last 4 hours
+                const lastTramo = p.tramos[p.tramos.length - 1];
+                if (lastTramo && lastTramo.fechaLlegada) {
+                  const deliveryDate = new Date(lastTramo.fechaLlegada.endsWith('Z') ? lastTramo.fechaLlegada : lastTramo.fechaLlegada + 'Z');
+                  if (deliveryDate >= fourHoursAgo) {
+                    map.set(p.id, p);
+                  } else {
+                    map.delete(p.id);
+                  }
+                } else {
+                  map.delete(p.id);
+                }
+              } else {
+                // SIN_RUTA and COLAPSO are always removed
+                map.delete(p.id);
+              }
+            } else {
+              map.set(p.id, p);
+            }
           });
           return Array.from(map.values()).sort((a, b) => new Date(b.fechaHoraRegistro).getTime() - new Date(a.fechaHoraRegistro).getTime());
         });

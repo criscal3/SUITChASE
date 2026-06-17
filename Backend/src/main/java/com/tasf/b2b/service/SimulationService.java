@@ -462,6 +462,7 @@ public class SimulationService {
             envioResumen.put("origen", envio.getOrigenOaci());
             envioResumen.put("destino", envio.getDestinoOaci());
             envioResumen.put("maletas", envio.getCantidadMaletas());
+            envioResumen.put("fechaHoraRegistro", envio.getFechaHoraRegistro() != null ? envio.getFechaHoraRegistro().toString() : null);
 
             if (ruta != null && ruta.vuelosUsados != null && !ruta.vuelosUsados.isEmpty()) {
                 envioResumen.put("estado", "CON_RUTA");

@@ -186,13 +186,18 @@ export function mapBlockResultToBaggageGroups(
       ? route[route.length - 1].arrivalTime
       : parseSimDate(resumen.llegadaFinal, cursorTime + 48 * 3600 * 1000);
 
+    // Use fechaHoraRegistro from backend if available, otherwise fallback to firstDep
+    const registeredAt = resumen.fechaHoraRegistro
+      ? parseSimDate(resumen.fechaHoraRegistro, cursorTime)
+      : firstDep;
+
     return {
       id: String(resumen.envioId),
       airline: "BackendAirline",
       origin: resumen.origen,
       destination: resumen.destino,
       quantity: resumen.maletas,
-      registeredAt: firstDep,
+      registeredAt,
       deadlineAt: lastArr,
       currentLocation: resumen.origen,
       status: resumen.estado === "CON_RUTA" ? "in_transit" : "failed",
