@@ -28,4 +28,23 @@ public interface AsignacionRealRepository extends JpaRepository<AsignacionRealEn
 
     // Para saber si todos los tramos de un pedido están en un estado que no es el indicado
     long countByPedidoIdAndEstadoNot(String pedidoId, EstadoTramo estado);
+
+    // Para cancelación del día: tramos PROGRAMADO de un vuelo específico dentro de una ventana temporal
+    List<AsignacionRealEntity> findByVueloIdAndEstadoAndFechaSalidaBetween(
+            Long vueloId, EstadoTramo estado, LocalDateTime inicio, LocalDateTime fin);
+
+    /**
+     * Busca tramos por ruta (origen/destino) + estado + ventana temporal.
+     * Alternativa robusta cuando vueloId puede ser 0 (bug de conversión de zona horaria).
+     */
+    List<AsignacionRealEntity> findByOrigenOaciAndDestinoOaciAndEstadoAndFechaSalidaBetween(
+            String origenOaci, String destinoOaci, EstadoTramo estado,
+            LocalDateTime inicio, LocalDateTime fin);
+
+    // Tramos de una ruta por estado (para buscar dinámicamente la próxima salida)
+    List<AsignacionRealEntity> findByOrigenOaciAndDestinoOaciAndEstado(
+            String origenOaci, String destinoOaci, EstadoTramo estado);
+
+    // Tramos PROGRAMADO de un pedido (para limpiar ruta parcial tras cancelación)
+    List<AsignacionRealEntity> findByPedidoIdAndEstado(String pedidoId, EstadoTramo estado);
 }

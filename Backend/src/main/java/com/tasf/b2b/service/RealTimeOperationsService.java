@@ -4,6 +4,7 @@ import com.tasf.b2b.domain.PedidoRealEntity;
 import com.tasf.b2b.domain.PedidoRealEntity.EstadoPedido;
 import com.tasf.b2b.domain.AsignacionRealEntity;
 import com.tasf.b2b.domain.AerolineaEntity;
+import com.tasf.b2b.domain.VueloEntity;
 import com.tasf.b2b.repository.PedidoRealRepository;
 import com.tasf.b2b.repository.AsignacionRealRepository;
 import com.tasf.b2b.repository.AerolineaRepository;
@@ -82,6 +83,132 @@ public class RealTimeOperationsService {
                 getPedidosActivosAerolinea(req.aerolineaId()));
 
         return dto;
+    }
+
+    /**
+     * Preview de cancelación: devuelve los pedidos que serían afectados si se cancela
+     * la ocurrencia de hoy del vuelo dado. No modifica ningún dato.
+     * <p>
+     * Usa origenOaci + destinoOaci para la búsqueda en lugar del vueloId, porque
+     * los registros existentes pueden tener vueloId = 0 por el bug de conversión GMT.
+     */
+    public List<PedidoRealDTO> getPedidosAfectadosPorVueloHoy(VueloEntity vuelo) {
+        LocalDateTime ahora = LocalDateTime.now();
+
+        List<AsignacionRealEntity> todosTramos = asignacionRepo
+                .findByOrigenOaciAndDestinoOaciAndEstado(
+                        vuelo.getOrigenOaci(), vuelo.getDestinoOaci(),
+                        AsignacionRealEntity.EstadoTramo.PROGRAMADO);
+
+        // Encontrar la fecha de salida más próxima (el siguiente vuelo)
+        LocalDateTime proximaSalida = todosTramos.stream()
+                .map(AsignacionRealEntity::getFechaSalida)
+                .filter(fecha -> !fecha.isBefore(ahora.minusMinutes(30))) // Dar un margen para vuelos que están a punto de salir
+                .min(LocalDateTime::compareTo)
+                .orElse(null);
+
+        if (proximaSalida == null) return List.of();
+
+        return todosTramos.stream()
+                .filter(t -> t.getFechaSalida().equals(proximaSalida))
+                .map(AsignacionRealEntity::getPedidoId)
+                .distinct()
+                .map(id -> pedidoRepo.findById(id).orElse(null))
+                .filter(p -> p != null
+                        && (p.getEstado() == EstadoPedido.PLANIFICADO || p.getEstado() == EstadoPedido.EN_RUTA))
+                .map(p -> toDTO(p, List.of()))
+                .toList();
+    }
+
+    /**
+     * Cancela la ocurrencia del día de un vuelo específico.
+     * Busca todos los tramos PROGRAMADO de ese vuelo con fechaSalida en el día de hoy
+     * usando origenOaci + destinoOaci (robusto ante vueloId = 0),
+     * regresa los pedidos afectados a PENDIENTE y limpia sus asignaciones PROGRAMADO
+     * para que el scheduler los replanifique en el siguiente ciclo.
+     *
+     * @return número de pedidos afectados
+     */
+    public int cancelarVueloDelDia(VueloEntity vuelo) {
+        LocalDateTime ahora = LocalDateTime.now();
+
+        List<AsignacionRealEntity> todosTramos = asignacionRepo
+                .findByOrigenOaciAndDestinoOaciAndEstado(
+                        vuelo.getOrigenOaci(), vuelo.getDestinoOaci(),
+                        AsignacionRealEntity.EstadoTramo.PROGRAMADO);
+
+        // Encontrar la fecha de salida más próxima (el siguiente vuelo)
+        LocalDateTime proximaSalida = todosTramos.stream()
+                .map(AsignacionRealEntity::getFechaSalida)
+                .filter(fecha -> !fecha.isBefore(ahora.minusMinutes(30)))
+                .min(LocalDateTime::compareTo)
+                .orElse(null);
+
+        if (proximaSalida == null) return 0;
+
+        List<AsignacionRealEntity> tramosAfectados = todosTramos.stream()
+                .filter(t -> t.getFechaSalida().equals(proximaSalida))
+                .toList();
+
+        if (tramosAfectados.isEmpty()) return 0;
+
+        // Agrupar por pedido (un pedido puede tener varios tramos, pero solo uno es el vuelo cancelado)
+        Set<String> pedidosIds = tramosAfectados.stream()
+                .map(AsignacionRealEntity::getPedidoId)
+                .collect(java.util.stream.Collectors.toSet());
+
+        Set<Long> aerolineasAfectadas = new HashSet<>();
+
+        for (String pedidoId : pedidosIds) {
+            pedidoRepo.findById(pedidoId).ifPresent(pedido -> {
+                EstadoPedido estadoActual = pedido.getEstado();
+
+                // Solo replanificar pedidos que aún no han llegado al destino
+                if (estadoActual == EstadoPedido.PLANIFICADO || estadoActual == EstadoPedido.EN_RUTA) {
+
+                    // Marcar todos los tramos PROGRAMADO de este pedido como CANCELADO
+                    List<AsignacionRealEntity> tramosRestantes = asignacionRepo
+                            .findByPedidoIdAndEstado(pedidoId, AsignacionRealEntity.EstadoTramo.PROGRAMADO);
+                    for (AsignacionRealEntity t : tramosRestantes) {
+                        t.setEstado(AsignacionRealEntity.EstadoTramo.CANCELADO);
+                        asignacionRepo.save(t);
+                    }
+
+                    // Regresar el pedido a PENDIENTE para replanificación
+                    pedido.setEstado(EstadoPedido.PENDIENTE);
+                    pedido.setTotalTramos(null);
+                    pedidoRepo.save(pedido);
+
+                    // Actualizar caché
+                    PedidoRealDTO dto = toDTO(pedido, cargarTramos(pedidoId));
+                    cache.put(pedidoId, dto);
+                    aerolineasAfectadas.add(pedido.getAerolineaId());
+
+                    log.info("[CancelarVueloHoy] Pedido {} regresado a PENDIENTE (vuelo {}->{} cancelado hoy)",
+                            pedidoId, vuelo.getOrigenOaci(), vuelo.getDestinoOaci());
+                }
+            });
+        }
+
+        recalcularResumen();
+
+        // Notificar admin vía WebSocket
+        messagingTemplate.convertAndSend("/topic/tiempo-real/actualizacion", resumenCache.get());
+        List<PedidoRealDTO> modificados = pedidosIds.stream()
+                .map(id -> cache.get(id))
+                .filter(Objects::nonNull)
+                .toList();
+        if (!modificados.isEmpty()) {
+            messagingTemplate.convertAndSend("/topic/tiempo-real/pedidos-actualizados", modificados);
+        }
+
+        // Notificar aerolíneas afectadas
+        for (Long aId : aerolineasAfectadas) {
+            messagingTemplate.convertAndSend("/topic/mis-pedidos/" + aId,
+                    getPedidosActivosAerolinea(aId));
+        }
+
+        return pedidosIds.size();
     }
 
     /** Admin: lista filtrada (desde caché) */

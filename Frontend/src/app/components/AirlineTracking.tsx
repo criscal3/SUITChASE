@@ -60,6 +60,7 @@ export function AirlineTracking() {
   const { isDark } = useTheme();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [airportsList, setAirportsList] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [showPanel, setShowPanel] = useState(true);
@@ -118,9 +119,16 @@ export function AirlineTracking() {
       p.nombreAerolinea.toLowerCase().includes(s);
   });
 
-  const handleSelectPedido = (p: Pedido | null) => {
+  const handleSelectPedido = async (p: Pedido | null) => {
+    if (!p) { setSelectedPedido(null); setSearch(""); return; }
     setSelectedPedido(p);
-    if (p) setSearch(p.id);
+    setSearch(p.id);
+    setDetailLoading(true);
+    try {
+      const detalle = await api.getDetallePedidoRT(p.id);
+      if (detalle) setSelectedPedido(detalle as Pedido);
+    } catch { /* mantener estado local */ }
+    finally { setDetailLoading(false); }
   };
 
   const handleClear = () => {
@@ -196,9 +204,16 @@ export function AirlineTracking() {
               <div className={`px-3 py-2 border-b ${headerBorder} ${detailBg}`}>
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-[12px] font-bold ${titleCls}`}>{selectedPedido.id}</span>
-                  <Badge className={`text-[9px] ${isDark ? sc.bg : sc.lightBg} ${isDark ? sc.color : sc.lightColor}`}>
-                    {sc.icon} <span className="ml-1">{sc.label}</span>
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    {detailLoading && (
+                      <span className={`w-3 h-3 rounded-full border-2 border-t-transparent animate-spin ${
+                        isDark ? "border-cyan-400" : "border-blue-600"
+                      }`} />
+                    )}
+                    <Badge className={`text-[9px] ${isDark ? sc.bg : sc.lightBg} ${isDark ? sc.color : sc.lightColor}`}>
+                      {sc.icon} <span className="ml-1">{sc.label}</span>
+                    </Badge>
+                  </div>
                 </div>
                 <div className={`text-[10px] mb-2 ${subCls}`}>
                   {selectedPedido.nombreAerolinea} | {selectedPedido.cantidadMaletas} maletas
@@ -244,7 +259,8 @@ export function AirlineTracking() {
                       {/* Nodos intermedios y final */}
                       {tramos.map((leg: any, i: number) => {
                         const isCompleted = leg.estado === "COMPLETADO";
-                        const isCurrent = leg.estado === "EN_VUELO";
+                        const isCurrent   = leg.estado === "EN_VUELO";
+                        const isCancelled = leg.estado === "CANCELADO";
                         const isLast = i === tramos.length - 1;
                         const arriGmt = getGmt(leg.destinoOaci);
                         const nextLeg = !isLast ? tramos[i + 1] : null;
@@ -256,11 +272,23 @@ export function AirlineTracking() {
                               )}
                             </div>
                             <div className="flex items-start gap-2">
-                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isCompleted ? "bg-green-500" : isCurrent ? "bg-cyan-500 animate-pulse" : dotInactive}`} />
+                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${
+                                isCancelled ? "bg-red-500/50" :
+                                isCompleted ? "bg-green-500" :
+                                isCurrent   ? "bg-cyan-500 animate-pulse" : dotInactive
+                              }`} />
                               <div className="flex-1">
-                                <div className={`text-[10px] font-semibold ${titleCls}`}>
+                                <div className={`text-[10px] font-semibold ${
+                                  isCancelled ? (isDark ? "text-red-400/70" : "text-red-600/70") : titleCls
+                                }`}>
                                   {getCity(leg.destinoOaci)} ({leg.destinoOaci})
+                                  {isCancelled && <span className={`ml-1 text-[9px] ${isDark ? "text-red-400" : "text-red-600"}`}>[Cancelado]</span>}
                                 </div>
+                                {isCurrent && (
+                                  <div className={`text-[9px] font-medium ${isDark ? "text-cyan-400" : "text-cyan-700"}`}>
+                                    ✈ En vuelo ahora
+                                  </div>
+                                )}
                                 <div className={`text-[9px] ${mutedCls}`}>
                                   Llegada: {fmtLocal(leg.fechaLlegada, arriGmt)} {gmtLabel(arriGmt)}
                                 </div>

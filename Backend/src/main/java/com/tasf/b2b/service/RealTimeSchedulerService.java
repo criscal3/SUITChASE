@@ -165,17 +165,35 @@ public class RealTimeSchedulerService {
     }
 
     private Long buscarVueloId(VueloAlgoritmo vuelo) {
-        int gmtOrigen = aeropuertoRepository.findById(vuelo.getOrigenOaci())
+        // El algoritmo trabaja en UTC. VueloEntity guarda en hora LOCAL del aeropuerto.
+        int gmtOrigen  = aeropuertoRepository.findById(vuelo.getOrigenOaci())
                 .map(AeropuertoEntity::getGmt).orElse(0);
         int gmtDestino = aeropuertoRepository.findById(vuelo.getDestinoOaci())
                 .map(AeropuertoEntity::getGmt).orElse(0);
 
-        java.time.LocalTime horaSalidaLocal = vuelo.getHoraSalida().plusHours(gmtOrigen);
+        // UTC → hora local (lo que está persistido en VueloEntity)
+        java.time.LocalTime horaSalidaLocal  = vuelo.getHoraSalida().plusHours(gmtOrigen);
         java.time.LocalTime horaLlegadaLocal = vuelo.getHoraLlegada().plusHours(gmtDestino);
 
-        return vueloRepository.findByOrigenOaciAndDestinoOaciAndHoraSalidaAndHoraLlegada(
-                vuelo.getOrigenOaci(), vuelo.getDestinoOaci(),
-                horaSalidaLocal, horaLlegadaLocal
-        ).map(v -> v.getId()).orElse(0L);
+        // Intento exacto primero
+        var exacto = vueloRepository.findByOrigenOaciAndDestinoOaciAndHoraSalidaAndHoraLlegada(
+                vuelo.getOrigenOaci(), vuelo.getDestinoOaci(), horaSalidaLocal, horaLlegadaLocal);
+        if (exacto.isPresent()) return exacto.get().getId();
+
+        // Fallback: comparar en minutos normalizados (evita desbordamiento de medianoche en LocalTime)
+        int salidaUtcMin = (vuelo.getHoraSalida().getHour() * 60 + vuelo.getHoraSalida().getMinute() + 1440) % 1440;
+
+        return vueloRepository.findAll().stream()
+                .filter(v -> v.getOrigenOaci().equals(vuelo.getOrigenOaci())
+                          && v.getDestinoOaci().equals(vuelo.getDestinoOaci()))
+                .filter(v -> {
+                    // Hora local en minutos → convertir a UTC restando gmtOrigen
+                    int localMin = v.getHoraSalida().getHour() * 60 + v.getHoraSalida().getMinute();
+                    int utcMin   = (localMin - gmtOrigen * 60 + 1440) % 1440;
+                    return Math.abs(utcMin - salidaUtcMin) <= 1; // tolerancia 1 minuto
+                })
+                .map(com.tasf.b2b.domain.VueloEntity::getId)
+                .findFirst()
+                .orElse(0L);
     }
 }

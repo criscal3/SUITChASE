@@ -73,6 +73,7 @@ export function RealTimePage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [airportsList, setAirportsList] = useState<any[]>([]);
   const [flightsList, setFlightsList] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -165,6 +166,19 @@ export function RealTimePage() {
   }, []);
 
   const getCity = (code: string) => airportsList.find(a => a.code === code)?.city || code;
+
+  /** Selecciona un pedido y carga su detalle (con tramos) desde el servidor */
+  const handleSelectPedido = async (p: Pedido | null) => {
+    if (!p) { setSelectedPedido(null); return; }
+    // Mostrar inmediatamente con los datos que tenemos (sin tramos tal vez)
+    setSelectedPedido(p);
+    setDetailLoading(true);
+    try {
+      const detalle = await api.getDetallePedidoRT(p.id);
+      if (detalle) setSelectedPedido(detalle as Pedido);
+    } catch { /* mantener el estado local */ }
+    finally { setDetailLoading(false); }
+  };
 
   // Calculate global warehouse and flight occupancy
   const globalOccupancy = useMemo(() => {
@@ -318,9 +332,16 @@ export function RealTimePage() {
               <div className={`px-3 py-2 border-b ${headerBorder} ${detailBg}`}>
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-[12px] font-bold ${titleCls}`}>{selectedPedido.id}</span>
-                  <Badge className={`text-[9px] ${isDark ? sc.bg : sc.lightBg} ${isDark ? sc.color : sc.lightColor}`}>
-                    {sc.icon} <span className="ml-1">{sc.label}</span>
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    {detailLoading && (
+                      <span className={`w-3 h-3 rounded-full border-2 border-t-transparent animate-spin ${
+                        isDark ? "border-cyan-400" : "border-blue-600"
+                      }`} />
+                    )}
+                    <Badge className={`text-[9px] ${isDark ? sc.bg : sc.lightBg} ${isDark ? sc.color : sc.lightColor}`}>
+                      {sc.icon} <span className="ml-1">{sc.label}</span>
+                    </Badge>
+                  </div>
                 </div>
                 <div className={`text-[10px] mb-2 ${subCls}`}>
                   {selectedPedido.nombreAerolinea} | {selectedPedido.cantidadMaletas} maletas
@@ -366,7 +387,9 @@ export function RealTimePage() {
                       {/* Nodos intermedios y final */}
                       {tramos.map((leg: any, i: number) => {
                         const isCompleted = leg.estado === "COMPLETADO";
-                        const isCurrent = leg.estado === "EN_VUELO";
+                        const isCurrent   = leg.estado === "EN_VUELO";
+                        const isPending   = leg.estado === "PROGRAMADO" || leg.estado === "CANCELADO";
+                        const isCancelled = leg.estado === "CANCELADO";
                         const isLast = i === tramos.length - 1;
                         const arriGmt = getGmt(leg.destinoOaci);
                         const nextLeg = !isLast ? tramos[i + 1] : null;
@@ -378,11 +401,23 @@ export function RealTimePage() {
                               )}
                             </div>
                             <div className="flex items-start gap-2">
-                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isCompleted ? "bg-green-500" : isCurrent ? "bg-cyan-500 animate-pulse" : dotInactive}`} />
+                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${
+                                isCancelled ? "bg-red-500/50" :
+                                isCompleted ? "bg-green-500" :
+                                isCurrent   ? "bg-cyan-500 animate-pulse" : dotInactive
+                              }`} />
                               <div className="flex-1">
-                                <div className={`text-[10px] font-semibold ${titleCls}`}>
+                                <div className={`text-[10px] font-semibold ${
+                                  isCancelled ? (isDark ? "text-red-400/70" : "text-red-600/70") : titleCls
+                                }`}>
                                   {getCity(leg.destinoOaci)} ({leg.destinoOaci})
+                                  {isCancelled && <span className={`ml-1 text-[9px] ${isDark ? "text-red-400" : "text-red-600"}`}>[Cancelado]</span>}
                                 </div>
+                                {isCurrent && (
+                                  <div className={`text-[9px] font-medium ${isDark ? "text-cyan-400" : "text-cyan-700"}`}>
+                                    ✈ En vuelo ahora
+                                  </div>
+                                )}
                                 <div className={`text-[9px] ${mutedCls}`}>
                                   Llegada: {fmtLocal(leg.fechaLlegada, arriGmt)} {gmtLabel(arriGmt)}
                                 </div>
@@ -422,7 +457,7 @@ export function RealTimePage() {
                   return (
                     <button
                       key={p.id}
-                      onClick={() => setSelectedPedido(isSelected ? null : p)}
+                      onClick={() => handleSelectPedido(isSelected ? null : p)}
                       className={`w-full text-left px-2 py-2 rounded-md mb-1 flex items-center gap-2 transition-colors ${
                         isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${hoverRow} border border-transparent`
                       }`}

@@ -5,6 +5,7 @@ import com.tasf.b2b.domain.AeropuertoEntity;
 import com.tasf.b2b.domain.VueloEntity;
 import com.tasf.b2b.repository.AeropuertoRepository;
 import com.tasf.b2b.repository.VueloRepository;
+import com.tasf.b2b.service.RealTimeOperationsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,6 +17,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import com.tasf.b2b.repository.AsignacionRealRepository;
+import com.tasf.b2b.domain.AsignacionRealEntity;
 
 @RestController
 @RequestMapping("/api/vuelos")
@@ -25,6 +28,14 @@ public class VueloController {
 
     private final VueloRepository vueloRepository;
     private final AeropuertoRepository aeropuertoRepository;
+    private final RealTimeOperationsService rtService;
+    private final AsignacionRealRepository asignacionRealRepository;
+
+    @GetMapping("/debug-asignaciones")
+    @PreAuthorize("permitAll()")
+    public ResponseEntity<List<AsignacionRealEntity>> debugAsignaciones() {
+        return ResponseEntity.ok(asignacionRealRepository.findAll());
+    }
 
     @GetMapping
     @PreAuthorize("isAuthenticated()")
@@ -73,5 +84,37 @@ public class VueloController {
         }).collect(Collectors.toList());
 
         return ResponseEntity.ok(dtoList);
+    }
+
+    /**
+     * Preview (sin modificar datos): devuelve los pedidos que serían afectados si se
+     * cancela la ocurrencia de hoy de un vuelo.
+     */
+    @GetMapping("/{id}/pedidos-afectados-hoy")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<com.tasf.b2b.api.dto.PedidoRealDTO>> pedidosAfectadosHoy(@PathVariable Long id) {
+        var vuelo = vueloRepository.findById(id).orElse(null);
+        if (vuelo == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(rtService.getPedidosAfectadosPorVueloHoy(vuelo));
+    }
+
+    /**
+     * Cancela la ocurrencia de HOY de un vuelo (sin eliminar el vuelo de la BD).
+     * Los pedidos cuya ruta incluya este vuelo hoy pasan a PENDIENTE para ser
+     * replanificados en el próximo ciclo del scheduler.
+     */
+    @PostMapping("/{id}/cancelar-hoy")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Map<String, Object>> cancelarHoy(@PathVariable Long id) {
+        var vuelo = vueloRepository.findById(id).orElse(null);
+        if (vuelo == null) return ResponseEntity.notFound().build();
+        int pedidosAfectados = rtService.cancelarVueloDelDia(vuelo);
+        return ResponseEntity.ok(Map.of(
+                "vueloId", id,
+                "pedidosAfectados", pedidosAfectados,
+                "mensaje", pedidosAfectados == 0
+                        ? "No hay pedidos afectados por este vuelo hoy"
+                        : pedidosAfectados + " pedido(s) regresado(s) a PENDIENTE para replanificación"
+        ));
     }
 }
