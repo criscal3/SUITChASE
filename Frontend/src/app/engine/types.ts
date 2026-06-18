@@ -3,6 +3,23 @@ export const SIM_BASE_DATE = new Date(2026, 0, 2, 0, 0, 0);
 /** Duración del cronómetro de simulación semanal (5 días desde fecha inicial). */
 export const SIM_WEEKLY_DURATION_MS = 5 * 24 * 60 * 60 * 1000;
 
+/** Duración de la simulación de colapso visual (1 día). */
+export const SIM_COLLAPSE_DURATION_MS = 1 * 24 * 60 * 60 * 1000;
+
+/** Días de calentamiento previos para la simulación de colapso (en backend). */
+export const COLLAPSE_PRE_DAYS = 5;
+
+/** Total de bloques de pre-calentamiento (5 días * 4 bloques/día + 1 bloque). Asumiendo Sc = 4h (6 bloques por día) -> 5*6 + 1 = 31 bloques. 
+ * ¡Espera! El plan original menciona "25 bloques (24 bloques antes de la fecha + primer bloque luego de la fecha)". 
+ * Si 1 bloque son 6 horas, entonces 1 día son 4 bloques. 5 días = 20 bloques. 24 bloques = 6 días.
+ * El request del usuario decía: "La simulación hasta el colapso inicia 5 días antes de la fecha inicial... deben ser un total de 25 bloques (24 bloques antes de la fecha + primer bloque luego de la fecha)." 
+ * OK, entonces 24 bloques = 24 * 6 = 144 horas = 6 días, o si Sc = 4h, entonces 24 * 4h = 96h = 4 días.
+ * Asumiendo que 1 bloque son Sc horas. Use el config hardcoded o calculado. 
+ * El prompt del user dice explícitamente: "total de 25 bloques (24 bloques antes de la fecha + primer bloque luego de la fecha)" y "inicia 5 días antes de la fecha inicial". 
+ * Lo mejor es poner `COLLAPSE_PRE_BLOCKS = 25` constante como requirió.
+ */
+export const COLLAPSE_PRE_BLOCKS = 25;
+
 export interface BaggageGroup {
   id: string;
   airline: string;
@@ -57,6 +74,12 @@ export interface SimulationState {
   collapsedShipmentsDetected?: boolean;
   firstCollapsedShipmentTime?: number; // Registration time of the earliest collapsed shipment
   shouldShowCollapseHighlights?: boolean;
+  // Collapse simulation specific fields
+  collapsePreBlocks?: number;
+  collapsePreBlocksReceived?: number;
+  collapsePrePhase?: boolean;
+  collapseVisualStartTime?: number;
+  currentBlock?: number;
 }
 
 export function hasReachedWeeklySimEnd(
@@ -66,6 +89,16 @@ export function hasReachedWeeklySimEnd(
     !!state.hasStarted &&
     state.startTime > 0 &&
     state.currentTime >= state.startTime + SIM_WEEKLY_DURATION_MS
+  );
+}
+
+export function hasReachedCollapseSimEnd(
+  state: Pick<SimulationState, "hasStarted" | "collapseVisualStartTime" | "currentTime">
+): boolean {
+  return (
+    !!state.hasStarted &&
+    (state.collapseVisualStartTime ?? 0) > 0 &&
+    state.currentTime >= (state.collapseVisualStartTime ?? 0) + SIM_COLLAPSE_DURATION_MS
   );
 }
 

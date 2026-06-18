@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { createEmptyStats } from "./simulation";
 import { AIRPORTS as DEFAULT_AIRPORTS, type Airport } from "../data/airports";
 import type { SimulationState, SimEvent, Airline } from "./types";
-import { SIM_BASE_DATE, SIM_WEEKLY_DURATION_MS } from "./types";
+import { SIM_BASE_DATE, SIM_WEEKLY_DURATION_MS, SIM_COLLAPSE_DURATION_MS, COLLAPSE_PRE_DAYS, COLLAPSE_PRE_BLOCKS } from "./types";
 import { toast } from "sonner";
 import { api } from "../services/api";
 import { SimulationWebSocketClient } from "../services/websocket";
@@ -391,6 +391,7 @@ export function useSimulation() {
         collapsedShipmentsDetected,
         firstCollapsedShipmentTime,
         shouldShowCollapseHighlights,
+        currentBlock: msg.bloqueActual,
       };
     });
   }, []);
@@ -402,11 +403,11 @@ export function useSimulation() {
    * Aplica el siguiente bloque cuando el reloj sim alcanza start + n×Sc (n = bloques ya mostrados).
    * Ej.: inicio 01/01 18:00 → bloque 1; 02/01 00:00 → bloque 2; 06:00 → bloque 3; …
    */
-  const tryConsumeBlocksAtSimTime = useCallback((simTimeMs: number) => {
+  const tryConsumeBlocksAtSimTime = useCallback((simTimeMs: number, forceConsume = false) => {
     while (blockQueueRef.current.length > 0) {
       const nextBoundary =
         startTimeRef.current + blocksConsumedRef.current * SC_MS;
-      if (simTimeMs < nextBoundary) break;
+      if (!forceConsume && simTimeMs < nextBoundary) break;
       const nextBlock = blockQueueRef.current.shift();
       if (!nextBlock) break;
       blocksConsumedRef.current += 1;
@@ -426,9 +427,24 @@ export function useSimulation() {
     let rafId = 0;
 
     const commitClock = (nextTime: number, prev: SimulationState) => {
-      const maxTime = prev.startTime + SIM_WEEKLY_DURATION_MS;
-      const reachedEnd =
-        prev.scenario === "weekly" && nextTime >= maxTime;
+      let maxTime = prev.startTime + SIM_WEEKLY_DURATION_MS;
+      let reachedEnd = false;
+
+      if (prev.scenario === "collapse") {
+        maxTime = (prev.collapseVisualStartTime || prev.startTime) + SIM_COLLAPSE_DURATION_MS;
+        reachedEnd = hasReachedCollapseSimEnd({
+          hasStarted: prev.hasStarted,
+          collapseVisualStartTime: prev.collapseVisualStartTime,
+          currentTime: nextTime
+        });
+      } else {
+        reachedEnd = hasReachedWeeklySimEnd({
+          hasStarted: prev.hasStarted,
+          startTime: prev.startTime,
+          currentTime: nextTime
+        });
+      }
+
       const clampedTime = reachedEnd ? maxTime : nextTime;
 
       currentTimeRef.current = clampedTime;
@@ -555,17 +571,62 @@ export function useSimulation() {
         return;
       }
 
-      // Backend terminó de planificar; el cronómetro sigue hasta el fin de la ventana sim (5 días)
+      // Backend terminó de planificar; el cronómetro sigue hasta el fin de la ventana sim
       if (msg.estado === "FINALIZADA") {
         return;
       }
 
-      // En cola hasta que el cronómetro sim cruce cada frontera de 6 h (Sc)
-      blockQueueRef.current.push(msg);
-      console.log(`Block ${msg.bloqueActual} queued. Queue size: ${blockQueueRef.current.length}`);
-      if (runningRef.current && !waitingForFirstBlockRef.current) {
-        tryConsumeBlocksAtSimTimeRef.current(currentTimeRef.current);
-      }
+      setState(prev => {
+        if (prev.scenario === "collapse" && prev.collapsePrePhase) {
+          const received = (prev.collapsePreBlocksReceived || 0) + 1;
+          const isDone = received >= (prev.collapsePreBlocks || COLLAPSE_PRE_BLOCKS);
+          
+          queueMicrotask(() => {
+            tryConsumeBlocksAtSimTimeRef.current(0, true);
+            
+            queueMicrotask(() => {
+              setState(innerPrev => {
+                if (innerPrev.collapsedShipmentsDetected) {
+                  return {
+                    ...innerPrev,
+                    collapsePrePhase: false,
+                    collapsePreBlocksReceived: received,
+                    running: false,
+                    stopped: true,
+                    shouldShowCollapseHighlights: true
+                  };
+                } else if (isDone) {
+                  const visualStart = innerPrev.collapseVisualStartTime || innerPrev.startTime;
+                  
+                  currentTimeRef.current = visualStart;
+                  targetTimeRef.current = visualStart;
+                  lastMinuteIdxRef.current = -1;
+                  
+                  return {
+                    ...innerPrev,
+                    collapsePrePhase: false,
+                    collapsePreBlocksReceived: received,
+                    currentTime: visualStart,
+                    running: true,
+                    waitingForFirstBlock: false
+                  };
+                }
+                return innerPrev;
+              });
+            });
+          });
+          
+          return { ...prev, collapsePreBlocksReceived: received };
+        } else {
+          // En cola hasta que el cronómetro sim cruce cada frontera de 6 h (Sc)
+          blockQueueRef.current.push(msg);
+          console.log(`Block ${msg.bloqueActual} queued. Queue size: ${blockQueueRef.current.length}`);
+          if (runningRef.current && !waitingForFirstBlockRef.current) {
+            tryConsumeBlocksAtSimTimeRef.current(currentTimeRef.current);
+          }
+          return prev;
+        }
+      });
     });
 
     ws.onConnect(() => {
@@ -658,6 +719,99 @@ export function useSimulation() {
       connectWebSocket(simId);
     } catch (error: any) {
       toast.error(`Error iniciando simulación: ${error.message}`);
+    }
+  }, [speed, connectWebSocket, airportsList]);
+
+  const startCollapse = useCallback(async (fechaInicio: Date) => {
+    if (wsClientRef.current) {
+      wsClientRef.current.disconnect();
+      wsClientRef.current = null;
+    }
+    activeSimIdRef.current = null;
+    blockQueueRef.current = [];
+    blocksConsumedRef.current = 0;
+    occupancyByAirportRef.current = {};
+    flightOccupancyRef.current = {};
+    flightCapacitiesRef.current = {};
+
+    // 5 days before the visual start
+    const startDate = new Date(fechaInicio.getTime());
+    startDate.setUTCDate(startDate.getUTCDate() - COLLAPSE_PRE_DAYS);
+
+    // End date is 1 day after the visual start
+    const endDate = new Date(fechaInicio.getTime());
+    endDate.setUTCDate(endDate.getUTCDate() + 1);
+
+    const formatLocalISO = (d: Date) => {
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      const hours = String(d.getUTCHours()).padStart(2, "0");
+      const minutes = String(d.getUTCMinutes()).padStart(2, "0");
+      const seconds = String(d.getUTCSeconds()).padStart(2, "0");
+      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    };
+
+    const fechaInicioStr = formatLocalISO(startDate);
+    const fechaFinStr = formatLocalISO(endDate);
+
+    try {
+      const res = await api.iniciarSimulacion({
+        nombre: `Simulación Colapso ${fechaInicioStr}`,
+        fechaInicio: fechaInicioStr,
+        fechaFin: fechaFinStr,
+        sa: SA_MINUTES,
+        k: K_DEFAULT,
+        ta: TA_SECONDS,
+        skipSleepUntilBlock: COLLAPSE_PRE_BLOCKS
+      });
+
+      const simId = res.simulacionId;
+      activeSimIdRef.current = simId;
+
+      const initialAirports: Record<string, any> = {};
+      airportsList.forEach(a => {
+        initialAirports[a.code] = { code: a.code, currentStock: 0, capacity: a.warehouseCapacity, incoming: 0, outgoing: 0 };
+      });
+
+      const startUtcMs = startDate.getTime();
+      const visualStartMs = fechaInicio.getTime();
+      
+      targetTimeRef.current = startUtcMs;
+      startTimeRef.current = startUtcMs;
+      blocksConsumedRef.current = 0;
+
+      setState({
+        scenario: "collapse",
+        turnaroundHours: 1,
+        currentTime: startUtcMs,
+        startTime: startUtcMs,
+        day: 1,
+        hour: 0,
+        airports: initialAirports,
+        flights: [],
+        flightOccupancy: {},
+        flightCapacities: { ...flightTemplateCapacitiesRef.current },
+        baggageGroups: [],
+        cancelledFlights: new Set<string>(),
+        stats: createEmptyStats(),
+        collapsed: false,
+        collapseReason: "",
+        running: false,
+        stopped: false,
+        hasStarted: true,
+        waitingForFirstBlock: false,
+        speed: K_DEFAULT,
+        collapsePreBlocks: COLLAPSE_PRE_BLOCKS,
+        collapsePreBlocksReceived: 0,
+        collapsePrePhase: true,
+        collapseVisualStartTime: visualStartMs
+      });
+      setEvents([]);
+
+      connectWebSocket(simId);
+    } catch (error: any) {
+      toast.error(`Error iniciando simulación de colapso: ${error.message}`);
     }
   }, [speed, connectWebSocket, airportsList]);
 
@@ -832,6 +986,7 @@ export function useSimulation() {
     airportsList,
     airlines,
     start,
+    startCollapse,
     endSimulation,
     pauseSimulation,
     cancelSimulation,

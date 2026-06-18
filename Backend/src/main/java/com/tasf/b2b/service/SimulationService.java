@@ -65,7 +65,7 @@ public class SimulationService {
     // ========================================================
     public SimulacionEntity iniciarSimulacion(Long userId, String nombre,
                                               LocalDateTime fechaInicio, LocalDateTime fechaFin,
-                                              int sa, int k, int ta) {
+                                              int sa, int k, int ta, int skipSleepUntilBlock) {
         int sc = k * sa;
         long totalMinutos = ChronoUnit.MINUTES.between(fechaInicio, fechaFin);
         int totalBloques = sc > 0 ? (int) Math.ceil((double) totalMinutos / sc) : 0;
@@ -82,6 +82,7 @@ public class SimulationService {
         sim.setTotalBloquesEstimados(totalBloques);
         sim.setCursorTemporal(fechaInicio);
         sim.setCreadoPor(userId);
+        sim.setSkipSleepUntilBlock(skipSleepUntilBlock);
 
         simulacionRepository.save(sim);
         pauseFlags.put(sim.getId(), false);
@@ -526,8 +527,10 @@ public class SimulationService {
             bloqueActual++;
 
             long slotStartMs = wallClockAnchorMs + (long) (bloqueActual - 1) * saPeriodoMs;
-            if (!esperarHastaInterruptible(simulacionId, slotStartMs)) {
-                return;
+            if (bloqueActual > simActual.getSkipSleepUntilBlock()) {
+                if (!esperarHastaInterruptible(simulacionId, slotStartMs)) {
+                    return;
+                }
             }
 
             long t0 = System.currentTimeMillis();
@@ -654,14 +657,20 @@ public class SimulationService {
 
             long slotEndMs = wallClockAnchorMs + (long) bloqueActual * saPeriodoMs;
             long duracionAlgoritmoSeg = (System.currentTimeMillis() - t0) / 1000;
-            long sleepSeg = Math.max(0, (slotEndMs - System.currentTimeMillis() + 999) / 1000);
-            if (sleepSeg > 0) {
-                log.info("Simulación {} — Bloque {} enviado ({}s de cómputo), durmiendo hasta t={}s",
-                        simulacionId, bloqueActual, duracionAlgoritmoSeg,
-                        (bloqueActual * sa * 60L));
-            }
-            if (!esperarHastaInterruptible(simulacionId, slotEndMs)) {
-                return;
+            
+            if (bloqueActual > simActual.getSkipSleepUntilBlock()) {
+                long sleepSeg = Math.max(0, (slotEndMs - System.currentTimeMillis() + 999) / 1000);
+                if (sleepSeg > 0) {
+                    log.info("Simulación {} — Bloque {} enviado ({}s de cómputo), durmiendo hasta t={}s",
+                            simulacionId, bloqueActual, duracionAlgoritmoSeg,
+                            (bloqueActual * sa * 60L));
+                }
+                if (!esperarHastaInterruptible(simulacionId, slotEndMs)) {
+                    return;
+                }
+            } else {
+                log.info("Simulación {} — Bloque {} enviado ({}s de cómputo), skip sleep activado",
+                        simulacionId, bloqueActual, duracionAlgoritmoSeg);
             }
         }
 

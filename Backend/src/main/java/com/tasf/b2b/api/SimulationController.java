@@ -39,7 +39,8 @@ public class SimulationController {
         SimulacionEntity sim = simulationService.iniciarSimulacion(
                 userId, request.nombre(),
                 request.fechaInicio(), request.fechaFin(),
-                request.sa(), request.k(), request.ta()
+                request.sa(), request.k(), request.ta(),
+                request.skipSleepUntilBlock() != null ? request.skipSleepUntilBlock() : 0
         );
 
         return ResponseEntity.ok(Map.of(
@@ -173,5 +174,5 @@ public class SimulationController {
     // --- DTO ---
     public record IniciarSimulacionRequest(String nombre,
                                            LocalDateTime fechaInicio, LocalDateTime fechaFin,
-                                           int sa, int k, int ta) {}
+                                           int sa, int k, int ta, Integer skipSleepUntilBlock) {}
 }

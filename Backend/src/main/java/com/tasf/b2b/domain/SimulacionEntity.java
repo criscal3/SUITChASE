@@ -40,6 +40,9 @@ public class SimulacionEntity {
     @Column(name = "tiempo_algoritmo_ta", nullable = false)
     private Integer tiempoAlgoritmoTa;
 
+    @Column(name = "skip_sleep_until_block", nullable = false, columnDefinition = "INT DEFAULT 0")
+    private Integer skipSleepUntilBlock = 0;
+
     @Column(name = "bloque_actual", nullable = false)
     private Integer bloqueActual = 0;
 
