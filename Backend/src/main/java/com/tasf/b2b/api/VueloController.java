@@ -93,6 +93,7 @@ public class VueloController {
                     .transitHours(transitHours)
                     .capacity(v.getCapacidad())
                     .capacidad(v.getCapacidad())
+                    .origenGmt(origAero != null ? origAero.getGmt() : 0)
                     .intercontinental(intercontinental)
                     .cancelled(false)
                     .build();

@@ -15,7 +15,7 @@ export function FlightCancellationCard() {
   const [destination, setDestination] = useState("");
   const [timeValue, setTimeValue] = useState("");
 
-  const [confirmCancel, setConfirmCancel] = useState<{ origin: string; destination: string; date: string; simId: number } | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState<{ origin: string; destination: string; date: string; simId: number; tzLabel: string } | null>(null);
   const [affectedOrders, setAffectedOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -50,7 +50,7 @@ export function FlightCancellationCard() {
       f => (f.origenOaci || f.origin) === origin && (f.destinoOaci || f.destination) === destination
     );
 
-    const options: { label: string; value: string; date: Date }[] = [];
+    const options: { label: string; value: string; date: Date; tzLabel?: string }[] = [];
     const simTime = new Date(state.currentTime);
 
     matchingFlights.forEach(f => {
@@ -59,27 +59,33 @@ export function FlightCancellationCard() {
       const h = parseInt(hStr || "0", 10);
       const m = parseInt(mStr || "0", 10);
       const s = parseInt(sStr || "0", 10);
+      
+      const gmt = f.origenGmt || 0;
+      const gmtStr = gmt >= 0 ? `+${gmt}` : `${gmt}`;
+      const tzLabel = `UTC${gmtStr}`;
 
       // Candidate 1: Today in simulation
       let candidate1 = new Date(simTime.getTime());
-      candidate1.setHours(h, m, s, 0);
+      candidate1.setUTCHours(h, m, s, 0);
 
       // Candidate 2: Tomorrow in simulation
       let candidate2 = new Date(simTime.getTime());
-      candidate2.setDate(candidate2.getDate() + 1);
-      candidate2.setHours(h, m, s, 0);
+      candidate2.setUTCDate(candidate2.getUTCDate() + 1);
+      candidate2.setUTCHours(h, m, s, 0);
 
       [candidate1, candidate2].forEach(cand => {
         if (cand > simTime && cand.getTime() - simTime.getTime() <= 24 * 3600 * 1000) {
           // ISO format without milliseconds to match backend's LocalDateTime parsing
           // Example: 2026-06-17T14:30:00
           const pad = (n: number) => String(n).padStart(2, "0");
-          const value = `${cand.getFullYear()}-${pad(cand.getMonth() + 1)}-${pad(cand.getDate())}T${pad(cand.getHours())}:${pad(cand.getMinutes())}:${pad(cand.getSeconds())}`;
+          const value = `${cand.getUTCFullYear()}-${pad(cand.getUTCMonth() + 1)}-${pad(cand.getUTCDate())}T${pad(cand.getUTCHours())}:${pad(cand.getUTCMinutes())}:${pad(cand.getUTCSeconds())}`;
+          const label = `${pad(cand.getUTCDate())}/${pad(cand.getUTCMonth() + 1)}/${cand.getUTCFullYear()} ${pad(cand.getUTCHours())}:${pad(cand.getUTCMinutes())} (${tzLabel})`;
           
           options.push({
-            label: cand.toLocaleString(),
+            label,
             value,
-            date: cand
+            date: cand,
+            tzLabel
           });
         }
       });
@@ -102,7 +108,11 @@ export function FlightCancellationCard() {
       toast.error("Seleccione origen, destino y hora del vuelo");
       return;
     }
-    setConfirmCancel({ origin, destination, date: timeValue, simId: simIdToUse });
+    
+    const selectedOption = occurrences.find(o => o.value === timeValue);
+    const tzLabelToUse = selectedOption ? selectedOption.tzLabel : "UTC";
+    
+    setConfirmCancel({ origin, destination, date: timeValue, simId: simIdToUse, tzLabel: tzLabelToUse });
     setAffectedOrders([]);
     setLoadingOrders(true);
     try {
@@ -227,7 +237,7 @@ export function FlightCancellationCard() {
                     {confirmCancel.origin} → {confirmCancel.destination}
                   </span>
                   <span className={`ml-auto font-mono text-[11px] ${textSecondary}`}>
-                    Salida: {new Date(confirmCancel.date).toLocaleString()}
+                    Salida: {confirmCancel.date.replace("T", " ")} ({confirmCancel.tzLabel})
                   </span>
                 </div>
               </div>

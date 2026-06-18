@@ -462,6 +462,22 @@ export function useSimulation() {
         return;
       }
 
+      if (msg.tipo === "VUELO_CANCELADO") {
+        const afectadosIds: string[] = msg.afectadosIds || [];
+        if (afectadosIds.length > 0) {
+          setState(prev => {
+            const newGroups = prev.baggageGroups.map(bg => {
+              if (afectadosIds.includes(bg.id)) {
+                return { ...bg, status: "failed", route: [] }; // Set to "failed" (En espera/Sin ruta) until replanned
+              }
+              return bg;
+            });
+            return { ...prev, baggageGroups: newGroups };
+          });
+        }
+        return;
+      }
+
       // Backend terminó de planificar; el cronómetro sigue hasta el fin de la ventana sim (5 días)
       if (msg.estado === "FINALIZADA") {
         return;

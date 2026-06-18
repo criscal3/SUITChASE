@@ -37,6 +37,9 @@ public class SimulationService {
 
     // Almacena los vuelos cancelados por simulación. Clave: simulacionId, Valor: Set de claves de vuelo (ORIGEN-DESTINO-YYYY-MM-DDTHH:mm:ss)
     private final Map<Long, Set<String>> vuelosCanceladosPorSimulacion = new ConcurrentHashMap<>();
+    
+    // Almacena los envíos que fueron afectados por una cancelación y deben ser replanificados
+    private final Map<Long, List<EnvioAlgoritmo>> enviosAReplanificarPorSimulacion = new ConcurrentHashMap<>();
 
     /** Evita dos hilos @Async procesando la misma simulación (p. ej. al reanudar). */
     private final KeySetView<Long, Boolean> simulacionesEnEjecucion = ConcurrentHashMap.newKeySet();
@@ -166,24 +169,74 @@ public class SimulationService {
     // CANCELACIÓN DE VUELOS EN SIMULACIÓN
     // ========================================================
     
-    public void cancelarVueloSimulacion(Long simulacionId, String origen, String destino, LocalDateTime fechaSalidaLocal) {
-        int gmtOrigen = aeropuertoRepository.findById(origen).map(AeropuertoEntity::getGmt).orElse(0);
-        LocalDateTime fechaSalidaUtc = fechaSalidaLocal.minusHours(gmtOrigen);
+    public void cancelarVueloSimulacion(Long simulacionId, String origen, String destino, LocalDateTime fechaSalida) {
+        String clave = origen + "-" + destino + "-" + fechaSalida;
+        vuelosCanceladosPorSimulacion.computeIfAbsent(simulacionId, k -> ConcurrentHashMap.newKeySet()).add(clave);
         
-        String claveVuelo = origen + "-" + destino + "-" + fechaSalidaUtc.toString();
-        vuelosCanceladosPorSimulacion.computeIfAbsent(simulacionId, k -> ConcurrentHashMap.newKeySet()).add(claveVuelo);
-        log.info("Vuelo cancelado en simulación {}: {}", simulacionId, claveVuelo);
+        AeropuertoEntity origAero = aeropuertoRepository.findById(origen).orElse(null);
+        int gmt = origAero != null ? origAero.getGmt() : 0;
+        LocalDateTime fechaSalidaDb = fechaSalida.minusHours(gmt);
+
+        log.info("Vuelo cancelado en simulación {}: {}", simulacionId, clave);
+
+        // Obtener pedidos afectados (usando la hora que nos manda el frontend tal cual)
+        List<Map<String, Object>> afectadosInfo = obtenerPedidosAfectadosSimulacion(simulacionId, origen, destino, fechaSalida);
+        if (afectadosInfo.isEmpty()) return;
+
+        // Extraer los IDs de los envíos
+        List<String> envioIdsStr = afectadosInfo.stream()
+                .map(m -> m.get("id").toString())
+                .toList();
+
+        // Eliminar las asignaciones de estos envíos (para que aparezcan como sin asignar/perjudicados)
+        List<AsignacionEnvioEntity> aBorrar = asignacionEnvioRepository.findAll().stream()
+                .filter(a -> envioIdsStr.contains(a.getEnvioId()))
+                .toList();
+        asignacionEnvioRepository.deleteAll(aBorrar);
+
+        // Recuperar los EnvioAlgoritmo para replanificarlos en el próximo bloque
+        List<EnvioAlgoritmo> aReplanificar = new ArrayList<>();
+        PlanificationProblemInput inputMaestro = inputMaestroMap.get(simulacionId);
+        if (inputMaestro != null) {
+            for (EnvioAlgoritmo ea : inputMaestro.getEnvios()) {
+                if (envioIdsStr.contains(ea.getId())) {
+                    aReplanificar.add(ea);
+                }
+            }
+            if (aReplanificar.isEmpty()) {
+                // Alternativamente, crearlos desde la base de datos
+                for (String idStr : envioIdsStr) {
+                    envioRepository.findById(idStr).ifPresent(ent -> {
+                        EnvioAlgoritmo ea = new EnvioAlgoritmo();
+                        ea.setId(ent.getId());
+                        ea.setOrigenOaci(ent.getOrigenOaci());
+                        ea.setDestinoOaci(ent.getDestinoOaci());
+                        ea.setFechaHoraRegistro(ent.getFechaHoraRegistro());
+                        ea.setCantidadMaletas(ent.getCantidadMaletas());
+                        aReplanificar.add(ea);
+                    });
+                }
+            }
+        }
+        
+        enviosAReplanificarPorSimulacion.computeIfAbsent(simulacionId, k -> new ArrayList<>()).addAll(aReplanificar);
+        
+        // Notificar al frontend que deben recargar
+        messagingTemplate.convertAndSend("/topic/simulacion/" + simulacionId, Map.of(
+            "tipo", "VUELO_CANCELADO",
+            "origen", origen,
+            "destino", destino,
+            "afectadosIds", envioIdsStr
+        ));
     }
 
-    public List<Map<String, Object>> obtenerPedidosAfectadosSimulacion(Long simulacionId, String origen, String destino, LocalDateTime fechaSalidaLocal) {
+    public List<Map<String, Object>> obtenerPedidosAfectadosSimulacion(Long simulacionId, String origen, String destino, LocalDateTime fechaSalida) {
         // Encontrar el ID del vuelo
-        int gmtOrigen = aeropuertoRepository.findById(origen).map(AeropuertoEntity::getGmt).orElse(0);
-        java.time.LocalTime horaSalidaLocal = fechaSalidaLocal.toLocalTime();
-        LocalDateTime fechaSalidaUtc = fechaSalidaLocal.minusHours(gmtOrigen);
+        java.time.LocalTime horaSalida = fechaSalida.toLocalTime();
         
         List<VueloEntity> vuelos = vueloRepository.findAll().stream()
                 .filter(v -> v.getOrigenOaci().equals(origen) && v.getDestinoOaci().equals(destino))
-                .filter(v -> v.getHoraSalida().equals(horaSalidaLocal) || v.getHoraSalida().equals(fechaSalidaUtc.toLocalTime())) // fallback
+                .filter(v -> v.getHoraSalida().equals(horaSalida))
                 .toList();
                 
         if (vuelos.isEmpty()) return Collections.emptyList();
@@ -195,11 +248,16 @@ public class SimulationService {
                 
         if (bloquesSimulacion.isEmpty()) return Collections.emptyList();
 
+        // Calcular la hora en UTC para buscar en las asignaciones de la base de datos
+        AeropuertoEntity origAero = aeropuertoRepository.findById(origen).orElse(null);
+        int gmt = origAero != null ? origAero.getGmt() : 0;
+        LocalDateTime fechaSalidaDb = fechaSalida.minusHours(gmt);
+
         // Buscar en las asignaciones
         List<AsignacionEnvioEntity> asignaciones = asignacionEnvioRepository.findAll().stream()
                 .filter(a -> bloquesSimulacion.contains(a.getBloqueResultadoId()))
                 .filter(a -> a.getVueloId().equals(vueloId))
-                .filter(a -> a.getFechaSalida().equals(fechaSalidaUtc))
+                .filter(a -> a.getFechaSalida().equals(fechaSalidaDb))
                 .toList();
 
         List<Map<String, Object>> afectados = new ArrayList<>();
@@ -353,6 +411,14 @@ public class SimulationService {
 
             // 1. LEER ENVÍOS del índice en memoria (cargado una vez al inicio, como Planificador)
             List<EnvioAlgoritmo> enviosBloque = envioFileReader.leerEnviosPorRango(simulacionId, cursor, finVentana);
+            
+            // Inyectar envíos que fueron afectados por cancelaciones para ser replanificados
+            List<EnvioAlgoritmo> aReplanificar = enviosAReplanificarPorSimulacion.remove(simulacionId);
+            if (aReplanificar != null && !aReplanificar.isEmpty()) {
+                enviosBloque.addAll(aReplanificar);
+                log.info("Inyectando {} envíos a replanificar en el bloque {}", aReplanificar.size(), bloqueActual + 1);
+            }
+            
             boolean bloqueVacio = enviosBloque.isEmpty();
 
             bloqueActual++;

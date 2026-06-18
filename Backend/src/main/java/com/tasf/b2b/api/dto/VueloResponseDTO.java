@@ -21,6 +21,7 @@ public class VueloResponseDTO {
     private double transitHours;
     private int capacity;
     private int capacidad;
+    private int origenGmt;
     private boolean intercontinental;
     private boolean cancelled;
 }
