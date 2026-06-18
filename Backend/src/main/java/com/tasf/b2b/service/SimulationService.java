@@ -323,7 +323,7 @@ public class SimulationService {
         List<AeropuertoAlgoritmo> aeropuertos = aeropuertosMap.get(simulacionId);
         List<VueloAlgoritmo> vuelos = vuelosMap.get(simulacionId);
         Map<String, VueloAlgoritmo> indiceVuelos = indiceVuelosMap.get(simulacionId);
-        Set<String> vuelosCancelados = vuelosCanceladosPorSimulacion.getOrDefault(simulacionId, Collections.emptySet());
+        // vuelosCancelados se re-lee en cada iteración del loop (no cachear aquí)
         
         if (inputMaestro == null) {
             // Primera ejecución: cargar aeropuertos y vuelos
@@ -415,6 +415,14 @@ public class SimulationService {
             // Inyectar envíos que fueron afectados por cancelaciones para ser replanificados
             List<EnvioAlgoritmo> aReplanificar = enviosAReplanificarPorSimulacion.remove(simulacionId);
             if (aReplanificar != null && !aReplanificar.isEmpty()) {
+                // Actualizar fechaHoraRegistro al cursor actual para que el algoritmo
+                // pueda encontrar vuelos futuros (si no, la fecha original está en el pasado
+                // y VueloSelector no encuentra ningún vuelo disponible)
+                for (EnvioAlgoritmo ea : aReplanificar) {
+                    if (ea.getFechaHoraRegistro().isBefore(cursor)) {
+                        ea.setFechaHoraRegistro(cursor);
+                    }
+                }
                 enviosBloque.addAll(aReplanificar);
                 log.info("Inyectando {} envíos a replanificar en el bloque {}", aReplanificar.size(), bloqueActual + 1);
             }
@@ -442,9 +450,13 @@ public class SimulationService {
             PlanificationSolutionOutput solucion = null;
 
             if (!enviosBloque.isEmpty()) {
+                // Re-leer vuelos cancelados del mapa concurrente (puede haber nuevas cancelaciones desde el último bloque)
+                Set<String> vuelosCancelados = vuelosCanceladosPorSimulacion.getOrDefault(simulacionId, Collections.emptySet());
+                // Actualizar inputMaestro para que crearSubInput propague las cancelaciones
+                inputMaestro.setVuelosCancelados(vuelosCancelados);
+                
                 // 2. Crear sub-input con los envíos del bloque
                 PlanificationProblemInput subInput = inputMaestro.crearSubInput(enviosBloque);
-                subInput.setVuelosCancelados(vuelosCancelados); // Inject cancelados
 
                 // 3. Ejecutar ACS
                 long tiempoMs = (long) ta * 1000L;

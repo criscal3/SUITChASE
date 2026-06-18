@@ -468,7 +468,7 @@ export function useSimulation() {
           setState(prev => {
             const newGroups = prev.baggageGroups.map(bg => {
               if (afectadosIds.includes(bg.id)) {
-                return { ...bg, status: "failed", route: [] }; // Set to "failed" (En espera/Sin ruta) until replanned
+                return { ...bg, status: "waiting" as const, route: [] }; // Set to "waiting" (En espera) until replanned by the next block
               }
               return bg;
             });
