@@ -11,11 +11,12 @@ export function FlightCancellationCard() {
   const { isDark } = useTheme();
 
   const [flights, setFlights] = useState<any[]>([]);
+  const [cancelledFlightIds, setCancelledFlightIds] = useState<number[]>([]);
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [timeValue, setTimeValue] = useState("");
 
-  const [confirmCancel, setConfirmCancel] = useState<{ origin: string; destination: string; date: string; simId: number; tzLabel: string } | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState<{ origin: string; destination: string; date: string; simId: number; tzLabel: string; gmt: number } | null>(null);
   const [affectedOrders, setAffectedOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -24,6 +25,13 @@ export function FlightCancellationCard() {
     api.getFlights().then(data => {
       if (data && data.length > 0) {
         setFlights(data);
+      }
+    }).catch(console.error);
+    
+    // Obtener vuelos cancelados
+    api.getCancelacionesActivas().then(data => {
+      if (data) {
+        setCancelledFlightIds(data);
       }
     }).catch(console.error);
   }, []);
@@ -47,7 +55,7 @@ export function FlightCancellationCard() {
     if (!origin || !destination) return [];
 
     const matchingFlights = flights.filter(
-      f => (f.origenOaci || f.origin) === origin && (f.destinoOaci || f.destination) === destination
+      f => (f.origenOaci || f.origin) === origin && (f.destinoOaci || f.destination) === destination && !cancelledFlightIds.includes(f.id || f.vueloId)
     );
 
     const options: { label: string; value: string; date: Date; tzLabel?: string }[] = [];
@@ -64,22 +72,32 @@ export function FlightCancellationCard() {
       const gmtStr = gmt >= 0 ? `+${gmt}` : `${gmt}`;
       const tzLabel = `UTC${gmtStr}`;
 
-      // Candidate 1: Today in simulation
-      let candidate1 = new Date(simTime.getTime());
-      candidate1.setUTCHours(h, m, s, 0);
+      // Convertir simTime de UTC a hora local del aeropuerto (simulando como UTC)
+      const simTimeInLocalTimezone = new Date(simTime.getTime() + gmt * 60 * 60 * 1000);
+      
+      // Extraer componentes: año, mes, día en la zona local
+      const localYear = simTimeInLocalTimezone.getUTCFullYear();
+      const localMonth = simTimeInLocalTimezone.getUTCMonth();
+      const localDate = simTimeInLocalTimezone.getUTCDate();
 
-      // Candidate 2: Tomorrow in simulation
-      let candidate2 = new Date(simTime.getTime());
-      candidate2.setUTCDate(candidate2.getUTCDate() + 1);
-      candidate2.setUTCHours(h, m, s, 0);
+      // Crear candidatos en hora local usando Date.UTC (porque ya hemos sumado el offset)
+      const candidate1LocalTime = new Date(Date.UTC(localYear, localMonth, localDate, h, m, s, 0));
+      const candidate2LocalTime = new Date(Date.UTC(localYear, localMonth, localDate + 1, h, m, s, 0));
 
-      [candidate1, candidate2].forEach(cand => {
+      // Convertir candidatos de vuelta a UTC para comparación
+      const candidate1UTC = new Date(candidate1LocalTime.getTime() - gmt * 60 * 60 * 1000);
+      const candidate2UTC = new Date(candidate2LocalTime.getTime() - gmt * 60 * 60 * 1000);
+
+      [candidate1UTC, candidate2UTC].forEach(cand => {
         if (cand > simTime && cand.getTime() - simTime.getTime() <= 24 * 3600 * 1000) {
-          // ISO format without milliseconds to match backend's LocalDateTime parsing
+          // Convertir cand de UTC a hora local del aeropuerto para mostrar y enviar
+          const candInLocalTimezone = new Date(cand.getTime() + gmt * 60 * 60 * 1000);
+          
+          // ISO format sin milliseconds en HORA LOCAL (lo que espera el backend)
           // Example: 2026-06-17T14:30:00
           const pad = (n: number) => String(n).padStart(2, "0");
-          const value = `${cand.getUTCFullYear()}-${pad(cand.getUTCMonth() + 1)}-${pad(cand.getUTCDate())}T${pad(cand.getUTCHours())}:${pad(cand.getUTCMinutes())}:${pad(cand.getUTCSeconds())}`;
-          const label = `${pad(cand.getUTCDate())}/${pad(cand.getUTCMonth() + 1)}/${cand.getUTCFullYear()} ${pad(cand.getUTCHours())}:${pad(cand.getUTCMinutes())} (${tzLabel})`;
+          const value = `${candInLocalTimezone.getUTCFullYear()}-${pad(candInLocalTimezone.getUTCMonth() + 1)}-${pad(candInLocalTimezone.getUTCDate())}T${pad(candInLocalTimezone.getUTCHours())}:${pad(candInLocalTimezone.getUTCMinutes())}:${pad(candInLocalTimezone.getUTCSeconds())}`;
+          const label = `${pad(candInLocalTimezone.getUTCDate())}/${pad(candInLocalTimezone.getUTCMonth() + 1)}/${candInLocalTimezone.getUTCFullYear()} ${pad(candInLocalTimezone.getUTCHours())}:${pad(candInLocalTimezone.getUTCMinutes())} (${tzLabel})`;
           
           options.push({
             label,
@@ -92,7 +110,7 @@ export function FlightCancellationCard() {
     });
 
     return options.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [origin, destination, flights, state.currentTime]);
+  }, [origin, destination, flights, state.currentTime, cancelledFlightIds]);
 
   const handleSelectTime = (val: string) => {
     setTimeValue(val);
@@ -112,7 +130,11 @@ export function FlightCancellationCard() {
     const selectedOption = occurrences.find(o => o.value === timeValue);
     const tzLabelToUse = selectedOption ? selectedOption.tzLabel : "UTC";
     
-    setConfirmCancel({ origin, destination, date: timeValue, simId: simIdToUse, tzLabel: tzLabelToUse });
+    // Obtener el GMT del aeropuerto origen
+    const originFlight = flights.find(f => (f.origenOaci || f.origin) === origin);
+    const gmtToUse = originFlight ? (originFlight.origenGmt || 0) : 0;
+    
+    setConfirmCancel({ origin, destination, date: timeValue, simId: simIdToUse, tzLabel: tzLabelToUse, gmt: gmtToUse });
     setAffectedOrders([]);
     setLoadingOrders(true);
     try {
@@ -139,6 +161,13 @@ export function FlightCancellationCard() {
         { duration: 6000 }
       );
       setConfirmCancel(null);
+      
+      // Refrescar la lista de cancelaciones activas
+      api.getCancelacionesActivas().then(data => {
+        if (data) {
+          setCancelledFlightIds(data);
+        }
+      }).catch(console.error);
     } catch (err: any) {
       toast.error(err?.message ?? "Error al cancelar el vuelo en la simulación");
     } finally {

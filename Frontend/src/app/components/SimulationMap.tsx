@@ -283,6 +283,10 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
         if (total <= 0) continue;
         const progress = (state.currentTime - leg.departureTime) / total;
         const routeKey = leg.claveVuelo || `${leg.from}-${leg.to}-${leg.departureTime}`;
+        
+        // Skip cancelled flights
+        if (state.cancelledFlights.has(routeKey)) continue;
+        
         const intercontinental = isIntercontinentalRoute(leg.from, leg.to, airportsList);
         const metrics = computeFlightMetrics(leg.claveVuelo, flightOccupancy, flightCapacities);
 

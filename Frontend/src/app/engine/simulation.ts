@@ -54,6 +54,9 @@ export function createInitialState(scenario: "daily" | "weekly" | "collapse", tu
     speed: 1,
     scenario,
     turnaroundHours,
+    collapsedShipmentsDetected: false,
+    firstCollapsedShipmentTime: undefined,
+    shouldShowCollapseHighlights: false,
   };
 }
 
@@ -71,6 +74,11 @@ export function createEmptyStats(): SimStats {
     flightUtilization: 0,
     deliveredHistory: [],
     failedHistory: [],
+    totalBaggageProcessed: 0,
+    totalBaggageQuantity: 0,
+    totalBaggageOnTime: 0,
+    totalBaggageCollapsed: 0,
+    collapsedBaggageGroups: [],
   };
 }
 

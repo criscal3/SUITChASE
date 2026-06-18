@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
 import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
@@ -19,8 +19,19 @@ const NAV = [
   { to: "/operarios", label: "Operarios", icon: Users },
 ];
 
+function formatTimestampFull(ts: number): string {
+  if (!ts || isNaN(ts)) return "";
+  const d = new Date(ts);
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
 
-
+function formatDurationDHM(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  return `${days}d ${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
 
 function formatSimDate(ts: number): string {
   if (!ts || isNaN(ts)) {
@@ -30,6 +41,14 @@ function formatSimDate(ts: number): string {
   }
   const d = new Date(ts);
   return `${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
+}
+
+function formatTimestampPeruTime(ts: number): string {
+  if (!ts || isNaN(ts)) return "";
+  const d = new Date(ts);
+  // Perú UTC-5: restar 5 horas a la hora actual
+  const peruTime = new Date(d.getTime() - 5 * 60 * 60 * 1000);
+  return `${String(peruTime.getUTCDate()).padStart(2, "0")}/${String(peruTime.getUTCMonth() + 1).padStart(2, "0")}/${peruTime.getUTCFullYear()} ${String(peruTime.getUTCHours()).padStart(2, "0")}:${String(peruTime.getUTCMinutes()).padStart(2, "0")}`;
 }
 
 // Synchronous migration: clean stale localStorage before any React renders
@@ -71,6 +90,7 @@ function LayoutInner() {
   const isDashboardPage = location.pathname === "/";
   const isSimPage = location.pathname === "/simulacion";
   const [showSimDatePicker, setShowSimDatePicker] = useState(false);
+  const [realTimeElapsed, setRealTimeElapsed] = useState(0);
   // Default picker to today at 00:00
   const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}T00:00`; })();
   const [pickerValue, setPickerValue] = useState(todayIso);
@@ -101,6 +121,15 @@ function LayoutInner() {
   }, [isDashboardPage, isSimPage, state.scenario]);
   const dateStr = now.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
   const timeStr = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  // Update real time elapsed every second when simulation is running
+  React.useEffect(() => {
+    if (!state.hasStarted || !state.running || state.scenario === "tracking") return;
+    const interval = setInterval(() => {
+      setRealTimeElapsed((prev: number) => prev + 1000);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [state.hasStarted, state.running, state.scenario]);
 
   // When sim starts, sync picker to current sim time
   React.useEffect(() => {
@@ -203,7 +232,9 @@ function LayoutInner() {
                 <span className={`text-[14px] ${isDark ? "text-white" : "text-[#0f172a]"}`}>
                   {state.running ? "Simulando" : state.collapsed ? "Colapsado" : "Detenido"}
                 </span>
+                <span className={`font-semibold text-[12px] ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Fecha y hora simulada:</span>
                 <div className="relative">
+                  
                   <button
                     onClick={() => setShowSimDatePicker(!showSimDatePicker)}
                     className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[13px] border transition-colors ${
@@ -233,6 +264,22 @@ function LayoutInner() {
                     </div>
                   )}
                 </div>
+                {state.scenario === "weekly" && (
+                  <div className="flex items-center gap-4 ml-6 text-[12px]">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Tiempo transcurrido (simulado):</span>
+                      <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatDurationDHM(state.currentTime - state.startTime)}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Fecha y hora real:</span>
+                      <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatTimestampPeruTime(Date.now())} </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Tiempo transcurrido (real):</span>
+                      <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatDurationDHM(realTimeElapsed)}</span>
+                    </div>
+                  </div>
+                )}
               </>
             ) : null}
           </div>

@@ -105,6 +105,10 @@ public class VueloSelector {
                 if (llegada.isBefore(salida)) llegada = llegada.plusDays(1);
                 LocalDateTime dispSiguiente = llegada.plusMinutes(HANDLING_MINUTES);
 
+                // Verificar si el vuelo está cancelado
+                String claveCancelacion = v.getOrigen() + "-" + v.getDestino() + "-" + salida;
+                if (input.isVueloCancelado(claveCancelacion)) continue;
+
                 // Verificar SLA
                 if (dispSiguiente.isAfter(p.getTiempoLimite())) continue;
 
@@ -243,6 +247,10 @@ public class VueloSelector {
             if (salida.isBefore(disp)) salida = salida.plusDays(1);
             LocalDateTime llegada = salida.with(v.getHoraLlegada());
             if (llegada.isBefore(salida)) llegada = llegada.plusDays(1);
+
+            // Verificar si el vuelo está cancelado
+            String claveCancelacion = v.getOrigen() + "-" + v.getDestino() + "-" + salida;
+            if (input.isVueloCancelado(claveCancelacion)) continue;
 
             if (llegada.isAfter(p.getTiempoLimite())) continue;
 

@@ -250,6 +250,40 @@ export function computeWarehouseUtilization(airports: Record<string, AirportStat
   return totalCap > 0 ? (totalStock / totalCap) * 100 : 0;
 }
 
+export function computeFlightUtilization(
+  baggageGroups: BaggageGroup[],
+  currentTime: number,
+  flightOccupancy: Record<string, number>,
+  flightCapacities: Record<string, number>
+): number {
+  let totalLoad = 0;
+  let totalCapacity = 0;
+  
+  // Only consider flights that are currently in transit
+  const activeFlightKeys = new Set<string>();
+  
+  for (const bg of baggageGroups) {
+    for (const leg of bg.route) {
+      // Check if this leg is in transit at currentTime
+      if (leg.departureTime <= currentTime && currentTime <= leg.arrivalTime) {
+        if (leg.claveVuelo) {
+          activeFlightKeys.add(leg.claveVuelo);
+        }
+      }
+    }
+  }
+  
+  // Sum load and capacity only for active flights
+  for (const flightKey of activeFlightKeys) {
+    const load = flightOccupancy[flightKey] ?? 0;
+    const capacity = flightCapacities[flightKey] ?? 0;
+    totalLoad += load;
+    totalCapacity += capacity;
+  }
+  
+  return totalCapacity > 0 ? (totalLoad / totalCapacity) * 100 : 0;
+}
+
 export function mergeOccupancyState(
   current: OcupacionAlmacenesPorAeropuerto,
   incoming: OcupacionAlmacenesPorAeropuerto | undefined
@@ -261,10 +295,49 @@ export function mergeOccupancyState(
 export function updateStatsFromMetrics(
   metricas: any,
   currentStats: SimStats,
-  airports?: Record<string, AirportState>
+  airports?: Record<string, AirportState>,
+  rutasResumen?: any[],
+  flightOccupancy?: Record<string, number>,
+  flightCapacities?: Record<string, number>,
+  baggageGroups?: BaggageGroup[],
+  currentTime?: number
 ): SimStats {
   const warehouseFromAirports =
     airports != null ? computeWarehouseUtilization(airports) : undefined;
+
+  // Calculate flight utilization using actual load and capacity data
+  // Only include flights currently in transit
+  let flightUtilizationCalc = 
+    flightOccupancy && flightCapacities && baggageGroups && currentTime != null
+      ? computeFlightUtilization(baggageGroups, currentTime, flightOccupancy, flightCapacities)
+      : metricas.ocupacionVuelos != null
+        ? metricas.ocupacionVuelos * 100
+        : currentStats.flightUtilization;
+
+  // Calculate metrics from the last block
+  let totalBaggageProcessed = 0;
+  let totalBaggageQuantity = 0;
+  let totalBaggageOnTime = 0;
+  let totalBaggageCollapsed = 0;
+  const collapsedBaggageGroups: string[] = [];
+
+  if (rutasResumen && Array.isArray(rutasResumen)) {
+    totalBaggageProcessed = rutasResumen.length;
+    
+    rutasResumen.forEach((ruta) => {
+      const quantity = ruta.maletas || 0;
+      totalBaggageQuantity += quantity;
+      
+      if (ruta.estado === "CON_RUTA") {
+        // Envíos con ruta se consideran a tiempo (delivered successfully) - contar envíos, no maletas
+        totalBaggageOnTime += 1;
+      } else if (ruta.estado === "SIN_RUTA") {
+        // Envíos sin ruta están en colapso
+        totalBaggageCollapsed += 1;
+        collapsedBaggageGroups.push(String(ruta.envioId));
+      }
+    });
+  }
 
   return {
     ...currentStats,
@@ -277,9 +350,11 @@ export function updateStatsFromMetrics(
       (metricas.ocupacionAlmacenes != null
         ? metricas.ocupacionAlmacenes * 100
         : currentStats.warehouseUtilization),
-    flightUtilization:
-      metricas.ocupacionVuelos != null
-        ? metricas.ocupacionVuelos * 100
-        : currentStats.flightUtilization,
+    flightUtilization: flightUtilizationCalc,
+    totalBaggageProcessed,
+    totalBaggageQuantity,
+    totalBaggageOnTime,
+    totalBaggageCollapsed,
+    collapsedBaggageGroups,
   };
 }

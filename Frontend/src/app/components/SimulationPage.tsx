@@ -32,6 +32,20 @@ function formatTimestampShort(ts: number): string {
   return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
 }
 
+function formatTimestampFull(ts: number): string {
+  if (!ts || isNaN(ts)) return "";
+  const d = new Date(ts);
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+function formatDurationDHM(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  return `${days}d ${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
 export function SimulationPage() {
   const { state, start, pauseSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
   const { isDark } = useTheme();
@@ -47,6 +61,16 @@ export function SimulationPage() {
     saturated: { warehouse: true, flight: true },
     routes: { intracontinental: true, intercontinental: true },
   });
+  const [realTimeElapsed, setRealTimeElapsed] = useState(0);
+
+  // Update real time elapsed every second for display
+  useEffect(() => {
+    if (!state.hasStarted || !state.running) return;
+    const interval = setInterval(() => {
+      setRealTimeElapsed((prev: number) => prev + 1000);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [state.hasStarted, state.running]);
 
   // Real-time operations state
   const [realTimePedidos, setRealTimePedidos] = useState<any[]>([]);
@@ -202,6 +226,19 @@ export function SimulationPage() {
     state.stopped,
     handleStopSimulation,
   ]);
+
+  // Detect collapsed shipments and show highlights automatically when clock reaches first collapse time
+  useEffect(() => {
+    if (
+      state.collapsedShipmentsDetected &&
+      state.firstCollapsedShipmentTime &&
+      state.currentTime >= state.firstCollapsedShipmentTime &&
+      !state.running &&
+      !showHighlights
+    ) {
+      setShowHighlights(true);
+    }
+  }, [state.collapsedShipmentsDetected, state.firstCollapsedShipmentTime, state.currentTime, state.running, showHighlights]);
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -375,6 +412,12 @@ export function SimulationPage() {
               <div className="space-y-2">
                 <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos en Tránsito" value={activeFlightsCount.toLocaleString()} />
                 <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
+                <StatCard 
+                  isDark={isDark} 
+                  icon={<CheckCircle className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
+                  label="Porcentaje de Consumo de SLA" 
+                  value={`${state.stats.onTimeRate.toFixed(1)}%`}
+                />
                 <StatCard 
                   isDark={isDark} 
                   icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
@@ -1018,16 +1061,9 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
 }) {
   const { stats, airports, baggageGroups, collapsed, collapseReason, day } = state;
 
-  // Top saturated airports
-  const airportEntries = Object.values(airports);
-  const topSaturated = [...airportEntries]
-    .filter(a => a.capacity > 0)
-    .map(a => ({ code: a.code, pct: (a.currentStock / a.capacity) * 100, stock: a.currentStock, cap: a.capacity }))
-    .sort((a, b) => b.pct - a.pct)
-    .slice(0, 5);
-
-  const failedGroups = baggageGroups.filter(bg => bg.status === "failed");
-  const cancelledFlights = state.flights.filter(f => f.cancelled).length;
+  // Get collapsed baggage groups from stats and current baggageGroups
+  const collapsedGroupsFromStats = new Set(stats.collapsedBaggageGroups);
+  const collapsedBaggageGroups = baggageGroups.filter(bg => collapsedGroupsFromStats.has(bg.id) || bg.status === "failed");
 
   const cardBg = isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-white border-[#cbd5e1]";
   const textPrimary = isDark ? "text-white" : "text-[#0f172a]";
@@ -1047,12 +1083,13 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
         </div>
 
         <div className="px-6 py-4 space-y-4">
-          {/* KPI Summary */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* KPI Summary - Last Block Statistics */}
+          <div className="grid grid-cols-2 gap-3">
             {[
-              { label: "Registradas", value: stats.totalRegistered, icon: <Package className="w-4 h-4 text-blue-400" />, color: "bg-blue-500/15" },
-              { label: "Entregadas", value: stats.totalDelivered, icon: <CheckCircle className="w-4 h-4 text-green-400" />, color: "bg-green-500/15" },
-              { label: "Fallidas", value: stats.totalFailed, icon: <XCircle className="w-4 h-4 text-red-400" />, color: "bg-red-500/15" },
+              { label: "Envíos procesados", value: stats.totalBaggageProcessed, icon: <Package className="w-4 h-4 text-blue-400" />, color: "bg-blue-500/15" },
+              { label: "Maletas procesadas", value: stats.totalBaggageQuantity, icon: <Warehouse className="w-4 h-4 text-cyan-400" />, color: "bg-cyan-500/15" },
+              { label: "Envíos a tiempo", value: stats.totalBaggageOnTime, icon: <CheckCircle className="w-4 h-4 text-green-400" />, color: "bg-green-500/15" },
+              { label: "Envíos en colapso", value: stats.totalBaggageCollapsed, icon: <AlertTriangle className="w-4 h-4 text-red-400" />, color: "bg-red-500/15" },
             ].map(k => (
               <div key={k.label} className={`rounded-xl p-3 border ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 ${k.color}`}>{k.icon}</div>
@@ -1062,70 +1099,21 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
             ))}
           </div>
 
-          {/* Rate & Duration */}
-          <div className={`rounded-xl p-4 border ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className={`text-[12px] ${textSecondary}`}>Tasa de consumo SLA</span>
-              <span className={`text-[14px] ${stats.onTimeRate >= 90 ? "text-green-400" : stats.onTimeRate >= 70 ? "text-amber-400" : "text-red-400"}`}>
-                {stats.onTimeRate.toFixed(1)}%
-              </span>
-            </div>
-            <div className={`w-full h-2 rounded-full ${isDark ? "bg-[#1e293b]" : "bg-[#e2e8f0]"}`}>
-              <div className={`h-full rounded-full ${stats.onTimeRate >= 90 ? "bg-green-500" : stats.onTimeRate >= 70 ? "bg-amber-500" : "bg-red-500"}`}
-                style={{ width: `${Math.min(100, stats.onTimeRate)}%` }} />
-            </div>
-            <div className="flex items-center justify-between mt-2">
-              <span className={`text-[11px] ${textSecondary}`}>Duración: {day - 1} días simulados</span>
-              <span className={`text-[11px] ${textSecondary}`}>Vuelos cancelados: {cancelledFlights}</span>
-            </div>
-          </div>
-
-          {/* Peak Saturation */}
-          {topSaturated.length > 0 && (
+          {/* Collapsed Shipments */}
+          {collapsedBaggageGroups.length > 0 && (
             <div>
               <h3 className={`text-[12px] mb-2 flex items-center gap-1.5 ${textPrimary}`}>
-                <Warehouse className="w-3.5 h-3.5 text-amber-400" /> Picos de Saturación
-              </h3>
-              <div className="space-y-1.5">
-                {topSaturated.map(a => (
-                  <div key={a.code} className="flex items-center gap-2">
-                    <span className={`font-mono text-[11px] w-10 ${textPrimary}`}>{a.code}</span>
-                    <div className={`flex-1 h-2 rounded-full ${isDark ? "bg-[#1e293b]" : "bg-[#e2e8f0]"}`}>
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${Math.min(100, a.pct)}%`,
-                          backgroundColor: getOccupancyColor(a.pct),
-                        }}
-                      />
-                    </div>
-                    <span
-                      className={`text-[10px] w-16 text-right ${getOccupancyLevel(a.pct) === "saturated" ? "text-red-400" : textSecondary
-                        }`}
-                    >
-                      {a.pct.toFixed(0)}% ({a.stock}/{a.cap})
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Critical Failures */}
-          {failedGroups.length > 0 && (
-            <div>
-              <h3 className={`text-[12px] mb-2 flex items-center gap-1.5 ${textPrimary}`}>
-                <AlertTriangle className="w-3.5 h-3.5 text-red-400" /> Fallos Críticos ({failedGroups.length})
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400" /> Envíos en Colapso ({collapsedBaggageGroups.length})
               </h3>
               <div className={`rounded-lg p-2 space-y-1 max-h-24 overflow-y-auto ${isDark ? "bg-[#1e293b]/50" : "bg-[#f1f5f9]"}`}>
-                {failedGroups.slice(0, 10).map(bg => (
+                {collapsedBaggageGroups.slice(0, 10).map(bg => (
                   <div key={bg.id} className={`text-[10px] flex items-center gap-2 ${textSecondary}`}>
                     <span className="text-red-400 font-mono">{bg.id}</span>
                     <span>{bg.origin} → {bg.destination}</span>
                     <span>{bg.quantity} maletas</span>
                   </div>
                 ))}
-                {failedGroups.length > 10 && <div className={`text-[10px] ${textSecondary}`}>+{failedGroups.length - 10} más...</div>}
+                {collapsedBaggageGroups.length > 10 && <div className={`text-[10px] ${textSecondary}`}>+{collapsedBaggageGroups.length - 10} más...</div>}
               </div>
             </div>
           )}

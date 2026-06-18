@@ -16,6 +16,7 @@ import {
   mergeFlightCapacityState,
   extractCapacitiesFromRoutes,
   computeWarehouseUtilization,
+  computeFlightUtilization,
   type OcupacionAlmacenesPorAeropuerto,
   type CapacidadesVuelosPorClave,
 } from "./backendAdapter";
@@ -51,6 +52,7 @@ export function useSimulation() {
       flightOccupancy: {},
       flightCapacities: {},
       baggageGroups: [],
+      cancelledFlights: new Set<string>(),
       stats: createEmptyStats(),
       collapsed: false,
       collapseReason: "",
@@ -59,6 +61,9 @@ export function useSimulation() {
       hasStarted: false,
       waitingForFirstBlock: false,
       speed: K_DEFAULT,
+      collapsedShipmentsDetected: false,
+      firstCollapsedShipmentTime: undefined,
+      shouldShowCollapseHighlights: false,
     };
   });
 
@@ -104,6 +109,7 @@ export function useSimulation() {
       return {
         ...prev,
         airports: updatedAirports,
+        cancelledFlights: prev.cancelledFlights || new Set<string>(),
       };
     });
   }, [airportsList]);
@@ -219,6 +225,7 @@ export function useSimulation() {
             ...prev,
             waitingForFirstBlock: false,
             running: true,
+            cancelledFlights: prev.cancelledFlights || new Set<string>(),
           };
         });
         // Solo arranca el cronómetro; maletas/rastreo se actualizan cada Sc (6 h sim)
@@ -259,6 +266,10 @@ export function useSimulation() {
       let newStats  = prev.stats;
       let newAirports = { ...prev.airports };
       let blockGroups: ReturnType<typeof mapBlockResultToBaggageGroups> = [];
+      let collapsedShipmentsDetected = prev.collapsedShipmentsDetected || false;
+      let firstCollapsedShipmentTime = prev.firstCollapsedShipmentTime;
+      let shouldShowCollapseHighlights = false;
+      let shouldPauseSimulation = false;
 
       if (msg.rutasResumen?.length && msg.metricas) {
         blockGroups = mapBlockResultToBaggageGroups(
@@ -267,6 +278,43 @@ export function useSimulation() {
           prev.baggageGroups,
           airportsListRef.current
         );
+
+        // Detect collapsed shipments (SIN_RUTA)
+        const collapsedInThisBlock = msg.rutasResumen.filter((r: any) => r.estado === "SIN_RUTA");
+        if (collapsedInThisBlock.length > 0 && !collapsedShipmentsDetected) {
+          // Find the earliest registration time among collapsed shipments
+          let earliestTime = Infinity;
+          for (const collapsed of collapsedInThisBlock) {
+            const registrationTime = collapsed.fechaHoraRegistro 
+              ? (() => {
+                  try {
+                    const parts = String(collapsed.fechaHoraRegistro).split(/[^0-9]/);
+                    if (parts.length >= 5) {
+                      const year  = parseInt(parts[0], 10);
+                      const month = parseInt(parts[1], 10) - 1;
+                      const day   = parseInt(parts[2], 10);
+                      const hour  = parseInt(parts[3], 10);
+                      const min   = parseInt(parts[4], 10);
+                      const sec   = parts[5] ? parseInt(parts[5], 10) : 0;
+                      const parsed = Date.UTC(year, month, day, hour, min, sec);
+                      return !isNaN(parsed) ? parsed : Infinity;
+                    }
+                  } catch (e) {
+                    console.error("Error parsing registration time:", e);
+                  }
+                  return Infinity;
+                })()
+              : Infinity;
+            earliestTime = Math.min(earliestTime, registrationTime);
+          }
+          
+          if (earliestTime !== Infinity) {
+            collapsedShipmentsDetected = true;
+            firstCollapsedShipmentTime = earliestTime;
+            shouldPauseSimulation = true;
+            console.log(`Shipment collapse detected! First collapse registration time: ${new Date(earliestTime).toISOString()}`);
+          }
+        }
 
         const mergedMap = new Map<string | number, any>();
         for (const bg of prev.baggageGroups) {
@@ -314,7 +362,21 @@ export function useSimulation() {
         minuteIdx
       );
       if (msg.metricas) {
-        newStats = updateStatsFromMetrics(msg.metricas, prev.stats, newAirports);
+        newStats = updateStatsFromMetrics(
+          msg.metricas, 
+          prev.stats, 
+          newAirports, 
+          msg.rutasResumen,
+          flightOccupancyRef.current,
+          flightCapacitiesRef.current,
+          prev.baggageGroups,
+          prev.currentTime
+        );
+      }
+
+      // If collapse detected, pause simulation
+      if (shouldPauseSimulation) {
+        runningRef.current = false;
       }
 
       return {
@@ -324,6 +386,11 @@ export function useSimulation() {
         airports: newAirports,
         flightOccupancy: { ...flightOccupancyRef.current },
         flightCapacities: { ...flightCapacitiesRef.current, ...flightTemplateCapacitiesRef.current },
+        cancelledFlights: prev.cancelledFlights,
+        running: shouldPauseSimulation ? false : prev.running,
+        collapsedShipmentsDetected,
+        firstCollapsedShipmentTime,
+        shouldShowCollapseHighlights,
       };
     });
   }, []);
@@ -385,6 +452,12 @@ export function useSimulation() {
             Object.keys(occupancyByAirportRef.current).length > 0
               ? computeWarehouseUtilization(airports)
               : prev.stats.warehouseUtilization,
+          flightUtilization: computeFlightUtilization(
+            prev.baggageGroups,
+            clampedTime,
+            flightOccupancyRef.current,
+            { ...flightCapacitiesRef.current, ...flightTemplateCapacitiesRef.current }
+          ),
         };
       }
 
@@ -395,6 +468,7 @@ export function useSimulation() {
         hour: diffHours % 24,
         airports,
         stats,
+        cancelledFlights: prev.cancelledFlights,
         ...(reachedEnd
           ? { running: false, stopped: true, hasStarted: true }
           : {}),
@@ -464,17 +538,20 @@ export function useSimulation() {
 
       if (msg.tipo === "VUELO_CANCELADO") {
         const afectadosIds: string[] = msg.afectadosIds || [];
-        if (afectadosIds.length > 0) {
-          setState(prev => {
-            const newGroups = prev.baggageGroups.map(bg => {
-              if (afectadosIds.includes(bg.id)) {
-                return { ...bg, status: "waiting" as const, route: [] }; // Set to "waiting" (En espera) until replanned by the next block
-              }
-              return bg;
-            });
-            return { ...prev, baggageGroups: newGroups };
+        const flightKey = msg.claveVuelo || ""; // claveVuelo format: origen-destino-fechaSalida
+        setState(prev => {
+          const newCancelledFlights = new Set(prev.cancelledFlights);
+          if (flightKey) {
+            newCancelledFlights.add(flightKey);
+          }
+          const newGroups = prev.baggageGroups.map(bg => {
+            if (afectadosIds.includes(bg.id)) {
+              return { ...bg, status: "waiting" as const, route: [] }; // Set to "waiting" (En espera) until replanned by the next block
+            }
+            return bg;
           });
-        }
+          return { ...prev, baggageGroups: newGroups, cancelledFlights: newCancelledFlights };
+        });
         return;
       }
 
@@ -566,6 +643,7 @@ export function useSimulation() {
         flightOccupancy: {},
         flightCapacities: { ...flightTemplateCapacitiesRef.current },
         baggageGroups: [],
+        cancelledFlights: new Set<string>(),
         stats: createEmptyStats(),
         collapsed: false,
         collapseReason: "",
@@ -616,6 +694,7 @@ export function useSimulation() {
         stopped: false,
         hasStarted: false,
         waitingForFirstBlock: false,
+        cancelledFlights: new Set<string>(),
       }));
       return;
     }
@@ -653,6 +732,7 @@ export function useSimulation() {
       stopped: false,
       hasStarted: false,
       waitingForFirstBlock: false,
+      cancelledFlights: new Set<string>(),
     }));
   }, [teardownActiveSimulation]);
 
@@ -708,6 +788,7 @@ export function useSimulation() {
         flightOccupancy: {},
         flightCapacities: { ...flightTemplateCapacitiesRef.current },
         baggageGroups: [],
+        cancelledFlights: new Set<string>(),
         stats: createEmptyStats(),
         collapsed: false,
         running: false,
@@ -740,7 +821,7 @@ export function useSimulation() {
   const updateAirline = useCallback(() => { }, []);
   const removeAirline = useCallback(() => { }, []);
   const setScenario = useCallback((sc: "daily" | "weekly" | "collapse" | "tracking") => {
-    setState(prev => ({ ...prev, scenario: sc }));
+    setState(prev => ({ ...prev, scenario: sc, cancelledFlights: prev.cancelledFlights || new Set<string>() }));
   }, []);
   const confirmFastForward = useCallback(() => { }, []);
   const cancelFastForward = useCallback(() => { }, []);

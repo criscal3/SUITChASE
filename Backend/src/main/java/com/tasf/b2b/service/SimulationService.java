@@ -170,14 +170,15 @@ public class SimulationService {
     // ========================================================
     
     public void cancelarVueloSimulacion(Long simulacionId, String origen, String destino, LocalDateTime fechaSalida) {
-        String clave = origen + "-" + destino + "-" + fechaSalida;
-        vuelosCanceladosPorSimulacion.computeIfAbsent(simulacionId, k -> ConcurrentHashMap.newKeySet()).add(clave);
-        
         AeropuertoEntity origAero = aeropuertoRepository.findById(origen).orElse(null);
         int gmt = origAero != null ? origAero.getGmt() : 0;
-        LocalDateTime fechaSalidaDb = fechaSalida.minusHours(gmt);
+        LocalDateTime fechaSalidaUtc = fechaSalida.minusHours(gmt);
 
-        log.info("Vuelo cancelado en simulación {}: {}", simulacionId, clave);
+        // Normalize the key to UTC format without seconds to avoid formatting mismatches
+        String clave = origen + "-" + destino + "-" + fechaSalidaUtc.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"));
+        vuelosCanceladosPorSimulacion.computeIfAbsent(simulacionId, k -> ConcurrentHashMap.newKeySet()).add(clave);
+        
+        log.info("Vuelo cancelado en simulación {} (UTC normalizado): {}", simulacionId, clave);
 
         // Obtener pedidos afectados (usando la hora que nos manda el frontend tal cual)
         List<Map<String, Object>> afectadosInfo = obtenerPedidosAfectadosSimulacion(simulacionId, origen, destino, fechaSalida);
@@ -188,46 +189,140 @@ public class SimulationService {
                 .map(m -> m.get("id").toString())
                 .toList();
 
-        // Eliminar las asignaciones de estos envíos (para que aparezcan como sin asignar/perjudicados)
-        List<AsignacionEnvioEntity> aBorrar = asignacionEnvioRepository.findAll().stream()
-                .filter(a -> envioIdsStr.contains(a.getEnvioId()))
-                .toList();
-        asignacionEnvioRepository.deleteAll(aBorrar);
+        SimulacionEntity sim = simulacionRepository.findById(simulacionId)
+                .orElseThrow(() -> new RuntimeException("Simulación no encontrada"));
+        LocalDateTime cursor = sim.getCursorTemporal();
 
-        // Recuperar los EnvioAlgoritmo para replanificarlos en el próximo bloque
-        List<EnvioAlgoritmo> aReplanificar = new ArrayList<>();
         PlanificationProblemInput inputMaestro = inputMaestroMap.get(simulacionId);
-        if (inputMaestro != null) {
-            for (EnvioAlgoritmo ea : inputMaestro.getEnvios()) {
-                if (envioIdsStr.contains(ea.getId())) {
-                    aReplanificar.add(ea);
+        List<EnvioAlgoritmo> aReplanificar = new ArrayList<>();
+
+        for (String envioId : envioIdsStr) {
+            EnvioEntity envio = envioRepository.findById(envioId).orElse(null);
+            if (envio == null) continue;
+
+            // Obtener todas las asignaciones de este envío, ordenadas por ordenVuelo
+            List<AsignacionEnvioEntity> todasAsig = asignacionEnvioRepository.findAll().stream()
+                    .filter(a -> a.getEnvioId().equals(envioId))
+                    .sorted(Comparator.comparing(AsignacionEnvioEntity::getOrdenVuelo))
+                    .toList();
+
+            List<AsignacionEnvioEntity> completadas = todasAsig.stream()
+                    .filter(a -> a.getFechaSalida().isBefore(cursor))
+                    .toList();
+
+            List<AsignacionEnvioEntity> futuras = todasAsig.stream()
+                    .filter(a -> !a.getFechaSalida().isBefore(cursor))
+                    .toList();
+
+            // Restar capacidades de las asignaciones que se van a borrar (las futuras)
+            restarCapacidadAsignaciones(simulacionId, futuras, inputMaestro, envio);
+
+            // Eliminar asignaciones futuras de la base de datos
+            asignacionEnvioRepository.deleteAll(futuras);
+
+            // Determinar ubicación actual y preparar EnvioAlgoritmo para replanificación
+            String currentLocation = envio.getOrigenOaci();
+            if (!completadas.isEmpty()) {
+                AsignacionEnvioEntity lastCompleted = completadas.get(completadas.size() - 1);
+                VueloEntity vuelo = vueloRepository.findById(lastCompleted.getVueloId()).orElse(null);
+                if (vuelo != null) {
+                    currentLocation = vuelo.getDestinoOaci();
                 }
             }
-            if (aReplanificar.isEmpty()) {
-                // Alternativamente, crearlos desde la base de datos
-                for (String idStr : envioIdsStr) {
-                    envioRepository.findById(idStr).ifPresent(ent -> {
-                        EnvioAlgoritmo ea = new EnvioAlgoritmo();
-                        ea.setId(ent.getId());
-                        ea.setOrigenOaci(ent.getOrigenOaci());
-                        ea.setDestinoOaci(ent.getDestinoOaci());
-                        ea.setFechaHoraRegistro(ent.getFechaHoraRegistro());
-                        ea.setCantidadMaletas(ent.getCantidadMaletas());
-                        aReplanificar.add(ea);
-                    });
-                }
-            }
+
+            EnvioAlgoritmo ea = new EnvioAlgoritmo();
+            ea.setId(envio.getId());
+            ea.setOrigenOaci(currentLocation);
+            ea.setDestinoOaci(envio.getDestinoOaci());
+            ea.setFechaHoraRegistro(cursor); // Se replanifica desde el momento actual
+            ea.setCantidadMaletas(envio.getCantidadMaletas());
+            aReplanificar.add(ea);
+
+            // Actualizar estado del envío a PENDIENTE para que la UI y el scheduler lo consideren
+            envio.setEstado(EnvioEntity.EstadoEnvio.PENDIENTE);
+            envioRepository.save(envio);
         }
-        
+
+        // Agregar envíos a la cola de replanificación de la simulación
         enviosAReplanificarPorSimulacion.computeIfAbsent(simulacionId, k -> new ArrayList<>()).addAll(aReplanificar);
-        
+
         // Notificar al frontend que deben recargar
         messagingTemplate.convertAndSend("/topic/simulacion/" + simulacionId, Map.of(
             "tipo", "VUELO_CANCELADO",
             "origen", origen,
             "destino", destino,
+            "claveVuelo", clave,
             "afectadosIds", envioIdsStr
         ));
+    }
+
+    private void restarCapacidadAsignaciones(Long simulacionId, List<AsignacionEnvioEntity> aBorrar, PlanificationProblemInput inputMaestro, EnvioEntity envio) {
+        if (inputMaestro == null || aBorrar.isEmpty() || envio == null) return;
+
+        Map<String, Integer> ocupacionGlobalVuelos = inputMaestro.getOcupacionGlobalVuelos();
+        Map<String, int[]> ocupacionGlobalAlmacenes = inputMaestro.getOcupacionGlobalAlmacenes();
+
+        for (AsignacionEnvioEntity asig : aBorrar) {
+            VueloEntity vuelo = vueloRepository.findById(asig.getVueloId()).orElse(null);
+            if (vuelo == null) continue;
+
+            // Restar capacidad del vuelo utilizando el formato de clave de vuelo correcto (Origen-Destino-HoraSalida(UTC)-Fecha)
+            VueloAlgoritmo va = dataMapper.toVueloAlgoritmo(vuelo);
+            String claveVuelo = va.getOrigenOaci() + "-" + va.getDestinoOaci() + "-" + va.getHoraSalida() + "-" + asig.getFechaSalida().toLocalDate();
+            int usoActual = ocupacionGlobalVuelos.getOrDefault(claveVuelo, 0);
+            ocupacionGlobalVuelos.put(claveVuelo, Math.max(0, usoActual - envio.getCantidadMaletas()));
+
+            // Restar capacidad del almacén de origen
+            String oaci = vuelo.getOrigenOaci();
+            
+            // Determinar el inicio de la estadía en el almacén de origen
+            LocalDateTime llegadaAlOrigen = envio.getFechaHoraRegistro();
+            
+            // Buscar si hay una asignación previa para este envío en el conjunto completo de sus asignaciones
+            List<AsignacionEnvioEntity> todasAsignaciones = asignacionEnvioRepository.findAll().stream()
+                    .filter(a -> a.getEnvioId().equals(envio.getId()))
+                    .sorted(Comparator.comparing(AsignacionEnvioEntity::getOrdenVuelo))
+                    .toList();
+            
+            int indexAsig = -1;
+            for (int idx = 0; idx < todasAsignaciones.size(); idx++) {
+                if (todasAsignaciones.get(idx).getId().equals(asig.getId())) {
+                    indexAsig = idx;
+                    break;
+                }
+            }
+            
+            if (indexAsig > 0) {
+                llegadaAlOrigen = todasAsignaciones.get(indexAsig - 1).getFechaLlegada();
+            }
+
+            int idxInicio = TimeUtils.getIndiceMinuto(llegadaAlOrigen);
+            int idxFin = TimeUtils.getIndiceMinuto(asig.getFechaSalida());
+
+            int[] almacen = ocupacionGlobalAlmacenes.get(oaci);
+            if (almacen != null && TimeUtils.intervaloAlmacenValido(idxInicio, idxFin)) {
+                for (int i = idxInicio; i < idxFin; i++) {
+                    almacen[i] = Math.max(0, almacen[i] - envio.getCantidadMaletas());
+                }
+            }
+            
+            // Si es la última asignación de la ruta original, restar también la estadía de 10 min en el destino final
+            if (indexAsig == todasAsignaciones.size() - 1) {
+                String oaciDest = vuelo.getDestinoOaci();
+                LocalDateTime llegadaDest = asig.getFechaLlegada();
+                LocalDateTime recogidaCliente = llegadaDest.plusMinutes(10); // 10 min de handling
+                
+                int idxInicioDest = TimeUtils.getIndiceMinuto(llegadaDest);
+                int idxFinDest = TimeUtils.getIndiceMinuto(recogidaCliente);
+                
+                int[] almacenDest = ocupacionGlobalAlmacenes.get(oaciDest);
+                if (almacenDest != null && TimeUtils.intervaloAlmacenValido(idxInicioDest, idxFinDest)) {
+                    for (int i = idxInicioDest; i < idxFinDest; i++) {
+                        almacenDest[i] = Math.max(0, almacenDest[i] - envio.getCantidadMaletas());
+                    }
+                }
+            }
+        }
     }
 
     public List<Map<String, Object>> obtenerPedidosAfectadosSimulacion(Long simulacionId, String origen, String destino, LocalDateTime fechaSalida) {
@@ -257,7 +352,7 @@ public class SimulationService {
         List<AsignacionEnvioEntity> asignaciones = asignacionEnvioRepository.findAll().stream()
                 .filter(a -> bloquesSimulacion.contains(a.getBloqueResultadoId()))
                 .filter(a -> a.getVueloId().equals(vueloId))
-                .filter(a -> a.getFechaSalida().equals(fechaSalidaDb))
+                .filter(a -> Math.abs(java.time.temporal.ChronoUnit.SECONDS.between(a.getFechaSalida(), fechaSalidaDb)) < 60)
                 .toList();
 
         List<Map<String, Object>> afectados = new ArrayList<>();
@@ -271,7 +366,6 @@ public class SimulationService {
                 Map<String, Object> dto = new LinkedHashMap<>();
                 dto.put("id", envio.getId());
                 dto.put("cantidadMaletas", envio.getCantidadMaletas());
-                // Por defecto "SUITChASE Airlines" o buscar aerolinea
                 dto.put("nombreAerolinea", "SUITChASE Airlines"); 
                 afectados.add(dto);
             });
@@ -680,6 +774,12 @@ public class SimulationService {
                 envioRepository.save(nuevoEnvio);
             }
 
+            int baseOrden = asignacionEnvioRepository.findAll().stream()
+                    .filter(a -> a.getEnvioId().equals(envio.getId()))
+                    .mapToInt(AsignacionEnvioEntity::getOrdenVuelo)
+                    .max()
+                    .orElse(0);
+
             for (int i = 0; i < ruta.vuelosUsados.size(); i++) {
                 VueloAlgoritmo vuelo = ruta.vuelosUsados.get(i);
                 LocalDateTime fechaSalida = ruta.fechasVuelo.get(i);
@@ -691,7 +791,7 @@ public class SimulationService {
                 AsignacionEnvioEntity asig = new AsignacionEnvioEntity();
                 asig.setBloqueResultadoId(bloqueId);
                 asig.setEnvioId(envio.getId());
-                asig.setOrdenVuelo(i + 1);
+                asig.setOrdenVuelo(baseOrden + i + 1);
                 asig.setVueloId(buscarVueloId(vuelo));
                 asig.setFechaSalida(fechaSalida);
                 asig.setFechaLlegada(fechaLlegada);

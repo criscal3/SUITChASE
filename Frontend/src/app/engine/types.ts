@@ -38,6 +38,7 @@ export interface SimulationState {
   flights: FlightState[];
   flightOccupancy: Record<string, number>;
   flightCapacities: Record<string, number>;
+  cancelledFlights: Set<string>;
   stats: SimStats;
   collapsed: boolean;
   collapseReason: string;
@@ -52,6 +53,10 @@ export interface SimulationState {
   fastForwardState?: "idle" | "running" | "reached";
   targetDateStr?: string;
   activeSimId?: number;
+  // Track shipment collapse for automatic pause and highlight display
+  collapsedShipmentsDetected?: boolean;
+  firstCollapsedShipmentTime?: number; // Registration time of the earliest collapsed shipment
+  shouldShowCollapseHighlights?: boolean;
 }
 
 export function hasReachedWeeklySimEnd(
@@ -97,6 +102,12 @@ export interface SimStats {
   flightUtilization: number;
   deliveredHistory: { time: number; count: number }[];
   failedHistory: { time: number; count: number }[];
+  // Nuevas métricas para el último bloque planificado
+  totalBaggageProcessed: number;
+  totalBaggageQuantity: number;
+  totalBaggageOnTime: number;
+  totalBaggageCollapsed: number;
+  collapsedBaggageGroups: string[]; // IDs de envíos en colapso
 }
 
 export type SimEvent = {
