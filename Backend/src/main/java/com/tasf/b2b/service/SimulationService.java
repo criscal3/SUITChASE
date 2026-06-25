@@ -167,9 +167,10 @@ public class SimulationService {
     }
 
     // ========================================================
-    // CANCELACIÓN DE VUELOS EN SIMULACIÓN
-    // ========================================================
-    
+    public Set<String> getVuelosCancelados(Long simulacionId) {
+        return vuelosCanceladosPorSimulacion.getOrDefault(simulacionId, java.util.Collections.emptySet());
+    }
+
     public void cancelarVueloSimulacion(Long simulacionId, String origen, String destino, LocalDateTime fechaSalida) {
         AeropuertoEntity origAero = aeropuertoRepository.findById(origen).orElse(null);
         int gmt = origAero != null ? origAero.getGmt() : 0;
@@ -201,6 +202,13 @@ public class SimulationService {
             EnvioEntity envio = envioRepository.findById(envioId).orElse(null);
             if (envio == null) continue;
 
+            // No procesar envíos con origen igual a destino (caso inválido)
+            if (envio.getOrigenOaci().equals(envio.getDestinoOaci())) {
+                log.warn("Envío {} tiene origen {} igual a destino {}, saltando",
+                        envio.getId(), envio.getOrigenOaci(), envio.getDestinoOaci());
+                continue;
+            }
+
             // Obtener todas las asignaciones de este envío, ordenadas por ordenVuelo
             List<AsignacionEnvioEntity> todasAsig = asignacionEnvioRepository.findAll().stream()
                     .filter(a -> a.getEnvioId().equals(envioId))
@@ -208,27 +216,77 @@ public class SimulationService {
                     .toList();
 
             List<AsignacionEnvioEntity> completadas = todasAsig.stream()
-                    .filter(a -> a.getFechaSalida().isBefore(cursor))
+                    .filter(a -> a.getFechaLlegada().isBefore(cursor))
                     .toList();
 
-            List<AsignacionEnvioEntity> futuras = todasAsig.stream()
+            // Separar las asignaciones futuras en dos categorías:
+            // - enTransito: vuelos que ya despegaron pero no han llegado (el envío está en el aire)
+            // - porDespegar: vuelos que aún no han despegado (incluyendo el vuelo cancelado)
+            List<AsignacionEnvioEntity> enTransito = todasAsig.stream()
+                    .filter(a -> a.getFechaSalida().isBefore(cursor) && !a.getFechaLlegada().isBefore(cursor))
+                    .toList();
+
+            List<AsignacionEnvioEntity> porDespegar = todasAsig.stream()
                     .filter(a -> !a.getFechaSalida().isBefore(cursor))
                     .toList();
 
-            // Restar capacidades de las asignaciones que se van a borrar (las futuras)
-            restarCapacidadAsignaciones(simulacionId, futuras, inputMaestro, envio);
+            // Filtrar los vuelos en tránsito para excluir el vuelo cancelado
+            List<AsignacionEnvioEntity> enTransitoSinCancelado = new ArrayList<>();
+            for (AsignacionEnvioEntity asig : enTransito) {
+                VueloEntity vuelo = vueloRepository.findById(asig.getVueloId()).orElse(null);
+                if (vuelo != null) {
+                    boolean esVueloCancelado = vuelo.getOrigenOaci().equals(origen) &&
+                                              vuelo.getDestinoOaci().equals(destino) &&
+                                              asig.getFechaSalida().toLocalDate().equals(fechaSalida.toLocalDate());
+                    if (!esVueloCancelado) {
+                        enTransitoSinCancelado.add(asig);
+                    }
+                }
+            }
 
-            // Eliminar asignaciones futuras de la base de datos
-            asignacionEnvioRepository.deleteAll(futuras);
+            // Restar capacidades de las asignaciones por despegar (incluyendo el vuelo cancelado)
+            restarCapacidadAsignaciones(simulacionId, porDespegar, inputMaestro, envio);
+
+            // Eliminar solo las asignaciones por despegar de la base de datos
+            // Las asignaciones en tránsito se mantienen hasta que el vuelo llegue
+            asignacionEnvioRepository.deleteAll(porDespegar);
 
             // Determinar ubicación actual y preparar EnvioAlgoritmo para replanificación
             String currentLocation = envio.getOrigenOaci();
-            if (!completadas.isEmpty()) {
+            LocalDateTime tiempoInicioAlmacen = envio.getFechaHoraRegistro(); // Por defecto, desde que se registró el envío
+
+            log.info("Envío {}: origen={}, destino={}, enTransito={}, enTransitoSinCancelado={}, completadas={}",
+                    envio.getId(), envio.getOrigenOaci(), envio.getDestinoOaci(),
+                    enTransito.size(), enTransitoSinCancelado.size(), completadas.size());
+
+            if (!enTransitoSinCancelado.isEmpty()) {
+                // El envío está en tránsito en un vuelo diferente al cancelado: su ubicación actual es el destino del primer vuelo en tránsito
+                AsignacionEnvioEntity firstInTransit = enTransitoSinCancelado.get(0);
+                VueloEntity vuelo = vueloRepository.findById(firstInTransit.getVueloId()).orElse(null);
+                if (vuelo != null && !vuelo.getDestinoOaci().equals(envio.getDestinoOaci())) {
+                    currentLocation = vuelo.getDestinoOaci();
+                    tiempoInicioAlmacen = firstInTransit.getFechaLlegada(); // Empezará a contar en almacén desde que llegue
+                    log.info("Envío {} en tránsito hacia {}", envio.getId(), currentLocation);
+                }
+            } else if (!completadas.isEmpty()) {
+                // El envío ya llegó a su último destino: su ubicación actual es el destino del último vuelo completado
                 AsignacionEnvioEntity lastCompleted = completadas.get(completadas.size() - 1);
                 VueloEntity vuelo = vueloRepository.findById(lastCompleted.getVueloId()).orElse(null);
-                if (vuelo != null) {
+                if (vuelo != null && !vuelo.getDestinoOaci().equals(envio.getDestinoOaci())) {
                     currentLocation = vuelo.getDestinoOaci();
+                    tiempoInicioAlmacen = lastCompleted.getFechaLlegada(); // Ya está en almacén desde que llegó
+                    log.info("Envío {} completado en {}", envio.getId(), currentLocation);
                 }
+            }
+            // Si no hay vuelos en tránsito ni completados, currentLocation sigue siendo el origen
+            log.info("Envío {} currentLocation={}, tiempoInicioAlmacen={}",
+                    envio.getId(), currentLocation, tiempoInicioAlmacen);
+
+            // No replanificar si el envío ya está en su destino final
+            if (currentLocation.equals(envio.getDestinoOaci())) {
+                log.warn("Envío {} ya está en destino final {}, saltando replanificación",
+                        envio.getId(), currentLocation);
+                continue;
             }
 
             EnvioAlgoritmo ea = new EnvioAlgoritmo();
@@ -238,6 +296,24 @@ public class SimulationService {
             ea.setFechaHoraRegistro(cursor); // Se replanifica desde el momento actual
             ea.setCantidadMaletas(envio.getCantidadMaletas());
             aReplanificar.add(ea);
+
+            log.info("Envío {} replanificado: {} -> {}", envio.getId(), currentLocation, envio.getDestinoOaci());
+
+            // Mantener ocupación del almacén desde tiempoInicioAlmacen hasta el fin del día de simulación
+            // para asegurar que el envío siga contándose mientras espera replanificación
+            if (tiempoInicioAlmacen.isBefore(cursor.plusDays(1))) {
+                Map<String, int[]> ocupacionGlobalAlmacenes = inputMaestro.getOcupacionGlobalAlmacenes();
+                int[] almacen = ocupacionGlobalAlmacenes.get(currentLocation);
+                if (almacen != null) {
+                    int idxInicio = TimeUtils.getIndiceMinuto(tiempoInicioAlmacen);
+                    int idxFin = TimeUtils.getIndiceMinuto(cursor.plusDays(1)); // Hasta fin del día
+                    if (TimeUtils.intervaloAlmacenValido(idxInicio, idxFin)) {
+                        for (int i = idxInicio; i < idxFin; i++) {
+                            almacen[i] = Math.min(almacen[i] + envio.getCantidadMaletas(), 10000); // Agregar ocupación temporal
+                        }
+                    }
+                }
+            }
 
             // Actualizar estado del envío a PENDIENTE para que la UI y el scheduler lo consideren
             envio.setEstado(EnvioEntity.EstadoEnvio.PENDIENTE);
@@ -263,6 +339,14 @@ public class SimulationService {
         Map<String, Integer> ocupacionGlobalVuelos = inputMaestro.getOcupacionGlobalVuelos();
         Map<String, int[]> ocupacionGlobalAlmacenes = inputMaestro.getOcupacionGlobalAlmacenes();
 
+        // Buscar todas las asignaciones del envío para determinar si es un vuelo directo único
+        List<AsignacionEnvioEntity> todasAsignaciones = asignacionEnvioRepository.findAll().stream()
+                .filter(a -> a.getEnvioId().equals(envio.getId()))
+                .sorted(Comparator.comparing(AsignacionEnvioEntity::getOrdenVuelo))
+                .toList();
+
+        boolean esVueloDirectoUnico = todasAsignaciones.size() == 1;
+
         for (AsignacionEnvioEntity asig : aBorrar) {
             VueloEntity vuelo = vueloRepository.findById(asig.getVueloId()).orElse(null);
             if (vuelo == null) continue;
@@ -273,18 +357,18 @@ public class SimulationService {
             int usoActual = ocupacionGlobalVuelos.getOrDefault(claveVuelo, 0);
             ocupacionGlobalVuelos.put(claveVuelo, Math.max(0, usoActual - envio.getCantidadMaletas()));
 
-            // Restar capacidad del almacén de origen
+            // Si es un vuelo directo único, NO restar capacidad del almacén de origen
+            // porque el envío sigue en el almacén esperando replanificación
+            if (esVueloDirectoUnico) {
+                continue;
+            }
+
+            // Restar capacidad del almacén de origen solo para rutas con escalas
             String oaci = vuelo.getOrigenOaci();
-            
+
             // Determinar el inicio de la estadía en el almacén de origen
             LocalDateTime llegadaAlOrigen = envio.getFechaHoraRegistro();
-            
-            // Buscar si hay una asignación previa para este envío en el conjunto completo de sus asignaciones
-            List<AsignacionEnvioEntity> todasAsignaciones = asignacionEnvioRepository.findAll().stream()
-                    .filter(a -> a.getEnvioId().equals(envio.getId()))
-                    .sorted(Comparator.comparing(AsignacionEnvioEntity::getOrdenVuelo))
-                    .toList();
-            
+
             int indexAsig = -1;
             for (int idx = 0; idx < todasAsignaciones.size(); idx++) {
                 if (todasAsignaciones.get(idx).getId().equals(asig.getId())) {
@@ -292,7 +376,7 @@ public class SimulationService {
                     break;
                 }
             }
-            
+
             if (indexAsig > 0) {
                 llegadaAlOrigen = todasAsignaciones.get(indexAsig - 1).getFechaLlegada();
             }
@@ -307,11 +391,11 @@ public class SimulationService {
                 }
             }
             
-            // Si es la última asignación de la ruta original, restar también la estadía de 10 min en el destino final
+            // Si es la última asignación de la ruta original, restar también la estadía de 15 min en el destino final
             if (indexAsig == todasAsignaciones.size() - 1) {
                 String oaciDest = vuelo.getDestinoOaci();
                 LocalDateTime llegadaDest = asig.getFechaLlegada();
-                LocalDateTime recogidaCliente = llegadaDest.plusMinutes(10); // 10 min de handling
+                LocalDateTime recogidaCliente = llegadaDest.plusMinutes(VueloSelector.DESTINO_FINAL_MINUTES); // 15 min de handling
                 
                 int idxInicioDest = TimeUtils.getIndiceMinuto(llegadaDest);
                 int idxFinDest = TimeUtils.getIndiceMinuto(recogidaCliente);

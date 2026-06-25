@@ -96,6 +96,8 @@ export const api = {
     request<any[]>(`/simulacion/${simId}/pedidos-afectados-vuelo?origen=${origen}&destino=${destino}&fechaSalida=${fechaSalida}`),
   cancelarVueloSimulacion: (simId, origen, destino, fechaSalida) => 
     request(`/simulacion/${simId}/cancelar-vuelo`, { method: "POST", body: { origen, destino, fechaSalida } }),
+  getVuelosCanceladosSimulacion: (simId) =>
+    request<string[]>(`/simulacion/${simId}/vuelos-cancelados`),
 
   // Operarios
   getOperarios: () => request<any[]>("/usuarios/operarios"),

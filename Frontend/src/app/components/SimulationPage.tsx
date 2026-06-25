@@ -164,7 +164,9 @@ export function SimulationPage() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showHighlights, setShowHighlights] = useState(false);
+  const [collapseOverlayDismissed, setCollapseOverlayDismissed] = useState(false);
   const weeklyEndHandledRef = useRef(false);
+  const collapseHandledRef = useRef(false);
 
   // Update airports with real-time stock data from resumen
   useEffect(() => {
@@ -183,28 +185,50 @@ export function SimulationPage() {
       return realTimeResumen.ocupacionGlobalVuelos || 0;
     }
 
-    const activeFlights = new Map<string, { load: number; capacity: number }>();
-    realTimePedidos.forEach(p => {
-      if (!p.tramos) return;
-      p.tramos.forEach(t => {
-        if (t.estado === "EN_VUELO") {
-          const flightKey = `${t.origenOaci}-${t.destinoOaci}-${t.fechaSalida}`;
-          const current = activeFlights.get(flightKey) || { load: 0, capacity: 0 };
-          if (current.load === 0) {
-            current.capacity = getRealTimeFlightCapacity(t.origenOaci, t.destinoOaci, t.fechaSalida, realTimeAirports, realTimeFlights);
-          }
-          current.load += p.cantidadMaletas;
-          activeFlights.set(flightKey, current);
-        }
-      });
-    });
-
     let totalFlightLoad = 0;
     let totalFlightCapacity = 0;
-    activeFlights.forEach(f => {
-      totalFlightLoad += f.load;
-      totalFlightCapacity += f.capacity;
+
+    realTimeFlights.forEach(f => {
+      const capacity = f.capacidad || f.capacity || 200;
+      totalFlightCapacity += capacity;
+
+      let flightLoad = 0;
+      realTimePedidos.forEach(p => {
+        if (!p.tramos) return;
+        const hasMatchingTramo = p.tramos.some(t => {
+          if (t.estado !== "EN_VUELO" && t.estado !== "PROGRAMADO") return false;
+          const fOrigin = (f.origin || f.origenOaci || "").toUpperCase();
+          const fDest = (f.destination || f.destinoOaci || "").toUpperCase();
+          if (fOrigin !== t.origenOaci.toUpperCase() || fDest !== t.destinoOaci.toUpperCase()) {
+            return false;
+          }
+          
+          let matchTime = false;
+          if (f.horaSalida && t.fechaSalida) {
+            const parts = f.horaSalida.split(":");
+            if (parts.length >= 2) {
+              const fHour = parseInt(parts[0], 10);
+              const fMinute = parseInt(parts[1], 10);
+              const tParts = t.fechaSalida.split(/[T ]/);
+              if (tParts.length >= 2) {
+                const tTimeParts = tParts[1].split(":");
+                if (tTimeParts.length >= 2) {
+                  const tHour = parseInt(tTimeParts[0], 10);
+                  const tMinute = parseInt(tTimeParts[1], 10);
+                  matchTime = fHour === tHour && Math.abs(fMinute - tMinute) < 15;
+                }
+              }
+            }
+          }
+          return matchTime;
+        });
+        if (hasMatchingTramo) {
+          flightLoad += p.cantidadMaletas;
+        }
+      });
+      totalFlightLoad += flightLoad;
     });
+
     return computeUtilizationPercent(totalFlightLoad, totalFlightCapacity);
   }, [realTimeResumen, realTimePedidos, realTimeFlights]);
 
@@ -265,8 +289,10 @@ export function SimulationPage() {
       state.firstCollapsedShipmentTime &&
       state.currentTime >= state.firstCollapsedShipmentTime &&
       !state.running &&
-      !showHighlights
+      !showHighlights &&
+      !collapseHandledRef.current
     ) {
+      collapseHandledRef.current = true;
       setShowHighlights(true);
     }
   }, [state.collapsedShipmentsDetected, state.firstCollapsedShipmentTime, state.currentTime, state.running, showHighlights]);
@@ -1039,10 +1065,15 @@ export function SimulationPage() {
         <HighlightsPanel
           state={state}
           isDark={isDark}
-          onClose={() => setShowHighlights(false)}
+          onClose={() => {
+            setShowHighlights(false);
+            setCollapseOverlayDismissed(true);
+          }}
           onReset={() => {
             setShowHighlights(false);
             weeklyEndHandledRef.current = false;
+            collapseHandledRef.current = false;
+            setCollapseOverlayDismissed(false);
             void reset();
           }}
         />
@@ -1105,7 +1136,7 @@ export function SimulationPage() {
       )}
 
       {/* Overlay de colapso - hidden when highlights are shown */}
-      {state.collapsed && !showHighlights && (
+      {state.collapsed && !showHighlights && !collapseOverlayDismissed && (
         <div className="absolute inset-0 z-30 bg-red-900/20 flex items-center justify-center pointer-events-none">
           <div className="bg-[#0f172aee] border border-red-500/40 rounded-2xl px-8 py-6 text-center max-w-md pointer-events-auto">
             <div className="text-red-400 text-[16px] mb-2">Sistema Colapsado</div>
@@ -1114,7 +1145,12 @@ export function SimulationPage() {
               <button onClick={() => void handleStopSimulation()} className={`px-4 py-2 border rounded-lg text-[12px] ${isDark ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/20 text-blue-700 hover:bg-blue-600/20"}`}>
                 Ver Highlights
               </button>
-              <button onClick={() => { weeklyEndHandledRef.current = false; void reset(); }} className="px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-[12px] hover:bg-red-500/30">
+              <button onClick={() => { 
+                weeklyEndHandledRef.current = false; 
+                collapseHandledRef.current = false; 
+                setCollapseOverlayDismissed(false);
+                void reset(); 
+              }} className="px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-[12px] hover:bg-red-500/30">
                 Reiniciar
               </button>
             </div>

@@ -212,28 +212,50 @@ export function RealTimePage() {
     });
     const warehouseUtilization = computeUtilizationPercent(totalWarehouseStock, totalWarehouseCapacity);
 
-    const activeFlights = new Map<string, { load: number; capacity: number }>();
-    pedidos.forEach(p => {
-      if (!p.tramos) return;
-      p.tramos.forEach(t => {
-        if (t.estado === "EN_VUELO") {
-          const flightKey = `${t.origenOaci}-${t.destinoOaci}-${t.fechaSalida}`;
-          const current = activeFlights.get(flightKey) || { load: 0, capacity: 0 };
-          if (current.load === 0) {
-            current.capacity = getRealTimeFlightCapacity(t.origenOaci, t.destinoOaci, t.fechaSalida, airportsList, flightsList);
-          }
-          current.load += p.cantidadMaletas;
-          activeFlights.set(flightKey, current);
-        }
-      });
-    });
-
     let totalFlightLoad = 0;
     let totalFlightCapacity = 0;
-    activeFlights.forEach(f => {
-      totalFlightLoad += f.load;
-      totalFlightCapacity += f.capacity;
+
+    flightsList.forEach(f => {
+      const capacity = f.capacidad || f.capacity || 200;
+      totalFlightCapacity += capacity;
+
+      let flightLoad = 0;
+      pedidos.forEach(p => {
+        if (!p.tramos) return;
+        const hasMatchingTramo = p.tramos.some(t => {
+          if (t.estado !== "EN_VUELO" && t.estado !== "PROGRAMADO") return false;
+          const fOrigin = (f.origin || f.origenOaci || "").toUpperCase();
+          const fDest = (f.destination || f.destinoOaci || "").toUpperCase();
+          if (fOrigin !== t.origenOaci.toUpperCase() || fDest !== t.destinoOaci.toUpperCase()) {
+            return false;
+          }
+          
+          let matchTime = false;
+          if (f.horaSalida && t.fechaSalida) {
+            const parts = f.horaSalida.split(":");
+            if (parts.length >= 2) {
+              const fHour = parseInt(parts[0], 10);
+              const fMinute = parseInt(parts[1], 10);
+              const tParts = t.fechaSalida.split(/[T ]/);
+              if (tParts.length >= 2) {
+                const tTimeParts = tParts[1].split(":");
+                if (tTimeParts.length >= 2) {
+                  const tHour = parseInt(tTimeParts[0], 10);
+                  const tMinute = parseInt(tTimeParts[1], 10);
+                  matchTime = fHour === tHour && Math.abs(fMinute - tMinute) < 15;
+                }
+              }
+            }
+          }
+          return matchTime;
+        });
+        if (hasMatchingTramo) {
+          flightLoad += p.cantidadMaletas;
+        }
+      });
+      totalFlightLoad += flightLoad;
     });
+
     const flightUtilization = computeUtilizationPercent(totalFlightLoad, totalFlightCapacity);
 
     return {

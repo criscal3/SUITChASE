@@ -338,41 +338,24 @@ public class RealTimeOperationsService {
         long totalFlightLoad = 0;
         long totalFlightCapacity = 0;
         
-        // Obtener todos los vuelos activos hoy
-        LocalDateTime ahora = LocalDateTime.now();
-        LocalDateTime inicioDia = ahora.toLocalDate().atStartOfDay();
-        LocalDateTime finDia = ahora.toLocalDate().plusDays(1).atStartOfDay();
+        var vuelosTodos = vueloRepository.findAll();
         
-        var vuelosHoy = vueloRepository.findAll().stream()
-            .filter(v -> {
-                // Convertir hora del vuelo a LocalDateTime de hoy
-                LocalDateTime salidaVueloHoy = inicioDia.with(v.getHoraSalida());
-                return !salidaVueloHoy.isBefore(ahora.minusHours(1)) && salidaVueloHoy.isBefore(finDia);
-            })
-            .toList();
-        
-        for (var vuelo : vuelosHoy) {
-            // Calcular carga actual: pedidos EN_RUTA en este vuelo
+        for (var vuelo : vuelosTodos) {
+            // Calcular carga: pedidos con tramos EN_VUELO o PROGRAMADO en este vuelo
             long cargaVuelo = cache.values().stream()
-                .filter(p -> "EN_RUTA".equalsIgnoreCase(p.estado()))
+                .filter(p -> "EN_RUTA".equalsIgnoreCase(p.estado()) || "PLANIFICADO".equalsIgnoreCase(p.estado()))
                 .filter(p -> {
-                    // Verificar si algún tramo coincide con este vuelo
                     return p.tramos().stream().anyMatch(t -> 
                         t.origenOaci().equals(vuelo.getOrigenOaci()) &&
                         t.destinoOaci().equals(vuelo.getDestinoOaci()) &&
-                        t.estado().equals("EN_VUELO")
+                        (t.estado().equals("EN_VUELO") || t.estado().equals("PROGRAMADO"))
                     );
                 })
                 .mapToLong(PedidoRealDTO::cantidadMaletas)
                 .sum();
             
             totalFlightLoad += cargaVuelo;
-            // Capacidad del vuelo - usar la capacidad real de la entidad
             Integer capacidad = vuelo.getCapacidad();
-            if (capacidad == null) {
-                log.warn("Vuelo con capacidad NULL: {} {} (ID: {})", 
-                    vuelo.getOrigenOaci(), vuelo.getDestinoOaci(), vuelo.getId());
-            }
             totalFlightCapacity += capacidad != null ? capacidad : 200;
         }
         

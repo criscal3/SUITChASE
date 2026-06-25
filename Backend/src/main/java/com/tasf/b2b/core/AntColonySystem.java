@@ -320,7 +320,7 @@ public class AntColonySystem {
         return rutaTemp.aPlanificationSolution();
     }
 
-    /** Registra 10 min de estadia en el almacen del aeropuerto destino final antes de la recogida. */
+    /** Registra 15 min de estadia en el almacen del aeropuerto destino final antes de la recogida. */
     private static void registrarAlmacenDestinoFinal(
             Pedido pedido, List<Vuelo> rutaCompleta, Ruta ruta) {
         if (rutaCompleta == null || rutaCompleta.isEmpty()) return;
@@ -328,7 +328,7 @@ public class AntColonySystem {
         if (!ultimoVuelo.getDestino().equals(pedido.getDestino())) return;
 
         LocalDateTime recogidaCliente = ruta.getDisponibilidadPedido(pedido);
-        LocalDateTime llegadaDestino = recogidaCliente.minusMinutes(VueloSelector.HANDLING_MINUTES);
+        LocalDateTime llegadaDestino = recogidaCliente.minusMinutes(VueloSelector.DESTINO_FINAL_MINUTES);
         ruta.registrarUsoAlmacen(
                 ultimoVuelo.getDestino(),
                 llegadaDestino,

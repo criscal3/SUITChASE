@@ -18,8 +18,10 @@ public class VueloSelector {
     private static final double Q0 = 0.3;
     /** Peso de la heurÃ­stica de visibilidad (inverso del costo). */
     private static final double BETA = 2.0;
-    /** Minutos mÃ­nimos de manipulaciÃ³n de maletas entre vuelos. */
+    /** Minutos mÃ­nimos de manipulaciÃ³n de maletas entre vuelos (escalas). */
     public static final int HANDLING_MINUTES = 10;
+    /** Minutos de espera en almacén del destino final antes de recogida por cliente. */
+    public static final int DESTINO_FINAL_MINUTES = 15;
     // ========================================
 
     // Cache ThreadLocal para getDisponibilidadAbsoluta.
@@ -154,10 +156,10 @@ public class VueloSelector {
                     continue;
                 }
 
-                // Verificar almacen destino final: 10 min de estadia antes de recogida
+                // Verificar almacen destino final: 15 min de estadia antes de recogida
                 if (v.getDestino().equals(p.getDestino())) {
                     int idxDestInicio = TimeUtils.getIndiceMinuto(llegada);
-                    int idxDestFin = TimeUtils.getIndiceMinuto(dispSiguiente);
+                    int idxDestFin = TimeUtils.getIndiceMinuto(llegada.plusMinutes(DESTINO_FINAL_MINUTES));
                     Aeropuerto aeroDest = input.getAeropuerto(v.getDestino());
                     if (aeroDest == null) continue;
                     int[] globalDest = cacheGlobalAlm.computeIfAbsent(
@@ -316,7 +318,7 @@ public class VueloSelector {
             if (!almacenConEspacio) continue;
 
             if (v.getDestino().equals(p.getDestino())) {
-                LocalDateTime recogidaCliente = llegada.plusMinutes(HANDLING_MINUTES);
+                LocalDateTime recogidaCliente = llegada.plusMinutes(DESTINO_FINAL_MINUTES);
                 if (!almacenTieneCapacidadEnIntervalo(
                         v.getDestino(), llegada, recogidaCliente,
                         p.getCantidadMaletas(), input, ruta)) {

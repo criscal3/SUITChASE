@@ -81,7 +81,11 @@ public class Ruta {
     }
 
     public boolean haVisitadoAeropuerto(Pedido p, String aeropuertoId) {
-        if (p.getOrigen().equals(aeropuertoId))
+        // Solo considerar el origen como visitado si el envío ya salió de ese aeropuerto
+        // (ubicación actual diferente del origen). Esto permite replanificaciones
+        // donde el envío sigue en su origen original.
+        String ubicacionActual = getUbicacionActual(p);
+        if (p.getOrigen().equals(aeropuertoId) && !p.getOrigen().equals(ubicacionActual))
             return true;
         Set<String> visitados = aeropuertosVisitados.get(p.getId());
         return visitados != null && visitados.contains(aeropuertoId);

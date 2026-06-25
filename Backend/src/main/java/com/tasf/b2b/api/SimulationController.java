@@ -16,6 +16,7 @@ import com.tasf.b2b.repository.UsuarioRepository;
 import com.tasf.b2b.domain.UsuarioEntity;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/simulacion")
@@ -169,6 +170,11 @@ public class SimulationController {
                 "simulacionId", id,
                 "mensaje", "Vuelo cancelado exitosamente para la simulación"
         ));
+    }
+
+    @GetMapping("/{id}/vuelos-cancelados")
+    public ResponseEntity<Set<String>> getVuelosCancelados(@PathVariable Long id) {
+        return ResponseEntity.ok(simulationService.getVuelosCancelados(id));
     }
 
     // --- DTO ---

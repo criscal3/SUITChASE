@@ -12,6 +12,7 @@ export function FlightCancellationCard() {
 
   const [flights, setFlights] = useState<any[]>([]);
   const [cancelledFlightIds, setCancelledFlightIds] = useState<number[]>([]);
+  const [cancelledSimKeys, setCancelledSimKeys] = useState<string[]>([]);
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [timeValue, setTimeValue] = useState("");
@@ -35,6 +36,20 @@ export function FlightCancellationCard() {
       }
     }).catch(console.error);
   }, []);
+
+  const simIdToUse = activeSimId ?? state.activeSimId;
+
+  useEffect(() => {
+    if (simIdToUse) {
+      api.getVuelosCanceladosSimulacion(simIdToUse).then(data => {
+        if (data) {
+          setCancelledSimKeys(data);
+        }
+      }).catch(console.error);
+    } else {
+      setCancelledSimKeys([]);
+    }
+  }, [simIdToUse]);
 
   const origins = useMemo(() => {
     const orgs = new Set(flights.map(f => f.origenOaci || f.origin));
@@ -89,13 +104,21 @@ export function FlightCancellationCard() {
       const candidate2UTC = new Date(candidate2LocalTime.getTime() - gmt * 60 * 60 * 1000);
 
       [candidate1UTC, candidate2UTC].forEach(cand => {
-        if (cand > simTime && cand.getTime() - simTime.getTime() <= 24 * 3600 * 1000) {
-          // Convertir cand de UTC a hora local del aeropuerto para mostrar y enviar
+        // Solo permitir cancelación si faltan al menos 1 hora para el despegue
+        if (cand > simTime && cand.getTime() - simTime.getTime() >= 60 * 60 * 1000 && cand.getTime() - simTime.getTime() <= 24 * 3600 * 1000) {
+          // Check if already cancelled in simulation
+          const pad = (n: number) => String(n).padStart(2, "0");
+          const utcKey = `${origin}-${destination}-${cand.getUTCFullYear()}-${pad(cand.getUTCMonth() + 1)}-${pad(cand.getUTCDate())}T${pad(cand.getUTCHours())}:${pad(cand.getUTCMinutes())}`;
+          
+          if (cancelledSimKeys.includes(utcKey)) {
+            return;
+          }
+
+          // Convert cand de UTC a hora local del aeropuerto para mostrar y enviar
           const candInLocalTimezone = new Date(cand.getTime() + gmt * 60 * 60 * 1000);
           
           // ISO format sin milliseconds en HORA LOCAL (lo que espera el backend)
           // Example: 2026-06-17T14:30:00
-          const pad = (n: number) => String(n).padStart(2, "0");
           const value = `${candInLocalTimezone.getUTCFullYear()}-${pad(candInLocalTimezone.getUTCMonth() + 1)}-${pad(candInLocalTimezone.getUTCDate())}T${pad(candInLocalTimezone.getUTCHours())}:${pad(candInLocalTimezone.getUTCMinutes())}:${pad(candInLocalTimezone.getUTCSeconds())}`;
           const label = `${pad(candInLocalTimezone.getUTCDate())}/${pad(candInLocalTimezone.getUTCMonth() + 1)}/${candInLocalTimezone.getUTCFullYear()} ${pad(candInLocalTimezone.getUTCHours())}:${pad(candInLocalTimezone.getUTCMinutes())} (${tzLabel})`;
           
@@ -110,7 +133,7 @@ export function FlightCancellationCard() {
     });
 
     return options.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [origin, destination, flights, state.currentTime, cancelledFlightIds]);
+  }, [origin, destination, flights, state.currentTime, cancelledFlightIds, cancelledSimKeys]);
 
   const handleSelectTime = (val: string) => {
     setTimeValue(val);
@@ -168,6 +191,14 @@ export function FlightCancellationCard() {
           setCancelledFlightIds(data);
         }
       }).catch(console.error);
+
+      if (confirmCancel.simId) {
+        api.getVuelosCanceladosSimulacion(confirmCancel.simId).then(data => {
+          if (data) {
+            setCancelledSimKeys(data);
+          }
+        }).catch(console.error);
+      }
     } catch (err: any) {
       toast.error(err?.message ?? "Error al cancelar el vuelo en la simulación");
     } finally {
