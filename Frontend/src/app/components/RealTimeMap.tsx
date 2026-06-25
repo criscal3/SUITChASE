@@ -43,6 +43,7 @@ interface Airport {
   lng: number;
   warehouseCapacity: number;
   currentStock: number;
+  gmt?: number;
 }
 
 interface RealTimeMapProps {
@@ -133,60 +134,90 @@ function Building3D({ color, util }: { color: string; util: number }) {
   );
 }
 
-function getRealTimeFlightCapacity(
+export function getRealTimeFlightCapacity(
   origin: string,
   destination: string,
   fechaSalida: string,
   airportsList: Airport[],
   flightsList: any[]
 ): number {
-  if (!flightsList || flightsList.length === 0) return 1000;
+  if (!flightsList || flightsList.length === 0) return 200;
 
   // Find origin airport timezone offset
-  const port = airportsList.find(a => a.code === origin);
+  const port = airportsList.find(a => a.code === origin) as any;
   let gmt = 0;
-  if (port && port.timezone) {
-    const match = port.timezone.match(/UTC([+-]\d+(?:\.\d+|:\d+)?)/);
-    if (match) {
-      const val = match[1];
-      if (val.includes(":")) {
-        const parts = val.split(":");
-        const hours = parseInt(parts[0], 10);
-        const mins = parseInt(parts[1], 10);
-        const sign = hours < 0 ? -1 : 1;
-        gmt = hours + sign * (mins / 60);
-      } else {
-        gmt = parseFloat(val);
+  if (port) {
+    if (port.gmt !== undefined) {
+      gmt = port.gmt;
+    } else if (port.timezone) {
+      const match = port.timezone.match(/UTC([+-]\d+(?:\.\d+|:\d+)?)/);
+      if (match) {
+        const val = match[1];
+        if (val.includes(":")) {
+          const parts = val.split(":");
+          const hours = parseInt(parts[0], 10);
+          const mins = parseInt(parts[1], 10);
+          const sign = hours < 0 ? -1 : 1;
+          gmt = hours + sign * (mins / 60);
+        } else {
+          gmt = parseFloat(val);
+        }
       }
     }
   }
 
+  // Parse time directly from string (since the backend constructs it by setting the local hour/minute of departure)
+  let directHour = -1;
+  let directMinute = -1;
+  if (fechaSalida && typeof fechaSalida === "string") {
+    const parts = fechaSalida.split(/[T ]/);
+    if (parts.length >= 2) {
+      const timeParts = parts[1].split(":");
+      if (timeParts.length >= 2) {
+        directHour = parseInt(timeParts[0], 10);
+        directMinute = parseInt(timeParts[1], 10);
+      }
+    }
+  }
+
+  // Shifted time (assuming the string was UTC and needs GMT offset to get local time)
   const depTime = parseUTCDate(fechaSalida);
   const localMs = depTime + gmt * 3600_000;
   const d = new Date(localMs);
-  const hour = d.getUTCHours();
-  const minute = d.getUTCMinutes();
+  const shiftedHour = d.getUTCHours();
+  const shiftedMinute = d.getUTCMinutes();
 
-  let match = flightsList.find(f => {
-    const fOrigin = (f.origin || f.origenOaci || "").toUpperCase();
-    const fDest = (f.destination || f.destinoOaci || "").toUpperCase();
-    if (fOrigin !== origin.toUpperCase() || fDest !== destination.toUpperCase()) {
-      return false;
-    }
-    if (f.horaSalida) {
-      const parts = f.horaSalida.split(":");
-      if (parts.length >= 2) {
-        const fHour = parseInt(parts[0], 10);
-        const fMinute = parseInt(parts[1], 10);
-        return fHour === hour && Math.abs(fMinute - minute) < 15;
+  const matchFlight = (h: number, m: number) => {
+    return flightsList.find(f => {
+      const fOrigin = (f.origin || f.origenOaci || "").toUpperCase();
+      const fDest = (f.destination || f.destinoOaci || "").toUpperCase();
+      if (fOrigin !== origin.toUpperCase() || fDest !== destination.toUpperCase()) {
+        return false;
       }
-    }
-    if (f.departureHour != null) {
-      return Math.round(f.departureHour) === hour;
-    }
-    return true;
-  });
+      if (f.horaSalida) {
+        const parts = f.horaSalida.split(":");
+        if (parts.length >= 2) {
+          const fHour = parseInt(parts[0], 10);
+          const fMinute = parseInt(parts[1], 10);
+          return fHour === h && Math.abs(fMinute - m) < 15;
+        }
+      }
+      if (f.departureHour != null) {
+        return Math.round(f.departureHour) === h;
+      }
+      return true;
+    });
+  };
 
+  // 1. Try direct time match
+  let match = directHour !== -1 ? matchFlight(directHour, directMinute) : undefined;
+
+  // 2. Try shifted time match
+  if (!match) {
+    match = matchFlight(shiftedHour, shiftedMinute);
+  }
+
+  // 3. Fallback to any flight between origin and destination
   if (!match) {
     match = flightsList.find(f => {
       const fOrigin = (f.origin || f.origenOaci || "").toUpperCase();
@@ -195,7 +226,7 @@ function getRealTimeFlightCapacity(
     });
   }
 
-  return match ? (match.capacity || match.capacidad || 1000) : 1000;
+  return match ? (match.capacity || match.capacidad || 200) : 200;
 }
 
 export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsList, onSelectFlight, selectedFlightKey, flightsList, filters }: RealTimeMapProps) {

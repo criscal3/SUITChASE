@@ -27,6 +27,8 @@ public class VueloEntity {
     private String destinoOaci;
     private LocalTime horaSalida;
     private LocalTime horaLlegada;
+    
+    @Column(name = "capacidad")
     private Integer capacidad;
 
     @Column(name = "aerolinea_id")

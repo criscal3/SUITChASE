@@ -11,7 +11,7 @@ import { INITIAL_WAIT_SECONDS } from "../engine/useSimulation";
 import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
 import { getOccupancyColor, getOccupancyLevel, computeUtilizationPercent } from "../engine/occupancyStatus";
 import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse, Radio, ChevronRight, Search, X } from "lucide-react";
-import { RealTimeMap } from "./RealTimeMap";
+import { RealTimeMap, getRealTimeFlightCapacity } from "./RealTimeMap";
 import { RealTimeWebSocketClient } from "../services/realTimeWebSocket";
 import { api } from "../services/api";
 import { ScrollArea } from "./ui/scroll-area";
@@ -75,11 +75,11 @@ export function SimulationPage() {
   // Real-time operations state
   const [realTimePedidos, setRealTimePedidos] = useState<any[]>([]);
   const [realTimeResumen, setRealTimeResumen] = useState<any | null>(null);
+  const [realTimeAirports, setRealTimeAirports] = useState<any[]>([]);
+  const [realTimeFlights, setRealTimeFlights] = useState<any[]>([]);
   const [selectedRealTimePedido, setSelectedRealTimePedido] = useState<any | null>(null);
   const [realTimeSearch, setRealTimeSearch] = useState("");
   const [showRealTimeRightPanel, setShowRealTimeRightPanel] = useState(true);
-  const [realTimeAirports, setRealTimeAirports] = useState<any[]>([]);
-  const [realTimeFlights, setRealTimeFlights] = useState<any[]>([]);
   const [selectedFlightKey, setSelectedFlightKey] = useState<string | null>(null);
   const [selectedFlightPedidoIds, setSelectedFlightPedidoIds] = useState<string[] | null>(null);
   const [selectedSimFlightKey, setSelectedSimFlightKey] = useState<string | null>(null);
@@ -166,31 +166,55 @@ export function SimulationPage() {
   const [showHighlights, setShowHighlights] = useState(false);
   const weeklyEndHandledRef = useRef(false);
 
+  // Update airports with real-time stock data from resumen
+  useEffect(() => {
+    if (realTimeResumen?.stockActualAlmacenes) {
+      setRealTimeAirports(prev => prev.map(a => ({
+        ...a,
+        currentStock: realTimeResumen.stockActualAlmacenes[a.code] || 0
+      })));
+    }
+  }, [realTimeResumen?.stockActualAlmacenes]);
+
   // Calculate global warehouse and flight occupancy for tracking mode
   const globalFlightOccupancy = useMemo(() => {
+    // Use data from WebSocket resumen if available
+    if (realTimeResumen) {
+      return realTimeResumen.ocupacionGlobalVuelos || 0;
+    }
+
+    const activeFlights = new Map<string, { load: number; capacity: number }>();
+    realTimePedidos.forEach(p => {
+      if (!p.tramos) return;
+      p.tramos.forEach(t => {
+        if (t.estado === "EN_VUELO") {
+          const flightKey = `${t.origenOaci}-${t.destinoOaci}-${t.fechaSalida}`;
+          const current = activeFlights.get(flightKey) || { load: 0, capacity: 0 };
+          if (current.load === 0) {
+            current.capacity = getRealTimeFlightCapacity(t.origenOaci, t.destinoOaci, t.fechaSalida, realTimeAirports, realTimeFlights);
+          }
+          current.load += p.cantidadMaletas;
+          activeFlights.set(flightKey, current);
+        }
+      });
+    });
+
     let totalFlightLoad = 0;
     let totalFlightCapacity = 0;
-    realTimePedidos.forEach(p => {
-      if (p.estado === "EN_RUTA") {
-        p.tramos.forEach(t => {
-          if (t.estado === "EN_RUTA") {
-            const flight = realTimeFlights.find(f => 
-              f.origenOaci === t.origenOaci && 
-              f.destinoOaci === t.destinoOaci &&
-              f.fechaSalida === t.fechaSalida
-            );
-            if (flight) {
-              totalFlightLoad += p.cantidadMaletas;
-              totalFlightCapacity += flight.capacidad || 100;
-            }
-          }
-        });
-      }
+    activeFlights.forEach(f => {
+      totalFlightLoad += f.load;
+      totalFlightCapacity += f.capacity;
     });
     return computeUtilizationPercent(totalFlightLoad, totalFlightCapacity);
-  }, [realTimePedidos, realTimeFlights]);
+  }, [realTimeResumen, realTimePedidos, realTimeFlights]);
 
   const globalWarehouseOccupancy = useMemo(() => {
+    // Use data from WebSocket resumen if available
+    if (realTimeResumen) {
+      return realTimeResumen.ocupacionGlobalAlmacenes || 0;
+    }
+
+    // Fallback to local calculation
     let totalWarehouseStock = 0;
     let totalWarehouseCapacity = 0;
     realTimeAirports.forEach(a => {
@@ -198,7 +222,7 @@ export function SimulationPage() {
       totalWarehouseCapacity += a.warehouseCapacity || 0;
     });
     return computeUtilizationPercent(totalWarehouseStock, totalWarehouseCapacity);
-  }, [realTimeAirports]);
+  }, [realTimeResumen, realTimeAirports]);
 
   /** Detener: pausa (reanudable tras Cerrar) y abre Highlights. */
   const handleStopSimulation = useCallback(async () => {
@@ -607,6 +631,7 @@ export function SimulationPage() {
                 selectedPedido={selectedRealTimePedido}
                 onSelectPedido={setSelectedRealTimePedido}
                 airportsList={realTimeAirports}
+                flightsList={realTimeFlights}
                 selectedFlightKey={selectedFlightKey}
                 onSelectFlight={(pedidoIds, key) => {
                   setSelectedFlightPedidoIds(pedidoIds);

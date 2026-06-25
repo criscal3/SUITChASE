@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { createEmptyStats } from "./simulation";
 import { AIRPORTS as DEFAULT_AIRPORTS, type Airport } from "../data/airports";
 import type { SimulationState, SimEvent, Airline } from "./types";
-import { SIM_BASE_DATE, SIM_WEEKLY_DURATION_MS, SIM_COLLAPSE_DURATION_MS, COLLAPSE_PRE_DAYS, COLLAPSE_PRE_BLOCKS } from "./types";
+import { SIM_BASE_DATE, SIM_WEEKLY_DURATION_MS, SIM_COLLAPSE_DURATION_MS, COLLAPSE_PRE_DAYS, COLLAPSE_PRE_BLOCKS, hasReachedWeeklySimEnd, hasReachedCollapseSimEnd } from "./types";
 import { toast } from "sonner";
 import { api } from "../services/api";
 import { SimulationWebSocketClient } from "../services/websocket";

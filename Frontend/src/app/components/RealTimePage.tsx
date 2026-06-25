@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useTheme } from "../context/ThemeContext";
-import { RealTimeMap } from "./RealTimeMap";
+import { RealTimeMap, getRealTimeFlightCapacity } from "./RealTimeMap";
 import { RealTimeWebSocketClient } from "../services/realTimeWebSocket";
 import { api } from "../services/api";
 import { ScrollArea } from "./ui/scroll-area";
@@ -39,6 +39,9 @@ interface Resumen {
   planificados: number;
   enRuta: number;
   ultimaActualizacion: string;
+  ocupacionGlobalAlmacenes: number;
+  ocupacionGlobalVuelos: number;
+  stockActualAlmacenes: Record<string, number>;
 }
 
 const statusConfig: Record<string, { color: string; bg: string; lightBg: string; lightColor: string; label: string; icon: React.ReactNode }> = {
@@ -180,9 +183,27 @@ export function RealTimePage() {
     finally { setDetailLoading(false); }
   };
 
-  // Calculate global warehouse and flight occupancy
+  // Update airports with real-time stock data from resumen
+  useEffect(() => {
+    if (resumen?.stockActualAlmacenes) {
+      setAirportsList(prev => prev.map(a => ({
+        ...a,
+        currentStock: resumen.stockActualAlmacenes[a.code] || 0
+      })));
+    }
+  }, [resumen?.stockActualAlmacenes]);
+
+  // Calculate global warehouse and flight occupancy from WebSocket data
   const globalOccupancy = useMemo(() => {
-    // Calculate warehouse occupancy
+    // Use data from WebSocket resumen if available
+    if (resumen) {
+      return {
+        flightUtilization: resumen.ocupacionGlobalVuelos || 0,
+        warehouseUtilization: resumen.ocupacionGlobalAlmacenes || 0
+      };
+    }
+
+    // Fallback to local calculation if resumen not available
     let totalWarehouseStock = 0;
     let totalWarehouseCapacity = 0;
     airportsList.forEach(a => {
@@ -191,25 +212,27 @@ export function RealTimePage() {
     });
     const warehouseUtilization = computeUtilizationPercent(totalWarehouseStock, totalWarehouseCapacity);
 
-    // Calculate flight occupancy from active flights (en_ruta)
+    const activeFlights = new Map<string, { load: number; capacity: number }>();
+    pedidos.forEach(p => {
+      if (!p.tramos) return;
+      p.tramos.forEach(t => {
+        if (t.estado === "EN_VUELO") {
+          const flightKey = `${t.origenOaci}-${t.destinoOaci}-${t.fechaSalida}`;
+          const current = activeFlights.get(flightKey) || { load: 0, capacity: 0 };
+          if (current.load === 0) {
+            current.capacity = getRealTimeFlightCapacity(t.origenOaci, t.destinoOaci, t.fechaSalida, airportsList, flightsList);
+          }
+          current.load += p.cantidadMaletas;
+          activeFlights.set(flightKey, current);
+        }
+      });
+    });
+
     let totalFlightLoad = 0;
     let totalFlightCapacity = 0;
-    pedidos.forEach(p => {
-      if (p.estado === "EN_RUTA") {
-        p.tramos.forEach(t => {
-          if (t.estado === "EN_RUTA") {
-            const flight = flightsList.find(f => 
-              f.origenOaci === t.origenOaci && 
-              f.destinoOaci === t.destinoOaci &&
-              f.fechaSalida === t.fechaSalida
-            );
-            if (flight) {
-              totalFlightLoad += p.cantidadMaletas;
-              totalFlightCapacity += flight.capacidad || 100;
-            }
-          }
-        });
-      }
+    activeFlights.forEach(f => {
+      totalFlightLoad += f.load;
+      totalFlightCapacity += f.capacity;
     });
     const flightUtilization = computeUtilizationPercent(totalFlightLoad, totalFlightCapacity);
 
@@ -217,7 +240,7 @@ export function RealTimePage() {
       flightUtilization,
       warehouseUtilization
     };
-  }, [airportsList, pedidos, flightsList]);
+  }, [resumen, airportsList, pedidos, flightsList]);
 
   const filtered = pedidos.filter(p => {
     if (!search) return true;

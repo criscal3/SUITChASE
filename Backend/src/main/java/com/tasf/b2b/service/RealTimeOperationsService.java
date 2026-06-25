@@ -39,11 +39,13 @@ public class RealTimeOperationsService {
     private final UsuarioRepository usuarioRepo;
     private final SimpMessagingTemplate messagingTemplate;
     private final CancelacionVueloRepository cancelacionVueloRepo;
+    private final com.tasf.b2b.repository.AeropuertoRepository aeropuertoRepository;
+    private final VueloRepository vueloRepository;
 
     // === CACHÉ EN MEMORIA ===
     private final ConcurrentHashMap<String, PedidoRealDTO> cache = new ConcurrentHashMap<>();
     private final AtomicReference<ResumenOperacionesDTO> resumenCache = new AtomicReference<>(
-            new ResumenOperacionesDTO(0, 0, 0, 0, LocalDateTime.now())
+            new ResumenOperacionesDTO(0, 0, 0, 0, LocalDateTime.now(), 0.0, 0.0, Map.of())
     );
 
     private static final List<EstadoPedido> ESTADOS_ACTIVOS = List.of(
@@ -310,7 +312,82 @@ public class RealTimeOperationsService {
         long pendientes  = cache.values().stream().filter(p -> "PENDIENTE".equalsIgnoreCase(p.estado())).count();
         long planificados = cache.values().stream().filter(p -> "PLANIFICADO".equalsIgnoreCase(p.estado())).count();
         long enRuta      = cache.values().stream().filter(p -> "EN_RUTA".equalsIgnoreCase(p.estado())).count();
-        resumenCache.set(new ResumenOperacionesDTO(cache.size(), pendientes, planificados, enRuta, LocalDateTime.now()));
+        
+        // Calcular ocupación de almacenes
+        Map<String, Integer> stockActualAlmacenes = new HashMap<>();
+        long totalStock = 0;
+        long totalCapacity = 0;
+        
+        var aeropuertos = aeropuertoRepository.findAll();
+        for (var aero : aeropuertos) {
+            // Calcular stock actual: pedidos PENDIENTE + PLANIFICADO en origen
+            long stockEnAlmacen = cache.values().stream()
+                .filter(p -> ("PENDIENTE".equalsIgnoreCase(p.estado()) || "PLANIFICADO".equalsIgnoreCase(p.estado())))
+                .filter(p -> p.origenOaci().equals(aero.getOaci()))
+                .mapToLong(PedidoRealDTO::cantidadMaletas)
+                .sum();
+            
+            stockActualAlmacenes.put(aero.getOaci(), (int) stockEnAlmacen);
+            totalStock += stockEnAlmacen;
+            totalCapacity += aero.getCapacidadAlmacen() != null ? aero.getCapacidadAlmacen() : 0;
+        }
+        
+        double ocupacionGlobalAlmacenes = totalCapacity > 0 ? (double) totalStock / totalCapacity * 100 : 0.0;
+        
+        // Calcular ocupación de vuelos
+        long totalFlightLoad = 0;
+        long totalFlightCapacity = 0;
+        
+        // Obtener todos los vuelos activos hoy
+        LocalDateTime ahora = LocalDateTime.now();
+        LocalDateTime inicioDia = ahora.toLocalDate().atStartOfDay();
+        LocalDateTime finDia = ahora.toLocalDate().plusDays(1).atStartOfDay();
+        
+        var vuelosHoy = vueloRepository.findAll().stream()
+            .filter(v -> {
+                // Convertir hora del vuelo a LocalDateTime de hoy
+                LocalDateTime salidaVueloHoy = inicioDia.with(v.getHoraSalida());
+                return !salidaVueloHoy.isBefore(ahora.minusHours(1)) && salidaVueloHoy.isBefore(finDia);
+            })
+            .toList();
+        
+        for (var vuelo : vuelosHoy) {
+            // Calcular carga actual: pedidos EN_RUTA en este vuelo
+            long cargaVuelo = cache.values().stream()
+                .filter(p -> "EN_RUTA".equalsIgnoreCase(p.estado()))
+                .filter(p -> {
+                    // Verificar si algún tramo coincide con este vuelo
+                    return p.tramos().stream().anyMatch(t -> 
+                        t.origenOaci().equals(vuelo.getOrigenOaci()) &&
+                        t.destinoOaci().equals(vuelo.getDestinoOaci()) &&
+                        t.estado().equals("EN_VUELO")
+                    );
+                })
+                .mapToLong(PedidoRealDTO::cantidadMaletas)
+                .sum();
+            
+            totalFlightLoad += cargaVuelo;
+            // Capacidad del vuelo - usar la capacidad real de la entidad
+            Integer capacidad = vuelo.getCapacidad();
+            if (capacidad == null) {
+                log.warn("Vuelo con capacidad NULL: {} {} (ID: {})", 
+                    vuelo.getOrigenOaci(), vuelo.getDestinoOaci(), vuelo.getId());
+            }
+            totalFlightCapacity += capacidad != null ? capacidad : 200;
+        }
+        
+        double ocupacionGlobalVuelos = totalFlightCapacity > 0 ? (double) totalFlightLoad / totalFlightCapacity * 100 : 0.0;
+        
+        resumenCache.set(new ResumenOperacionesDTO(
+            cache.size(), 
+            pendientes, 
+            planificados, 
+            enRuta, 
+            LocalDateTime.now(),
+            ocupacionGlobalAlmacenes,
+            ocupacionGlobalVuelos,
+            stockActualAlmacenes
+        ));
     }
 
     private List<AsignacionRealEntity> cargarTramos(String pedidoId) {
