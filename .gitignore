@@ -61,3 +61,5 @@ Planificador/*.zip
 Planificador/_envios_preliminar_/
 .env.zip
 .zip
+generate_slides.py
+Presentacion_SUITChASE.pptx
