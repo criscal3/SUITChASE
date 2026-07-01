@@ -5,7 +5,6 @@ import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { StatsCharts } from "./StatsCharts";
 import { EventLog } from "./EventLog";
-import { AirportMap } from "./AirportMap";
 import { Package, Plane, AlertTriangle, CheckCircle, Clock, Warehouse } from "lucide-react";
 
 function KpiCard({ title, value, icon, color, isDark }: { title: string; value: string | number; icon: React.ReactNode; color: string; isDark: boolean }) {
@@ -46,9 +45,6 @@ export function Dashboard() {
         </div>
         <EventLog events={events} />
       </div>
-
-      {/* Mapa de Aeropuertos */}
-      <AirportMap />
     </div>
   );
 }

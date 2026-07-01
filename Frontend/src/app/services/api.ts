@@ -38,7 +38,8 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   if (response.status === 204) return {} as T;
-  return response.json();
+  const text = await response.text();
+  return text ? JSON.parse(text) : ({} as T);
 }
 
 export const api = {
@@ -56,6 +57,7 @@ export const api = {
     localStorage.setItem("suitchase_token", res.token);
     localStorage.setItem("suitchase_role", userRole);
     if (res.aerolineaId) localStorage.setItem("suitchase_aerolinea_id", res.aerolineaId.toString());
+    if (res.aeropuertoOaci) localStorage.setItem("suitchase_aeropuerto_oaci", res.aeropuertoOaci);
     return res;
   },
 

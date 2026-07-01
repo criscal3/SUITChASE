@@ -37,8 +37,20 @@ public class RealTimeController {
     @PreAuthorize("hasAnyRole('ADMIN', 'OPERARIO')")
     public ResponseEntity<List<PedidoRealDTO>> operaciones(
             @RequestParam(required = false) String estado,
-            @RequestParam(required = false) Long aerolineaId) {
-        return ResponseEntity.ok(rtService.getOperacionesActivas(estado, aerolineaId));
+            @RequestParam(required = false) Long aerolineaId,
+            Authentication auth) {
+        String correo = (String) auth.getPrincipal();
+        UsuarioEntity usuario = usuarioRepository.findByCorreo(correo).orElse(null);
+
+        List<PedidoRealDTO> list = rtService.getOperacionesActivas(estado, aerolineaId);
+
+        if (usuario != null && usuario.getRol() == UsuarioEntity.Rol.OPERARIO) {
+            final Long opId = usuario.getId();
+            list = list.stream()
+                    .filter(p -> opId.equals(p.operarioId()))
+                    .toList();
+        }
+        return ResponseEntity.ok(list);
     }
 
     /** Detalle de un pedido con tramos completos */
@@ -72,9 +84,14 @@ public class RealTimeController {
             @RequestBody RegistroPedidoRequest req,
             Authentication auth) {
         String correo = (String) auth.getPrincipal();
-        Long operarioId = usuarioRepository.findByCorreo(correo)
-                .map(UsuarioEntity::getId)
-                .orElse(null);
+        UsuarioEntity usuario = usuarioRepository.findByCorreo(correo).orElse(null);
+        Long operarioId = usuario != null ? usuario.getId() : null;
+
+        if (usuario != null && usuario.getRol() == UsuarioEntity.Rol.OPERARIO) {
+            if (usuario.getAeropuertoOaci() == null || !usuario.getAeropuertoOaci().equalsIgnoreCase(req.origenOaci())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            }
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(rtService.registrarPedido(req, operarioId));

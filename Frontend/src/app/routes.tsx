@@ -80,7 +80,6 @@ export const router = createBrowserRouter([
         Component: OperatorLayout,
         children: [
           { index: true, Component: OperatorRegistration },
-          { path: "mapa", Component: AirportMap },
         ],
       },
       {

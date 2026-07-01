@@ -290,14 +290,13 @@ export function FlightsPanel() {
                 <th className={`text-left px-3 py-2.5 ${textSecondary} hidden md:table-cell`}>Llegada</th>
                 <th className={`text-left px-3 py-2.5 ${textSecondary}`}>Capacidad</th>
                 <th className={`text-left px-3 py-2.5 ${textSecondary}`}>Tipo</th>
-                <th className={`text-left px-3 py-2.5 ${textSecondary}`}>Estado</th>
                 <th className={`text-center px-3 py-2.5 ${textSecondary}`}>Cancelar hoy</th>
               </tr>
             </thead>
             <tbody>
               {pageData.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className={`text-center py-12 ${textSecondary}`}>
+                  <td colSpan={7} className={`text-center py-12 ${textSecondary}`}>
                     {search || filterOrigin !== "all" || filterType !== "all" || filterStatus !== "all"
                       ? "No se encontraron vuelos con los filtros aplicados"
                       : "No hay vuelos registrados"}
@@ -342,12 +341,6 @@ export function FlightsPanel() {
                           ? isDark ? "bg-purple-500/15 text-purple-400" : "bg-purple-100 text-purple-700"
                           : isDark ? "bg-blue-500/15 text-blue-400" : "bg-blue-100 text-blue-700"
                         }`}>{f.intercontinental ? "Inter" : "Intra"}</span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[11px] ${f.cancelled
-                          ? isDark ? "bg-red-500/15 text-red-400" : "bg-red-100 text-red-700"
-                          : isDark ? "bg-green-500/15 text-green-400" : "bg-green-100 text-green-700"
-                        }`}>{f.cancelled ? "Cancelado" : "Activo"}</span>
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="flex items-center justify-center">

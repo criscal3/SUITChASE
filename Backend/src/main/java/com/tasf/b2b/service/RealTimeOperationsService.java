@@ -395,7 +395,8 @@ public class RealTimeOperationsService {
                 p.getAerolineaId(), nombreAerolinea,
                 p.getEstado().name(), tramos.size(),
                 p.getUbicacionActual(), tramosDTO,
-                operarioOaci
+                operarioOaci,
+                p.getOperarioId()
         );
     }
 }

@@ -15,5 +15,6 @@ public record PedidoRealDTO(
     Integer totalTramos,
     String ubicacionActual,
     List<TramoDTO> tramos,
-    String operarioOaci
+    String operarioOaci,
+    Long operarioId
 ) {}

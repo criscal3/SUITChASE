@@ -17,12 +17,15 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
   const { state, registerBaggage, batchImportBaggage } = useSim();
   const { isDark } = useTheme();
   
+  const role = localStorage.getItem("suitchase_role");
+  const assignedAirport = localStorage.getItem("suitchase_aeropuerto_oaci") || "";
+
   const [airportsList, setAirportsList] = useState<any[]>([]);
   const [airlines, setAirlines] = useState<any[]>([]);
   const [baggageGroups, setBaggageGroups] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [origin, setOrigin] = useState("");
+  const [origin, setOrigin] = useState(role === "OPERARIO" ? assignedAirport : "");
   const [destination, setDestination] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [airline, setAirline] = useState("");
@@ -30,6 +33,12 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
   const [airlineOpen, setAirlineOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  useEffect(() => {
+    if (role === "OPERARIO" && assignedAirport) {
+      setOrigin(assignedAirport);
+    }
+  }, [role, assignedAirport]);
   const fileRef = useRef<HTMLInputElement>(null);
   const airlineRef = useRef<HTMLDivElement>(null);
 
@@ -306,7 +315,7 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
                 <MapPin className="w-3.5 h-3.5" />
                 Aeropuerto de origen
               </Label>
-              <Select value={origin} onValueChange={setOrigin}>
+              <Select value={origin} onValueChange={setOrigin} disabled={role === "OPERARIO"}>
                 <SelectTrigger className={inputBg}>
                   <SelectValue placeholder="Seleccionar origen..." />
                 </SelectTrigger>

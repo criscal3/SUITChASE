@@ -51,6 +51,7 @@ public class AuthController {
             responseMap.put("role", usuario.getRol().name());
             responseMap.put("nombreCompleto", usuario.getNombreCompleto());
             responseMap.put("aerolineaId", usuario.getAerolineaId());
+            responseMap.put("aeropuertoOaci", usuario.getAeropuertoOaci());
 
             return ResponseEntity.ok(responseMap);
         } catch (Exception e) {

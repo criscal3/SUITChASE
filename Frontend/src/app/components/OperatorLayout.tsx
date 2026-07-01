@@ -1,7 +1,8 @@
 import React from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
 import { useTheme } from "../context/ThemeContext";
-import { Briefcase, Package, Sun, Moon, LogOut, Map } from "lucide-react";
+import { Briefcase, Package, Sun, Moon, LogOut } from "lucide-react";
+import { api } from "../services/api";
 
 function useCurrentTime() {
   const [now, setNow] = React.useState(new Date());
@@ -15,8 +16,37 @@ function useCurrentTime() {
 function OperatorLayoutInner() {
   const { isDark, toggleTheme } = useTheme();
   const now = useCurrentTime();
-  const dateStr = now.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-  const timeStr = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  
+  const [assignedGmt, setAssignedGmt] = React.useState<number | null>(null);
+  const [airportCity, setAirportCity] = React.useState<string>("");
+  const oaci = localStorage.getItem("suitchase_aeropuerto_oaci") || "";
+
+  React.useEffect(() => {
+    if (oaci) {
+      api.getAirports().then(aps => {
+        const ap = aps.find((a: any) => a.oaci === oaci);
+        if (ap) {
+          setAssignedGmt(ap.gmt);
+          setAirportCity(ap.ciudad);
+        }
+      }).catch(err => console.error("Error loading airports in OperatorLayout", err));
+    }
+  }, [oaci]);
+
+  let dateStr = "";
+  let timeStr = "";
+
+  if (assignedGmt !== null) {
+    const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+    const localTime = new Date(utcMs + assignedGmt * 3600000);
+    dateStr = localTime.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+    const gmtLabel = `UTC${assignedGmt >= 0 ? `+${assignedGmt}` : assignedGmt}`;
+    timeStr = `${localTime.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} (${gmtLabel})`;
+  } else {
+    dateStr = now.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+    timeStr = now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -64,22 +94,6 @@ function OperatorLayoutInner() {
             <Package className="w-4 h-4 shrink-0" />
             Registro
           </NavLink>
-
-          <NavLink
-            to="/operario/mapa"
-            className={({ isActive }) =>
-              `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-colors ${
-                isActive
-                  ? "bg-blue-600/20 text-blue-400"
-                  : isDark
-                    ? "text-white/80 hover:bg-[#1e293b] hover:text-white"
-                    : "text-[#334155] hover:bg-[#d1dce8] hover:text-[#0f172a]"
-              }`
-            }
-          >
-            <Map className="w-4 h-4 shrink-0" />
-            Mapa
-          </NavLink>
         </nav>
 
         <div className={`p-3 border-t ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}`}>
@@ -98,7 +112,7 @@ function OperatorLayoutInner() {
         <header className={`h-12 border-b flex items-center px-4 gap-3 shrink-0 ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-[#e8edf5] border-[#cbd5e1]"}`}>
           <span className={`text-[14px] ${isDark ? "text-white" : "text-[#0f172a]"}`}>Registro de Equipaje</span>
           <div className="ml-auto flex items-center gap-3">
-            <span className={`text-[12px] ${isDark ? "text-[#94a3b8]" : "text-[#64748b]"}`}>{dateStr} • {timeStr}</span>
+            <span className={`text-[12px] ${isDark ? "text-[#94a3b8]" : "text-[#64748b]"}`}>{airportCity ? `${airportCity} (${oaci}) • ` : ""}{dateStr} • {timeStr}</span>
             <button
               onClick={() => navigate("/login")}
               title="Cerrar sesión"

@@ -307,8 +307,6 @@ export function AirportsPanel() {
                 <th className={`text-left px-3 py-2.5 ${textSecondary} hidden lg:table-cell`}>Continente</th>
                 <th className={`text-left px-3 py-2.5 ${textSecondary} hidden lg:table-cell`}>Huso Horario</th>
                 <th className={`text-left px-3 py-2.5 ${textSecondary}`}>Capacidad</th>
-                <th className={`text-left px-3 py-2.5 ${textSecondary}`}>Maletas</th>
-                <th className={`text-left px-3 py-2.5 ${textSecondary} hidden md:table-cell`}>Estado</th>
                 <th className={`text-left px-3 py-2.5 ${textSecondary} hidden xl:table-cell`}>Coords</th>
                 <th className={`text-center px-3 py-2.5 ${textSecondary}`}>Acciones</th>
               </tr>
@@ -316,7 +314,7 @@ export function AirportsPanel() {
             <tbody>
               {pageData.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className={`text-center py-12 ${textSecondary}`}>
+                  <td colSpan={8} className={`text-center py-12 ${textSecondary}`}>
                     {search ? "No se encontraron aeropuertos" : "No hay aeropuertos registrados"}
                   </td>
                 </tr>
@@ -349,17 +347,6 @@ export function AirportsPanel() {
                       {a.timezone || "—"}
                     </td>
                     <td className={`px-3 py-2.5 ${textPrimary}`}>{cap.toLocaleString()}</td>
-                    <td className={`px-3 py-2.5 ${textPrimary}`}>{stock.toLocaleString()}</td>
-                    <td className={`px-3 py-2.5 hidden md:table-cell`}>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-16 h-1.5 rounded-full overflow-hidden ${isDark ? "bg-[#1e293b]" : "bg-[#e2e8f0]"}`}>
-                          <div className={`h-full rounded-full transition-all ${getBarColor(pct)}`} style={{ width: `${Math.min(100, pct)}%` }} />
-                        </div>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getStatusBadge(pct, isDark)}`}>
-                          {pct.toFixed(0)}%
-                        </span>
-                      </div>
-                    </td>
                     <td className={`px-3 py-2.5 ${textSecondary} hidden xl:table-cell font-mono text-[10px]`}>
                       {a.lat.toFixed(2)}, {a.lng.toFixed(2)}
                     </td>
