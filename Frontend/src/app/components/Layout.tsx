@@ -12,7 +12,7 @@ import { Toaster } from "sonner";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/simulacion", label: "Simulador", icon: Activity },
+  { to: "/simulacion", label: "Escenarios", icon: Activity },
   { to: "/vuelos", label: "Vuelos", icon: Plane },
   { to: "/aeropuertos", label: "Aeropuertos", icon: Warehouse },
   { to: "/aerolineas", label: "Aerolíneas", icon: Building2 },
