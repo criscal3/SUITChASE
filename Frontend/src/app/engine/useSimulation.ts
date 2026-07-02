@@ -400,16 +400,21 @@ export function useSimulation() {
   applyBlockRef.current = applyBlock;
 
   /**
-   * Aplica el siguiente bloque cuando el reloj sim alcanza start + n×Sc (n = bloques ya mostrados).
-   * Ej.: inicio 01/01 18:00 → bloque 1; 02/01 00:00 → bloque 2; 06:00 → bloque 3; …
+   * Aplica el siguiente bloque cuando el reloj sim alcanza su inicioVentana.
+   * Cada bloque lleva su propio timestamp de inicio de ventana (_inicioVentanaMs),
+   * que es el momento exacto en que debe aplicarse para que los aviones aparezcan
+   * progresivamente desde el inicio de la ventana (no al final).
    */
   const tryConsumeBlocksAtSimTime = useCallback((simTimeMs: number, forceConsume = false) => {
     while (blockQueueRef.current.length > 0) {
-      const nextBoundary =
-        startTimeRef.current + blocksConsumedRef.current * SC_MS;
-      if (!forceConsume && simTimeMs < nextBoundary) break;
-      const nextBlock = blockQueueRef.current.shift();
+      const nextBlock = blockQueueRef.current[0];
       if (!nextBlock) break;
+      // Use inicioVentana as the trigger boundary — fallback to counter-based for safety
+      const boundary = nextBlock._inicioVentanaMs != null
+        ? nextBlock._inicioVentanaMs
+        : startTimeRef.current + blocksConsumedRef.current * SC_MS;
+      if (!forceConsume && simTimeMs < boundary) break;
+      blockQueueRef.current.shift();
       blocksConsumedRef.current += 1;
       queueMicrotask(() => applyBlockRef.current(nextBlock));
     }
@@ -618,9 +623,31 @@ export function useSimulation() {
           
           return { ...prev, collapsePreBlocksReceived: received };
         } else {
-          // En cola hasta que el cronómetro sim cruce cada frontera de 6 h (Sc)
-          blockQueueRef.current.push(msg);
-          console.log(`Block ${msg.bloqueActual} queued. Queue size: ${blockQueueRef.current.length}`);
+          // Parsear inicioVentana del backend y adjuntarlo al mensaje para usarlo como trigger
+          let inicioVentanaMs: number | undefined = undefined;
+          if (msg.inicioVentana) {
+            try {
+              const parts = String(msg.inicioVentana).split(/[^0-9]/);
+              if (parts.length >= 5) {
+                inicioVentanaMs = Date.UTC(
+                  parseInt(parts[0], 10),
+                  parseInt(parts[1], 10) - 1,
+                  parseInt(parts[2], 10),
+                  parseInt(parts[3], 10),
+                  parseInt(parts[4], 10),
+                  parts[5] ? parseInt(parts[5], 10) : 0
+                );
+              }
+            } catch (e) {
+              console.warn("Error parsing inicioVentana:", e);
+            }
+          }
+          // Attach the window start timestamp to the message for boundary-based consumption
+          const msgWithBoundary = inicioVentanaMs != null
+            ? { ...msg, _inicioVentanaMs: inicioVentanaMs }
+            : msg;
+          blockQueueRef.current.push(msgWithBoundary);
+          console.log(`Block ${msg.bloqueActual} queued (inicioVentana=${msg.inicioVentana}). Queue size: ${blockQueueRef.current.length}`);
           if (runningRef.current && !waitingForFirstBlockRef.current) {
             tryConsumeBlocksAtSimTimeRef.current(currentTimeRef.current);
           }
