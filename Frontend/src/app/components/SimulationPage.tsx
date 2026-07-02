@@ -17,6 +17,7 @@ import { api } from "../services/api";
 import { ScrollArea } from "./ui/scroll-area";
 import { FlightMonitoringPanel, type FlightItem } from "./FlightMonitoringPanel";
 import { resolveFlightCapacity } from "../engine/backendAdapter";
+import { WarehouseMonitoringPanel, type WarehouseItem, type WarehouseShipmentItem } from "./WarehouseMonitoringPanel";
 
 const statusConfigRT: Record<string, { color: string; bg: string; lightBg: string; lightColor: string; label: string; icon: React.ReactNode }> = {
   PENDIENTE: { color: "text-amber-500", bg: "bg-amber-500/20", lightBg: "bg-amber-100", lightColor: "text-amber-700", label: "Sin vuelo", icon: <Clock className="w-3 h-3" /> },
@@ -88,8 +89,10 @@ export function SimulationPage() {
   const [selectedSimFlightBaggageIds, setSelectedSimFlightBaggageIds] = useState<string[] | null>(null);
   const [showRTEnvios, setShowRTEnvios] = useState(false);
   const [showRTVuelos, setShowRTVuelos] = useState(false);
+  const [showRTAlmacenes, setShowRTAlmacenes] = useState(false);
   const [showSimEnvios, setShowSimEnvios] = useState(false);
   const [showSimVuelos, setShowSimVuelos] = useState(false);
+  const [showSimAlmacenes, setShowSimAlmacenes] = useState(false);
   const [showCancelaciones, setShowCancelaciones] = useState(false);
   const [rtPedidosPage, setRtPedidosPage] = useState(1);
   const rtPedidosPageSize = 8;
@@ -514,6 +517,123 @@ export function SimulationPage() {
     });
     return computeUtilizationPercent(totalWarehouseStock, totalWarehouseCapacity);
   }, [realTimeResumen, realTimeAirports]);
+
+  // ──────────────────────────────────────────────────────────────
+  // Warehouse items — Tracking mode (RT)
+  // ──────────────────────────────────────────────────────────────
+  const rtWarehouseItems = useMemo((): WarehouseItem[] => {
+    return realTimeAirports
+      .filter((a: any) => (a.warehouseCapacity ?? 0) > 0)
+      .map((a: any) => {
+        const capacity     = a.warehouseCapacity ?? 0;
+        const currentStock = a.currentStock ?? 0;
+        const utilization  = capacity > 0 ? (currentStock / capacity) * 100 : 0;
+
+        const shipmentsInWarehouse: WarehouseShipmentItem[] = realTimePedidos
+          .filter((p: any) =>
+            p.ubicacionActual === a.code &&
+            (p.estado === "PENDIENTE" || p.estado === "PLANIFICADO")
+          )
+          .map((p: any) => {
+            const tramos: any[] = p.tramos || [];
+            let arrivedAt: string | null = null;
+            for (let i = tramos.length - 1; i >= 0; i--) {
+              if (tramos[i].destinoOaci === a.code && tramos[i].estado === "COMPLETADO") {
+                arrivedAt = tramos[i].fechaLlegada || null;
+                break;
+              }
+            }
+            let flightDeparture: string | null = null;
+            for (const tramo of tramos) {
+              if (tramo.origenOaci === a.code && tramo.estado === "PROGRAMADO") {
+                flightDeparture = tramo.fechaSalida || null;
+                break;
+              }
+            }
+            return { id: p.id, cant: p.cantidadMaletas, arrivedAt, flightDeparture } as WarehouseShipmentItem;
+          });
+
+        return {
+          code: a.code,
+          cityName: a.city ?? a.code,
+          gmt: a.gmt ?? 0,
+          capacity,
+          currentStock,
+          utilization,
+          shipments: shipmentsInWarehouse,
+        } as WarehouseItem;
+      });
+  }, [realTimeAirports, realTimePedidos]);
+
+  // ──────────────────────────────────────────────────────────────
+  // Warehouse items — Simulation mode
+  // ──────────────────────────────────────────────────────────────
+  const simWarehouseItems = useMemo((): WarehouseItem[] => {
+    const { airports, baggageGroups, currentTime } = state;
+
+    return Object.values(airports)
+      .filter(ap => (ap.capacity ?? 0) > 0)
+      .map(ap => {
+        const capacity     = ap.capacity ?? 0;
+        const currentStock = ap.currentStock ?? 0;
+        const utilization  = capacity > 0 ? (currentStock / capacity) * 100 : 0;
+
+        // Find city name and GMT from realTimeAirports
+        const rtAp = realTimeAirports.find((a: any) => a.code === ap.code);
+        const cityName = rtAp?.city ?? ap.code;
+        const gmt      = rtAp?.gmt  ?? 0;
+
+        // Shipments "waiting" at this airport in the simulation
+        const shipmentsInWarehouse: WarehouseShipmentItem[] = baggageGroups
+          .filter(bg =>
+            bg.status === "waiting" &&
+            bg.currentLocation === ap.code
+          )
+          .map(bg => {
+            // For simulation, arrivedAt is the arrival time of the last completed leg
+            let arrivedAtMs: number | null = null;
+            for (let i = bg.currentLegIndex - 1; i >= 0; i--) {
+              const leg = bg.route[i];
+              if (leg && leg.to === ap.code) {
+                arrivedAtMs = leg.arrivalTime;
+                break;
+              }
+            }
+            // flightDeparture: next scheduled leg from this airport
+            let flightDepartureMs: number | null = null;
+            for (let i = bg.currentLegIndex; i < bg.route.length; i++) {
+              const leg = bg.route[i];
+              if (leg && leg.from === ap.code && leg.departureTime > currentTime) {
+                flightDepartureMs = leg.departureTime;
+                break;
+              }
+            }
+
+            // Convert ms timestamps to ISO strings for the panel formatter
+            const toIso = (ms: number | null): string | null => {
+              if (ms === null) return null;
+              return new Date(ms).toISOString();
+            };
+
+            return {
+              id: bg.id,
+              cant: bg.quantity,
+              arrivedAt: toIso(arrivedAtMs),
+              flightDeparture: toIso(flightDepartureMs),
+            } as WarehouseShipmentItem;
+          });
+
+        return {
+          code: ap.code,
+          cityName,
+          gmt,
+          capacity,
+          currentStock,
+          utilization,
+          shipments: shipmentsInWarehouse,
+        } as WarehouseItem;
+      });
+  }, [state.airports, state.baggageGroups, state.currentTime, realTimeAirports]);
 
   /** Detener: pausa (reanudable tras Cerrar) y abre Highlights. */
   const handleStopSimulation = useCallback(async () => {
@@ -947,7 +1067,7 @@ export function SimulationPage() {
                   <button
                     onClick={() => {
                       setShowRTEnvios(!showRTEnvios);
-                      if (!showRTEnvios) setShowRTVuelos(false);
+                      if (!showRTEnvios) { setShowRTVuelos(false); setShowRTAlmacenes(false); }
                     }}
                     className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
                       showRTEnvios ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
@@ -1233,7 +1353,7 @@ export function SimulationPage() {
                   <button
                     onClick={() => {
                       setShowRTVuelos(!showRTVuelos);
-                      if (!showRTVuelos) setShowRTEnvios(false);
+                      if (!showRTVuelos) { setShowRTEnvios(false); setShowRTAlmacenes(false); }
                     }}
                     className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
                       showRTVuelos ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
@@ -1256,6 +1376,36 @@ export function SimulationPage() {
                           setSelectedFlightPedidoIds(pedidoIds);
                           setSelectedFlightKey(key);
                         }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Contenedor 3: Almacenes (tracking mode) */}
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
+                  showRTAlmacenes ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+                } ${panelBg}`}>
+                  <button
+                    onClick={() => {
+                      setShowRTAlmacenes(!showRTAlmacenes);
+                      if (!showRTAlmacenes) { setShowRTEnvios(false); setShowRTVuelos(false); }
+                    }}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
+                      showRTAlmacenes ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
+                      <span className={`text-[13px] ${isDark ? "text-white" : "text-[#111827]"}`}>Monitoreo de Almacenes</span>
+                    </div>
+                    {showRTAlmacenes ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+
+                  {showRTAlmacenes && (
+                    <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
+                      <WarehouseMonitoringPanel
+                        warehouses={rtWarehouseItems}
+                        isDark={isDark}
                       />
                     </div>
                   )}
@@ -1300,7 +1450,7 @@ export function SimulationPage() {
                   <button
                     onClick={() => {
                       setShowSimEnvios(!showSimEnvios);
-                      if (!showSimEnvios) setShowSimVuelos(false);
+                      if (!showSimEnvios) { setShowSimVuelos(false); setShowSimAlmacenes(false); }
                     }}
                     className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
                       showSimEnvios ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
@@ -1337,7 +1487,7 @@ export function SimulationPage() {
                   <button
                     onClick={() => {
                       setShowSimVuelos(!showSimVuelos);
-                      if (!showSimVuelos) setShowSimEnvios(false);
+                      if (!showSimVuelos) { setShowSimEnvios(false); setShowSimAlmacenes(false); }
                     }}
                     className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
                       showSimVuelos ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
@@ -1360,6 +1510,36 @@ export function SimulationPage() {
                           setSelectedSimFlightBaggageIds(baggageIds);
                           setSelectedSimFlightKey(key);
                         }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Contenedor 3: Almacenes (simulation mode) */}
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
+                  showSimAlmacenes ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+                } ${panelBg}`}>
+                  <button
+                    onClick={() => {
+                      setShowSimAlmacenes(!showSimAlmacenes);
+                      if (!showSimAlmacenes) { setShowSimEnvios(false); setShowSimVuelos(false); }
+                    }}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
+                      showSimAlmacenes ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
+                      <span className={`text-[13px] ${isDark ? "text-white" : "text-[#111827]"}`}>Monitoreo de Almacenes</span>
+                    </div>
+                    {showSimAlmacenes ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+
+                  {showSimAlmacenes && (
+                    <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
+                      <WarehouseMonitoringPanel
+                        warehouses={simWarehouseItems}
+                        isDark={isDark}
                       />
                     </div>
                   )}
