@@ -8,23 +8,29 @@ import java.time.temporal.ChronoUnit;
  */
 public class TimeUtils {
 
-    public static volatile LocalDateTime FECHA_INICIO_SIM = LocalDateTime.of(2027, 7, 24, 0, 0);
-    public static volatile LocalDateTime FECHA_FIN_SIM = LocalDateTime.of(2027, 7, 26, 0, 0);
+    private static final ThreadLocal<LocalDateTime> FECHA_INICIO_SIM = 
+            ThreadLocal.withInitial(() -> LocalDateTime.of(2027, 7, 24, 0, 0));
+
+    private static final ThreadLocal<LocalDateTime> FECHA_FIN_SIM = 
+            ThreadLocal.withInitial(() -> LocalDateTime.of(2027, 7, 26, 0, 0));
 
     public static final int MARGEN_POST_FIN_HORAS = 72;
     public static final int MARGEN_SLA_HORAS = 48;
     public static final int MARGEN_MULTITRAMO_DIAS = 8;
 
-    private static volatile int capacidadMinutosAlmacen = -1;
+    private static final ThreadLocal<Integer> capacidadMinutosAlmacen = 
+            ThreadLocal.withInitial(() -> -1);
+
+    private static final ThreadLocal<int[]> almacenCero = new ThreadLocal<>();
 
     public static void setFechaInicioSim(LocalDateTime fecha) {
-        FECHA_INICIO_SIM = fecha;
-        capacidadMinutosAlmacen = -1;
+        FECHA_INICIO_SIM.set(fecha);
+        capacidadMinutosAlmacen.set(-1);
     }
 
     public static void setFechaFinSim(LocalDateTime fecha) {
-        FECHA_FIN_SIM = fecha;
-        capacidadMinutosAlmacen = -1;
+        FECHA_FIN_SIM.set(fecha);
+        capacidadMinutosAlmacen.set(-1);
     }
 
     public static void configurarRangoSimulacion(LocalDateTime inicio, LocalDateTime fin) {
@@ -33,21 +39,23 @@ public class TimeUtils {
     }
 
     public static LocalDateTime getFechaInicioSim() {
-        return FECHA_INICIO_SIM;
+        return FECHA_INICIO_SIM.get();
     }
 
     public static LocalDateTime getFechaFinSim() {
-        return FECHA_FIN_SIM;
+        return FECHA_FIN_SIM.get();
     }
 
     public static int getCapacidadMinutosAlmacen() {
-        if (capacidadMinutosAlmacen < 0) {
-            long minutosSim = Math.max(0, ChronoUnit.MINUTES.between(FECHA_INICIO_SIM, FECHA_FIN_SIM));
+        int cap = capacidadMinutosAlmacen.get();
+        if (cap < 0) {
+            long minutosSim = Math.max(0, ChronoUnit.MINUTES.between(getFechaInicioSim(), getFechaFinSim()));
             long margenMin = (long) (MARGEN_POST_FIN_HORAS + MARGEN_SLA_HORAS) * 60L
                     + (long) MARGEN_MULTITRAMO_DIAS * 24L * 60L;
-            capacidadMinutosAlmacen = (int) Math.min(minutosSim + margenMin, Integer.MAX_VALUE - 1L) + 1;
+            cap = (int) Math.min(minutosSim + margenMin, Integer.MAX_VALUE - 1L) + 1;
+            capacidadMinutosAlmacen.set(cap);
         }
-        return capacidadMinutosAlmacen;
+        return cap;
     }
 
     public static int[] nuevoArregloOcupacionAlmacen() {
@@ -60,19 +68,19 @@ public class TimeUtils {
      */
     public static int[] almacenSinUso() {
         int cap = getCapacidadMinutosAlmacen();
-        int[] actual = almacenCero;
+        int[] actual = almacenCero.get();
         if (actual != null && actual.length == cap) {
             return actual;
         }
         synchronized (TimeUtils.class) {
-            if (almacenCero == null || almacenCero.length != cap) {
-                almacenCero = new int[cap];
+            actual = almacenCero.get();
+            if (actual == null || actual.length != cap) {
+                actual = new int[cap];
+                almacenCero.set(actual);
             }
-            return almacenCero;
+            return actual;
         }
     }
-
-    private static volatile int[] almacenCero = null;
 
     public static int[] ajustarArregloOcupacion(int[] existente) {
         int cap = getCapacidadMinutosAlmacen();
@@ -87,7 +95,7 @@ public class TimeUtils {
     }
 
     public static int getIndiceMinuto(LocalDateTime fecha) {
-        return (int) ChronoUnit.MINUTES.between(FECHA_INICIO_SIM, fecha);
+        return (int) ChronoUnit.MINUTES.between(getFechaInicioSim(), fecha);
     }
 
     public static boolean intervaloAlmacenValido(int idxInicio, int idxFin) {
