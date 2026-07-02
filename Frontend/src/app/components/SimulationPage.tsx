@@ -183,8 +183,8 @@ export function SimulationPage() {
                   map.delete(p.id);
                 }
               } else {
-                // SIN_RUTA and COLAPSO are always removed
-                map.delete(p.id);
+                // SIN_RUTA and COLAPSO are kept so they can be shown in warehouses
+                map.set(p.id, p);
               }
             } else {
               map.set(p.id, p);
@@ -530,10 +530,25 @@ export function SimulationPage() {
         const utilization  = capacity > 0 ? (currentStock / capacity) * 100 : 0;
 
         const shipmentsInWarehouse: WarehouseShipmentItem[] = realTimePedidos
-          .filter((p: any) =>
-            p.ubicacionActual === a.code &&
-            (p.estado === "PENDIENTE" || p.estado === "PLANIFICADO")
-          )
+          .filter((p: any) => {
+            if (p.estado === "ENTREGADO") return false;
+            let currentLocation = p.origenOaci;
+            const tramos: any[] = p.tramos || [];
+            let isFlying = false;
+            for (const t of tramos) {
+              if (t.estado === "COMPLETADO") {
+                currentLocation = t.destinoOaci;
+              } else if (t.estado === "EN_VUELO") {
+                isFlying = true;
+                break;
+              } else if (t.estado === "PROGRAMADO") {
+                currentLocation = t.origenOaci;
+                break;
+              }
+            }
+            if (isFlying) return false;
+            return currentLocation === a.code;
+          })
           .map((p: any) => {
             const tramos: any[] = p.tramos || [];
             let arrivedAt: string | null = null;
@@ -585,10 +600,48 @@ export function SimulationPage() {
 
         // Shipments "waiting" at this airport in the simulation
         const shipmentsInWarehouse: WarehouseShipmentItem[] = baggageGroups
-          .filter(bg =>
-            bg.status === "waiting" &&
-            bg.currentLocation === ap.code
-          )
+          .filter(bg => {
+            if (bg.status === "delivered") return false;
+            
+            // Si el envío aún no ha sido registrado en el sistema, no lo mostramos
+            if (currentTime < bg.registeredAt) {
+              return false;
+            }
+            
+            // Si no tiene ruta, está varado en el origen
+            if (!bg.route || bg.route.length === 0) {
+              return bg.origin === ap.code;
+            }
+            
+            // Si todavía no sale su primer vuelo, está en el origen
+            if (currentTime < bg.route[0].departureTime) {
+              return bg.origin === ap.code;
+            }
+            
+            // Si ya llegó a su destino final
+            const lastLeg = bg.route[bg.route.length - 1];
+            if (currentTime >= lastLeg.arrivalTime) {
+              // En simulación, si llegó a su destino y está en la bodega, lo contamos
+              return lastLeg.to === ap.code;
+            }
+            
+            // Entre vuelos o en vuelo
+            for (let i = 0; i < bg.route.length; i++) {
+              const leg = bg.route[i];
+              // En vuelo
+              if (currentTime >= leg.departureTime && currentTime < leg.arrivalTime) {
+                return false;
+              }
+              // Esperando conexión
+              if (i < bg.route.length - 1) {
+                const nextLeg = bg.route[i + 1];
+                if (currentTime >= leg.arrivalTime && currentTime < nextLeg.departureTime) {
+                  return leg.to === ap.code;
+                }
+              }
+            }
+            return false;
+          })
           .map(bg => {
             // For simulation, arrivedAt is the arrival time of the last completed leg
             let arrivedAtMs: number | null = null;

@@ -161,8 +161,8 @@ export function RealTimePage() {
                   map.delete(p.id);
                 }
               } else {
-                // SIN_RUTA and COLAPSO are always removed
-                map.delete(p.id);
+                // SIN_RUTA and COLAPSO are kept so they can be shown in warehouses
+                map.set(p.id, p);
               }
             } else {
               map.set(p.id, p);
@@ -391,10 +391,25 @@ export function RealTimePage() {
         // A shipment is in a warehouse when its ubicacionActual matches the airport code
         // and its state is PENDIENTE or PLANIFICADO (not yet in transit).
         const shipmentsInWarehouse: WarehouseShipmentItem[] = pedidos
-          .filter(p =>
-            p.ubicacionActual === a.code &&
-            (p.estado === "PENDIENTE" || p.estado === "PLANIFICADO")
-          )
+          .filter(p => {
+            if (p.estado === "ENTREGADO") return false;
+            let currentLocation = p.origenOaci;
+            const tramos: any[] = p.tramos || [];
+            let isFlying = false;
+            for (const t of tramos) {
+              if (t.estado === "COMPLETADO") {
+                currentLocation = t.destinoOaci;
+              } else if (t.estado === "EN_VUELO") {
+                isFlying = true;
+                break;
+              } else if (t.estado === "PROGRAMADO") {
+                currentLocation = t.origenOaci;
+                break;
+              }
+            }
+            if (isFlying) return false;
+            return currentLocation === a.code;
+          })
           .map(p => {
             const tramos: any[] = p.tramos || [];
 

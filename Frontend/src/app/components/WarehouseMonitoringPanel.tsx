@@ -292,7 +292,7 @@ export function WarehouseMonitoringPanel({ warehouses, isDark }: WarehouseMonito
                           Sin envíos registrados
                         </div>
                       ) : (
-                        <div className={`max-h-52 overflow-y-auto pr-0.5 rounded-lg border p-1 ${isDark ? "bg-black/25 border-[#1e293b]" : "bg-white/60 border-[#cbd5e1]"}`}>
+                        <div className={`max-h-52 overflow-y-auto pr-0.5 rounded-lg border p-1 custom-blue-scrollbar ${isDark ? "bg-black/25 border-[#1e293b]" : "bg-white/60 border-[#cbd5e1]"}`}>
                           {/* Encabezado de tabla */}
                           <div className={`grid grid-cols-[1fr_auto_1fr_1fr] gap-1 px-1 pb-1 border-b text-[8.5px] font-semibold uppercase tracking-wider ${mutedCls} ${headerBorder}`}>
                             <span>Envío</span>
