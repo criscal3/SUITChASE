@@ -14,7 +14,6 @@ export interface FlightItem {
   arrivalTime: string; // formatted local date-time
   departureRaw: number | string; // raw timestamp or ISO string for sorting
   arrivalRaw: number | string; // raw timestamp or ISO string for sorting
-  aerolinea: string;
   currentLoad: number;
   capacity: number;
   utilization: number;
@@ -90,7 +89,7 @@ export function FlightMonitoringPanel({
     if (filterShipment.trim()) {
       const q = filterShipment.toLowerCase().trim();
       result = result.filter(f => 
-        f.shipments.some(s => s.id.toLowerCase().includes(q))
+        f.id.toLowerCase().includes(q)
       );
     }
 
@@ -101,7 +100,6 @@ export function FlightMonitoringPanel({
         f.id.toLowerCase().includes(q) ||
         f.fromCode.toLowerCase().includes(q) ||
         f.toCode.toLowerCase().includes(q) ||
-        f.aerolinea.toLowerCase().includes(q) ||
         f.shipments.some(s => s.id.toLowerCase().includes(q))
       );
     }
@@ -274,10 +272,10 @@ export function FlightMonitoringPanel({
             </div>
           </div>
           <div>
-            <label className={`text-[9px] uppercase font-semibold ${mutedCls}`}>Código Envío</label>
+            <label className={`text-[9px] uppercase font-semibold ${mutedCls}`}>Código Vuelo</label>
             <div className="relative mt-0.5">
               <Input
-                placeholder="Filtrar por envío..."
+                placeholder="Filtrar por vuelo..."
                 value={filterShipment}
                 onChange={e => setFilterShipment(e.target.value)}
                 className={`h-6 text-[10px] pr-6 ${searchBg}`}
@@ -310,7 +308,7 @@ export function FlightMonitoringPanel({
               isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"
             }`}>
               <span className="truncate font-mono">
-                Vuelo seleccionado: {selectedFlightKey.split("-").slice(0, 3).join("-")}
+                Vuelo seleccionado: {flights.find(f => f.key === selectedFlightKey)?.id || selectedFlightKey}
               </span>
               <button
                 onClick={() => {
@@ -346,9 +344,6 @@ export function FlightMonitoringPanel({
                       <Plane className={`w-3 h-3 shrink-0 ${isDark ? "text-cyan-400" : "text-blue-600"}`} />
                       <span className={`font-mono font-bold ${titleCls} truncate`}>{f.id}</span>
                     </div>
-                    <div className={`text-[9px] ${mutedCls} font-medium mt-0.5`}>
-                      {f.aerolinea}
-                    </div>
                   </div>
 
                   <div className="text-right shrink-0 flex flex-col items-end gap-0.5">
@@ -371,7 +366,7 @@ export function FlightMonitoringPanel({
                 {/* Detalles del Vuelo (Desplegable) */}
                 {expandedKey === f.key && (
                   <div className={`px-2.5 pb-2.5 pt-1.5 border-t text-[10px] space-y-2 bg-black/15 ${headerBorder}`}>
-                    <div className="grid grid-cols-2 gap-2 text-[9.5px]">
+                    <div className="space-y-1.5 text-[9.5px]">
                       <div>
                         <span className={mutedCls}>Salida:</span>
                         <div className={`font-medium ${subCls}`}>{f.departureTime}</div>

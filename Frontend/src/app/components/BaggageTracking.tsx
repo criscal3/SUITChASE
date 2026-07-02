@@ -86,6 +86,14 @@ export function BaggageTracking({
 
   const getCity = (code: string) => airportsList.find(a => a.code === code)?.city || code;
 
+  const getDepartureTimeOnly = (ts: number) => {
+    if (!ts || isNaN(ts)) return "";
+    const d = new Date(ts);
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  };
+
   const isIntercontinental = (bg: BaggageGroup): boolean => {
     if (bg.route.length === 0) return false;
     const firstFlight = state.flights.find(f => f.id === bg.route[0].flightId);
@@ -192,7 +200,20 @@ export function BaggageTracking({
       {selectedFlightKey && (
         <div className={`mx-3 my-2 p-2 rounded-lg flex items-center justify-between text-[10px] shrink-0 ${isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"}`}>
           <span className="truncate">
-            Filtrando vuelo: {selectedFlightKey.split("-")[0]} → {selectedFlightKey.split("-")[1]} ({state.baggageGroups.filter(bg => selectedFlightBaggageIds?.includes(bg.id)).reduce((sum, bg) => sum + bg.quantity, 0)} envíos)
+            Filtrando por vuelo: {(() => {
+              const parts = selectedFlightKey.split('-');
+              // Buscar la parte que parece una hora (contiene ":") y tomar hasta esa parte
+              const timeIndex = parts.findIndex(p => p.includes(':'));
+              if (timeIndex >= 0 && timeIndex >= 1) {
+                // Tomar origen, destino y hora
+                return parts.slice(0, timeIndex + 1).join('-');
+              }
+              // Si no hay hora, tomar las primeras 3 partes por defecto
+              if (parts.length >= 3) {
+                return parts.slice(0, 3).join('-');
+              }
+              return selectedFlightKey;
+            })()}
           </span>
           <button
             onClick={onClearFlightFilter}

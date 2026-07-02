@@ -332,7 +332,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
         const progress = Math.min(1, Math.max(0, (nowMs - depTime) / total));
 
         // Grouping key: unique for a specific flight leg at a specific time
-        const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${depTime}-${arrTime}-${p.nombreAerolinea}`;
+        const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${depTime}-${arrTime}`;
 
         if (!flightsMap.has(flightKey)) {
           flightsMap.set(flightKey, {

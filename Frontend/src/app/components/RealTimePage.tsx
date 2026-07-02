@@ -273,6 +273,15 @@ export function RealTimePage() {
 
   const getGmt = useCallback((oaci: string) => airportsList.find((a: any) => a.code === oaci)?.gmt ?? 0, [airportsList]);
 
+  const parseUTCDate = (dateStr: any): number => {
+    if (!dateStr || typeof dateStr !== "string") return 0;
+    let formatted = dateStr.replace(" ", "T");
+    if (!formatted.endsWith("Z") && !formatted.includes("+") && !/-\d{2}:\d{2}$/.test(formatted)) {
+      formatted += "Z";
+    }
+    return new Date(formatted).getTime();
+  };
+
   const getDepartureTimeOnly = (isoStr: string) => {
     if (!isoStr) return "";
     try {
@@ -488,7 +497,7 @@ export function RealTimePage() {
 
         {/* Panel derecho - Rastreo y búsqueda */}
         {showRightPanel && (
-          <div className="absolute right-4 top-14 bottom-4 z-10 w-72 flex flex-col gap-2 pointer-events-none">
+          <div className="absolute right-4 top-14 bottom-4 z-10 w-92 flex flex-col gap-2 pointer-events-none">
             
             {/* Contenedor 1: Envíos */}
             <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
@@ -536,9 +545,7 @@ export function RealTimePage() {
                       isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"
                     }`}>
                       <span className="truncate">
-                        Filtrando vuelo: {selectedFlightKey.split("-").slice(0, 3).join("-")} ({
-                          pedidos.filter(p => selectedFlightPedidoIds?.includes(p.id)).reduce((sum, p) => sum + p.cantidadMaletas, 0)
-                        } maletas)
+                        Filtrando por vuelo: {activeFlights.find(f => f.key === selectedFlightKey)?.id || selectedFlightKey}
                       </span>
                       <button
                         onClick={() => {

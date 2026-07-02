@@ -236,7 +236,8 @@ export function SimulationPage() {
       const year = d.getUTCFullYear();
       const hh = String(d.getUTCHours()).padStart(2, "0");
       const mm = String(d.getUTCMinutes()).padStart(2, "0");
-      return `${day}-${month}-${year} ${hh}:${mm}`;
+      const gmtLabel = `UTC${gmtOffset >= 0 ? `+${gmtOffset}` : gmtOffset}`;
+      return `${day}-${month}-${year} ${hh}:${mm} ${gmtLabel}`;
     } catch { return "—"; }
   };
 
@@ -254,7 +255,7 @@ export function SimulationPage() {
 
         const depTime = parseUTCDate(leg.fechaSalida);
         const arrTime = parseUTCDate(leg.fechaLlegada);
-        const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${depTime}-${arrTime}-${p.nombreAerolinea}`;
+        const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${depTime}-${arrTime}`;
 
         if (!flightsMap.has(flightKey)) {
           flightsMap.set(flightKey, {
@@ -263,7 +264,6 @@ export function SimulationPage() {
             toCode: leg.destinoOaci,
             fechaSalida: leg.fechaSalida,
             fechaLlegada: leg.fechaLlegada,
-            aerolinea: p.nombreAerolinea,
             cantMaletas: 0,
             pedidoIds: [] as string[],
             shipments: [] as { id: string; cant: number }[],
@@ -296,7 +296,6 @@ export function SimulationPage() {
         arrivalTime: fmtLocal(f.fechaLlegada, toGmt),
         departureRaw: f.fechaSalida,
         arrivalRaw: f.fechaLlegada,
-        aerolinea: f.aerolinea,
         currentLoad: f.cantMaletas,
         capacity,
         utilization,
@@ -939,7 +938,7 @@ export function SimulationPage() {
             </div>
             {/* RealTime Right Panel */}
             {showRealTimeRightPanel && (
-              <div className="absolute right-4 top-14 bottom-4 z-10 w-72 flex flex-col gap-2 pointer-events-none">
+              <div className="absolute right-4 top-14 bottom-4 z-10 w-92 flex flex-col gap-2 pointer-events-none">
                 
                 {/* Contenedor 1: Envíos */}
                 <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
@@ -1002,9 +1001,7 @@ export function SimulationPage() {
                           isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"
                         }`}>
                           <span className="truncate">
-                            Filtrando vuelo: {selectedFlightKey.split("-").slice(0, 3).join("-")} ({
-                              realTimePedidos.filter(p => selectedFlightPedidoIds?.includes(p.id)).reduce((sum, p) => sum + p.cantidadMaletas, 0)
-                            } maletas)
+                            Filtrando por vuelo: {activeRTFlights.find(f => f.key === selectedFlightKey)?.id || selectedFlightKey}
                           </span>
                           <button
                             onClick={() => {
@@ -1294,7 +1291,7 @@ export function SimulationPage() {
 
             {/* Panel derecho - Tracking & Cancelación */}
             {showTracking && (
-              <div className="absolute right-4 top-14 bottom-4 z-10 w-64 flex flex-col gap-2 pointer-events-none">
+              <div className="absolute right-4 top-14 bottom-4 z-10 w-92 flex flex-col gap-2 pointer-events-none">
                 
                 {/* Contenedor 1: Envíos */}
                 <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
