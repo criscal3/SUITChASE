@@ -6,9 +6,10 @@ import { api } from "../services/api";
 import { ScrollArea } from "./ui/scroll-area";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
-import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight, X, Radio, Warehouse } from "lucide-react";
+import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight, X, Radio, Warehouse, ChevronUp, ChevronDown } from "lucide-react";
 import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
 import { computeUtilizationPercent, getOccupancyColor } from "../engine/occupancyStatus";
+import { FlightMonitoringPanel, type FlightItem } from "./FlightMonitoringPanel";
 
 interface Tramo {
   orden: number;
@@ -81,6 +82,12 @@ export function RealTimePage() {
   const [flightsList, setFlightsList] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [showRightPanel, setShowRightPanel] = useState(true);
+  const [showEnvios, setShowEnvios] = useState(false); // Collapsed on load
+  const [showVuelos, setShowVuelos] = useState(false); // Collapsed on load
+  const [selectedFlightKey, setSelectedFlightKey] = useState<string | null>(null);
+  const [selectedFlightPedidoIds, setSelectedFlightPedidoIds] = useState<string[] | null>(null);
+  const [pedidosPage, setPedidosPage] = useState(1);
+  const pedidosPageSize = 8;
   const [occupancyFilters, setOccupancyFilters] = useState<OccupancyFilters>({
     empty: { warehouse: true, flight: true },
     normal: { warehouse: true, flight: true },
@@ -264,14 +271,140 @@ export function RealTimePage() {
     };
   }, [resumen, airportsList, pedidos, flightsList]);
 
-  const filtered = pedidos.filter(p => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return p.id.toLowerCase().includes(s) ||
-      p.origenOaci.toLowerCase().includes(s) ||
-      p.destinoOaci.toLowerCase().includes(s) ||
-      p.nombreAerolinea.toLowerCase().includes(s);
-  });
+  const getGmt = useCallback((oaci: string) => airportsList.find((a: any) => a.code === oaci)?.gmt ?? 0, [airportsList]);
+
+  const getDepartureTimeOnly = (isoStr: string) => {
+    if (!isoStr) return "";
+    try {
+      const parts = isoStr.split(/[T ]/);
+      if (parts.length >= 2) {
+        const timeParts = parts[1].split(":");
+        return `${timeParts[0]}:${timeParts[1]}`;
+      }
+    } catch (e) {}
+    return "";
+  };
+
+  const fmtLocal = (isoStr: string, gmtOffset: number) => {
+    if (!isoStr) return "—";
+    try {
+      const utc = isoStr.endsWith('Z') ? isoStr : isoStr + 'Z';
+      const ms = new Date(utc).getTime() + gmtOffset * 3600_000;
+      const d = new Date(ms);
+      const day = String(d.getUTCDate()).padStart(2, "0");
+      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const year = d.getUTCFullYear();
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      return `${day}-${month}-${year} ${hh}:${mm}`;
+    } catch { return "—"; }
+  };
+
+  const activeFlights = useMemo(() => {
+    const flightsMap = new Map<string, any>();
+
+    pedidos.forEach(p => {
+      if (!p.tramos) return;
+      p.tramos.forEach(leg => {
+        if (leg.estado !== "EN_VUELO") return;
+
+        const from = airportsList.find((a) => a.code === leg.origenOaci);
+        const to = airportsList.find((a) => a.code === leg.destinoOaci);
+        if (!from || !to) return;
+
+        const depTime = parseUTCDate(leg.fechaSalida);
+        const arrTime = parseUTCDate(leg.fechaLlegada);
+        const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${depTime}-${arrTime}-${p.nombreAerolinea}`;
+
+        if (!flightsMap.has(flightKey)) {
+          flightsMap.set(flightKey, {
+            key: flightKey,
+            fromCode: leg.origenOaci,
+            toCode: leg.destinoOaci,
+            fechaSalida: leg.fechaSalida,
+            fechaLlegada: leg.fechaLlegada,
+            aerolinea: p.nombreAerolinea,
+            cantMaletas: 0,
+            pedidoIds: [] as string[],
+            shipments: [] as { id: string; cant: number }[],
+          });
+        }
+
+        const f = flightsMap.get(flightKey)!;
+        f.cantMaletas += p.cantidadMaletas;
+        f.pedidoIds.push(p.id);
+        if (!f.shipments.some((s: any) => s.id === p.id)) {
+          f.shipments.push({ id: p.id, cant: p.cantidadMaletas });
+        }
+      });
+    });
+
+    return Array.from(flightsMap.values()).map(f => {
+      const capacity = getRealTimeFlightCapacity(f.fromCode, f.toCode, f.fechaSalida, airportsList, flightsList || []);
+      const utilization = computeUtilizationPercent(f.cantMaletas, capacity);
+      const depTimeStr = getDepartureTimeOnly(f.fechaSalida);
+      const id = `${f.fromCode}-${f.toCode}-${depTimeStr}`;
+      const fromGmt = getGmt(f.fromCode);
+      const toGmt = getGmt(f.toCode);
+      
+      return {
+        id,
+        key: f.key,
+        fromCode: f.fromCode,
+        toCode: f.toCode,
+        departureTime: fmtLocal(f.fechaSalida, fromGmt),
+        arrivalTime: fmtLocal(f.fechaLlegada, toGmt),
+        departureRaw: f.fechaSalida,
+        arrivalRaw: f.fechaLlegada,
+        aerolinea: f.aerolinea,
+        currentLoad: f.cantMaletas,
+        capacity,
+        utilization,
+        shipments: f.shipments,
+        pedidoIds: f.pedidoIds,
+      };
+    });
+  }, [pedidos, flightsList, airportsList, getGmt]);
+
+  const filtered = useMemo(() => {
+    let result = pedidos;
+    if (search.trim()) {
+      const s = search.toLowerCase();
+      result = result.filter(p =>
+        p.id.toLowerCase().includes(s) ||
+        p.origenOaci.toLowerCase().includes(s) ||
+        p.destinoOaci.toLowerCase().includes(s) ||
+        p.nombreAerolinea.toLowerCase().includes(s)
+      );
+    }
+    if (selectedFlightPedidoIds) {
+      result = result.filter(p => selectedFlightPedidoIds.includes(p.id));
+    }
+    return result;
+  }, [pedidos, search, selectedFlightPedidoIds]);
+
+  // Reset page when search or flight filter changes
+  useEffect(() => {
+    setPedidosPage(1);
+  }, [search, selectedFlightKey]);
+
+  const totalPedidosPages = Math.ceil(filtered.length / pedidosPageSize);
+
+  const paginatedPedidos = useMemo(() => {
+    const startIndex = (pedidosPage - 1) * pedidosPageSize;
+    return filtered.slice(startIndex, startIndex + pedidosPageSize);
+  }, [filtered, pedidosPage, pedidosPageSize]);
+
+  // Jump page if selectedPedido is set
+  useEffect(() => {
+    if (selectedPedido) {
+      const idx = filtered.findIndex(p => p.id === selectedPedido.id);
+      if (idx !== -1) {
+        const pageOfPedido = Math.floor(idx / pedidosPageSize) + 1;
+        setPedidosPage(pageOfPedido);
+      }
+    }
+  }, [selectedPedido, filtered]);
 
   const rootBg = isDark ? "bg-[#080c18]" : "bg-[#eef2f7]";
   const panelBg = isDark ? "bg-[#0a0f1eee] border-[#1a2744]" : "bg-white/90 border-[#cbd5e1]";
@@ -343,196 +476,318 @@ export function RealTimePage() {
             airportsList={airportsList}
             flightsList={flightsList}
             filters={occupancyFilters}
+            selectedFlightKey={selectedFlightKey}
+            onSelectFlight={(pedidoIds, key) => {
+              setSelectedFlightPedidoIds(pedidoIds);
+              setSelectedFlightKey(key);
+              if (key) {
+                setShowVuelos(true);
+              }
+            }}
           />
         </div>
 
         {/* Panel derecho - Rastreo y búsqueda */}
         {showRightPanel && (
-          <div className={`absolute right-4 top-14 bottom-4 z-10 w-72 border rounded-xl backdrop-blur-sm overflow-hidden flex flex-col pointer-events-auto ${panelBg}`}>
-            <div className={`flex items-center gap-2 px-3 py-2 border-b ${headerBorder}`}>
-              <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
-              <span className={`text-[13px] ${titleCls}`}>Monitoreo de Envíos</span>
-            </div>
+          <div className="absolute right-4 top-14 bottom-4 z-10 w-72 flex flex-col gap-2 pointer-events-none">
+            
+            {/* Contenedor 1: Envíos */}
+            <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
+              showEnvios ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+            } ${panelBg}`}>
+              <button
+                onClick={() => {
+                  setShowEnvios(!showEnvios);
+                  if (!showEnvios) setShowVuelos(false);
+                }}
+                className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
+                  showEnvios ? `border-b ${headerBorder}` : ""
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
+                  <span className={titleCls}>Monitoreo de Envíos</span>
+                </div>
+                {showEnvios ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
 
-            {/* Búsqueda */}
-            <div className={`px-3 py-2 border-b ${headerBorder}`}>
-              <div className="relative">
-                <Search className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 ${searchIcon}`} />
-                <Input
-                  placeholder="Buscar ID, origen, destino..."
-                  value={search}
-                  onChange={e => { setSearch(e.target.value); setSelectedPedido(null); }}
-                  className={`pl-7 h-7 text-[11px] ${searchBg}`}
-                />
-                {search && (
-                  <button onClick={() => { setSearch(""); setSelectedPedido(null); }} className={`absolute right-2 top-1/2 -translate-y-1/2 ${dimCls}`}>
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Detalle del pedido seleccionado */}
-            {selectedPedido && sc && (
-              <div className={`px-3 py-2 border-b ${headerBorder} ${detailBg}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[12px] font-bold ${titleCls}`}>{selectedPedido.id}</span>
-                  <div className="flex items-center gap-1.5">
-                    {detailLoading && (
-                      <span className={`w-3 h-3 rounded-full border-2 border-t-transparent animate-spin ${
-                        isDark ? "border-cyan-400" : "border-blue-600"
-                      }`} />
-                    )}
-                    <Badge className={`text-[9px] ${isDark ? sc.bg : sc.lightBg} ${isDark ? sc.color : sc.lightColor}`}>
-                      {sc.icon} <span className="ml-1">{sc.label}</span>
-                    </Badge>
+              {showEnvios && (
+                <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
+                  {/* Búsqueda */}
+                  <div className={`px-3 py-2 border-b ${headerBorder}`}>
+                    <div className="relative">
+                      <Search className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 ${searchIcon}`} />
+                      <Input
+                        placeholder="Buscar ID, origen, destino..."
+                        value={search}
+                        onChange={e => { setSearch(e.target.value); setSelectedPedido(null); }}
+                        className={`pl-7 h-7 text-[11px] ${searchBg}`}
+                      />
+                      {search && (
+                        <button onClick={() => { setSearch(""); setSelectedPedido(null); }} className={`absolute right-2 top-1/2 -translate-y-1/2 ${dimCls}`}>
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className={`text-[10px] mb-2 ${subCls}`}>
-                  {selectedPedido.nombreAerolinea} | {selectedPedido.cantidadMaletas} maletas
-                </div>
 
-                {/* Ruta / Línea de tiempo con huso horario por aeropuerto */}
-                {(() => {
-                  const tramos = selectedPedido.tramos || [];
-                  const fmtLocal = (isoStr: string, gmtOffset: number) => {
-                    if (!isoStr) return "—";
-                    try {
-                      const utc = isoStr.endsWith('Z') ? isoStr : isoStr + 'Z';
-                      const ms = new Date(utc).getTime() + gmtOffset * 3600_000;
-                      const d = new Date(ms);
-                      return `${String(d.getUTCDate()).padStart(2,"0")}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
-                    } catch { return "—"; }
-                  };
-                  const getGmt = (oaci: string) => airportsList.find((a: any) => a.code === oaci)?.gmt ?? 0;
-                  const gmtLabel = (g: number) => `UTC${g >= 0 ? `+${g}` : g}`;
-                  const registroAirport = selectedPedido.operarioOaci || selectedPedido.origenOaci;
-                  const registroGmt = getGmt(registroAirport);
+                  {/* Indicador de filtro de vuelo */}
+                  {selectedFlightKey && (
+                    <div className={`mx-3 my-2 p-2 rounded-lg flex items-center justify-between text-[10px] shrink-0 ${
+                      isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"
+                    }`}>
+                      <span className="truncate">
+                        Filtrando vuelo: {selectedFlightKey.split("-").slice(0, 3).join("-")} ({
+                          pedidos.filter(p => selectedFlightPedidoIds?.includes(p.id)).reduce((sum, p) => sum + p.cantidadMaletas, 0)
+                        } maletas)
+                      </span>
+                      <button
+                        onClick={() => {
+                          setSelectedFlightKey(null);
+                          setSelectedFlightPedidoIds(null);
+                        }}
+                        className="ml-2 font-bold hover:underline shrink-0"
+                      >
+                        Ver todos
+                      </button>
+                    </div>
+                  )}
 
-                  return (
-                    <div className="space-y-0 mt-2 max-h-56 overflow-y-auto">
-                      {/* Nodo origen */}
-                      <div className="flex items-start gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
-                        <div className="flex-1">
-                          <div className={`text-[10px] font-semibold ${titleCls}`}>
-                            {getCity(selectedPedido.origenOaci)} ({selectedPedido.origenOaci})
-                          </div>
-                          <div className={`text-[9px] ${mutedCls}`}>
-                            Registro: {fmtLocal(selectedPedido.fechaHoraRegistro, registroGmt)} {gmtLabel(registroGmt)}
-                          </div>
-                          {tramos.length > 0 && (
-                            <div className={`text-[9px] ${isDark ? "text-cyan-400/80" : "text-cyan-700"}`}>
-                              Salida: {fmtLocal(tramos[0].fechaSalida, getGmt(tramos[0].origenOaci))} {gmtLabel(getGmt(tramos[0].origenOaci))}
-                            </div>
+                  {/* Detalle del pedido seleccionado */}
+                  {selectedPedido && sc && (
+                    <div className={`px-3 py-2 border-b ${headerBorder} ${detailBg}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-[12px] font-bold ${titleCls}`}>{selectedPedido.id}</span>
+                        <div className="flex items-center gap-1.5">
+                          {detailLoading && (
+                            <span className={`w-3 h-3 rounded-full border-2 border-t-transparent animate-spin ${
+                              isDark ? "border-cyan-400" : "border-blue-600"
+                            }`} />
                           )}
+                          <Badge className={`text-[9px] ${isDark ? sc.bg : sc.lightBg} ${isDark ? sc.color : sc.lightColor}`}>
+                            {sc.icon} <span className="ml-1">{sc.label}</span>
+                          </Badge>
                         </div>
                       </div>
+                      <div className={`text-[10px] mb-2 ${subCls}`}>
+                        {selectedPedido.nombreAerolinea} | {selectedPedido.cantidadMaletas} maletas
+                      </div>
 
-                      {/* Nodos intermedios y final */}
-                      {tramos.map((leg: any, i: number) => {
-                        const isCompleted = leg.estado === "COMPLETADO";
-                        const isCurrent   = leg.estado === "EN_VUELO";
-                        const isPending   = leg.estado === "PROGRAMADO" || leg.estado === "CANCELADO";
-                        const isCancelled = leg.estado === "CANCELADO";
-                        const isLast = i === tramos.length - 1;
-                        const arriGmt = getGmt(leg.destinoOaci);
-                        const nextLeg = !isLast ? tramos[i + 1] : null;
+                      {/* Ruta / Línea de tiempo con huso horario por aeropuerto */}
+                      {(() => {
+                        const tramos = selectedPedido.tramos || [];
+                        const fmtLocalTramo = (isoStr: string, gmtOffset: number) => {
+                          if (!isoStr) return "—";
+                          try {
+                            const utc = isoStr.endsWith('Z') ? isoStr : isoStr + 'Z';
+                            const ms = new Date(utc).getTime() + gmtOffset * 3600_000;
+                            const d = new Date(ms);
+                            return `${String(d.getUTCDate()).padStart(2,"0")}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
+                          } catch { return "—"; }
+                        };
+                        const getGmtTramo = (oaci: string) => airportsList.find((a: any) => a.code === oaci)?.gmt ?? 0;
+                        const gmtLabel = (g: number) => `UTC${g >= 0 ? `+${g}` : g}`;
+                        const registroAirport = selectedPedido.operarioOaci || selectedPedido.origenOaci;
+                        const registroGmt = getGmtTramo(registroAirport);
+
                         return (
-                          <React.Fragment key={i}>
-                            <div className={`ml-[4px] w-[2px] h-3.5 ${trackLineBg} relative`}>
-                              {(isCompleted || isCurrent) && (
-                                <div className="absolute inset-0 bg-cyan-500" style={{ height: isCurrent ? "50%" : "100%" }} />
-                              )}
-                            </div>
+                          <div className="space-y-0 mt-2 max-h-80 overflow-y-auto">
+                            {/* Nodo origen */}
                             <div className="flex items-start gap-2">
-                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${
-                                isCancelled ? "bg-red-500/50" :
-                                isCompleted ? "bg-green-500" :
-                                isCurrent   ? "bg-cyan-500 animate-pulse" : dotInactive
-                              }`} />
+                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
                               <div className="flex-1">
-                                <div className={`text-[10px] font-semibold ${
-                                  isCancelled ? (isDark ? "text-red-400/70" : "text-red-600/70") : titleCls
-                                }`}>
-                                  {getCity(leg.destinoOaci)} ({leg.destinoOaci})
-                                  {isCancelled && <span className={`ml-1 text-[9px] ${isDark ? "text-red-400" : "text-red-600"}`}>[Cancelado]</span>}
+                                <div className={`text-[10px] font-semibold ${titleCls}`}>
+                                  {getCity(selectedPedido.origenOaci)} ({selectedPedido.origenOaci})
                                 </div>
-                                {isCurrent && (
-                                  <div className={`text-[9px] font-medium ${isDark ? "text-cyan-400" : "text-cyan-700"}`}>
-                                    ✈ En vuelo ahora
-                                  </div>
-                                )}
                                 <div className={`text-[9px] ${mutedCls}`}>
-                                  Llegada: {fmtLocal(leg.fechaLlegada, arriGmt)} {gmtLabel(arriGmt)}
+                                  Registro: {fmtLocalTramo(selectedPedido.fechaHoraRegistro, registroGmt)} {gmtLabel(registroGmt)}
                                 </div>
-                                {!isLast && nextLeg && (
+                                {tramos.length > 0 && (
                                   <div className={`text-[9px] ${isDark ? "text-cyan-400/80" : "text-cyan-700"}`}>
-                                    Salida: {fmtLocal(nextLeg.fechaSalida, arriGmt)} {gmtLabel(arriGmt)}
+                                    Salida: {fmtLocalTramo(tramos[0].fechaSalida, getGmtTramo(tramos[0].origenOaci))} {gmtLabel(getGmtTramo(tramos[0].origenOaci))}
                                   </div>
                                 )}
                               </div>
                             </div>
-                          </React.Fragment>
+
+                            {/* Nodos intermedios y final */}
+                            {tramos.map((leg: any, i: number) => {
+                              const isCompleted = leg.estado === "COMPLETADO";
+                              const isCurrent   = leg.estado === "EN_VUELO";
+                              const isPending   = leg.estado === "PROGRAMADO" || leg.estado === "CANCELADO";
+                              const isCancelled = leg.estado === "CANCELADO";
+                              const isLast = i === tramos.length - 1;
+                              const arriGmt = getGmtTramo(leg.destinoOaci);
+                              const nextLeg = !isLast ? tramos[i + 1] : null;
+                              return (
+                                <React.Fragment key={i}>
+                                  <div className={`ml-[4px] w-[2px] h-3.5 ${trackLineBg} relative`}>
+                                    {(isCompleted || isCurrent) && (
+                                      <div className="absolute inset-0 bg-cyan-500" style={{ height: isCurrent ? "50%" : "100%" }} />
+                                    )}
+                                  </div>
+                                  <div className="flex items-start gap-2">
+                                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${
+                                      isCancelled ? "bg-red-500/50" :
+                                      isCompleted ? "bg-green-500" :
+                                      isCurrent   ? "bg-cyan-500 animate-pulse" : dotInactive
+                                    }`} />
+                                    <div className="flex-1">
+                                      <div className={`text-[10px] font-semibold ${
+                                        isCancelled ? (isDark ? "text-red-400/70" : "text-red-600/70") : titleCls
+                                      }`}>
+                                        {getCity(leg.destinoOaci)} ({leg.destinoOaci})
+                                        {isCancelled && <span className={`ml-1 text-[9px] ${isDark ? "text-red-400" : "text-red-600"}`}>[Cancelado]</span>}
+                                      </div>
+                                      {isCurrent && (
+                                        <div className={`text-[9px] font-medium ${isDark ? "text-cyan-400" : "text-cyan-700"}`}>
+                                          ✈ En vuelo ahora
+                                        </div>
+                                      )}
+                                      <div className={`text-[9px] ${mutedCls}`}>
+                                        Llegada: {fmtLocalTramo(leg.fechaLlegada, arriGmt)} {gmtLabel(arriGmt)}
+                                      </div>
+                                      {!isLast && nextLeg && (
+                                        <div className={`text-[9px] ${isDark ? "text-cyan-400/80" : "text-cyan-700"}`}>
+                                          Salida: {fmtLocalTramo(nextLeg.fechaSalida, arriGmt)} {gmtLabel(arriGmt)}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </React.Fragment>
+                              );
+                            })}
+
+                            {tramos.length === 0 && (
+                              <div className={`pl-5 text-[10px] py-2 ${dimCls}`}>Sin ruta planificada</div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      <button
+                        onClick={() => setSelectedPedido(null)}
+                        className={`mt-2.5 text-[10px] transition-colors font-medium ${isDark ? "text-cyan-500 hover:text-cyan-400" : "text-blue-700 hover:text-blue-800"}`}
+                      >
+                        Cerrar detalle
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Lista de Pedidos */}
+                  <ScrollArea className="flex-1">
+                    <div className="px-2 py-1">
+                      {paginatedPedidos.map(p => {
+                        const s = statusConfig[p.estado] || statusConfig.PENDIENTE;
+                        const isSelected = selectedPedido?.id === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => handleSelectPedido(isSelected ? null : p)}
+                            className={`w-full text-left px-2 py-2 rounded-md mb-1 flex items-center gap-2 transition-colors ${
+                              isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${hoverRow} border border-transparent`
+                            }`}
+                          >
+                            <div className={`shrink-0 ${s.color}`}>{s.icon}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[10.5px] font-semibold ${titleCls}`}>{p.id}</span>
+                                <span className={`text-[9px] ${dimCls}`}>x{p.cantidadMaletas}</span>
+                              </div>
+                              <div className={`text-[9px] truncate ${subCls}`}>
+                                {p.origenOaci} <ChevronRight className="w-2.5 h-2.5 inline" /> {p.destinoOaci}
+                              </div>
+                              <div className={`text-[8.5px] ${mutedCls} truncate`}>
+                                {p.nombreAerolinea}
+                              </div>
+                            </div>
+                            <span className={`text-[8.5px] px-1.5 py-0.5 rounded-full ${s.bg} ${s.color} font-medium`}>
+                              {s.label}
+                            </span>
+                          </button>
                         );
                       })}
-
-                      {tramos.length === 0 && (
-                        <div className={`pl-5 text-[10px] py-2 ${dimCls}`}>Sin ruta planificada</div>
+                      {filtered.length === 0 && (
+                        <div className={`text-[11px] text-center py-12 ${dimCls}`}>
+                          No hay pedidos activos en este momento.
+                        </div>
                       )}
                     </div>
-                  );
-                })()}
+                  </ScrollArea>
 
-                <button
-                  onClick={() => setSelectedPedido(null)}
-                  className={`mt-2.5 text-[10px] transition-colors font-medium ${isDark ? "text-cyan-500 hover:text-cyan-400" : "text-blue-700 hover:text-blue-800"}`}
-                >
-                  Cerrar detalle
-                </button>
-              </div>
-            )}
-
-            {/* Lista de Pedidos */}
-            <ScrollArea className="flex-1">
-              <div className="px-2 py-1">
-                {filtered.map(p => {
-                  const s = statusConfig[p.estado] || statusConfig.PENDIENTE;
-                  const isSelected = selectedPedido?.id === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => handleSelectPedido(isSelected ? null : p)}
-                      className={`w-full text-left px-2 py-2 rounded-md mb-1 flex items-center gap-2 transition-colors ${
-                        isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${hoverRow} border border-transparent`
-                      }`}
-                    >
-                      <div className={`shrink-0 ${s.color}`}>{s.icon}</div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`text-[10.5px] font-semibold ${titleCls}`}>{p.id}</span>
-                          <span className={`text-[9px] ${dimCls}`}>x{p.cantidadMaletas}</span>
-                        </div>
-                        <div className={`text-[9px] truncate ${subCls}`}>
-                          {p.origenOaci} <ChevronRight className="w-2.5 h-2.5 inline" /> {p.destinoOaci}
-                        </div>
-                        <div className={`text-[8.5px] ${mutedCls} truncate`}>
-                          {p.nombreAerolinea}
-                        </div>
-                      </div>
-                      <span className={`text-[8.5px] px-1.5 py-0.5 rounded-full ${s.bg} ${s.color} font-medium`}>
-                        {s.label}
+                  {/* Controles de Paginación */}
+                  {totalPedidosPages > 1 && (
+                    <div className={`px-3 py-2 border-t ${headerBorder} bg-black/5 flex items-center justify-between shrink-0 text-[10px]`}>
+                      <button
+                        onClick={() => setPedidosPage(prev => Math.max(prev - 1, 1))}
+                        disabled={pedidosPage === 1}
+                        className={`px-2 py-1 rounded border transition-colors font-medium ${
+                          pedidosPage === 1
+                            ? "opacity-40 cursor-not-allowed border-transparent"
+                            : isDark
+                              ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
+                              : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        Anterior
+                      </button>
+                      <span className={mutedCls}>
+                        Página <span className={`font-semibold ${titleCls}`}>{pedidosPage}</span> de <span className={`font-semibold ${titleCls}`}>{totalPedidosPages}</span> ({filtered.length} pedidos)
                       </span>
-                    </button>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <div className={`text-[11px] text-center py-12 ${dimCls}`}>
-                    No hay pedidos activos en este momento.
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
+                      <button
+                        onClick={() => setPedidosPage(prev => Math.min(prev + 1, totalPedidosPages))}
+                        disabled={pedidosPage === totalPedidosPages}
+                        className={`px-2 py-1 rounded border transition-colors font-medium ${
+                          pedidosPage === totalPedidosPages
+                            ? "opacity-40 cursor-not-allowed border-transparent"
+                            : isDark
+                              ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
+                              : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        Siguiente
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Contenedor 2: Vuelos */}
+            <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
+              showVuelos ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+            } ${panelBg}`}>
+              <button
+                onClick={() => {
+                  setShowVuelos(!showVuelos);
+                  if (!showVuelos) setShowEnvios(false);
+                }}
+                className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
+                  showVuelos ? `border-b ${headerBorder}` : ""
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Plane className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
+                  <span className={titleCls}>Monitoreo de Vuelos</span>
+                </div>
+                {showVuelos ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+
+              {showVuelos && (
+                <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
+                  <FlightMonitoringPanel
+                    flights={activeFlights}
+                    isDark={isDark}
+                    selectedFlightKey={selectedFlightKey}
+                    onSelectFlightOnMap={(pedidoIds, key) => {
+                      setSelectedFlightPedidoIds(pedidoIds);
+                      setSelectedFlightKey(key);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
           </div>
         )}
 

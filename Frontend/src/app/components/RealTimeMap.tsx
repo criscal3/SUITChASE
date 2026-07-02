@@ -123,6 +123,18 @@ function parseUTCDate(dateStr: any): number {
   return new Date(formatted).getTime();
 }
 
+function getDepartureTimeStr(isoStr: string): string {
+  if (!isoStr) return "";
+  try {
+    const parts = isoStr.split(/[T ]/);
+    if (parts.length >= 2) {
+      const timeParts = parts[1].split(":");
+      return `${timeParts[0]}:${timeParts[1]}`;
+    }
+  } catch (e) {}
+  return "";
+}
+
 function Building3D({ color, util }: { color: string; util: number }) {
   const h = 8 + (Math.min(100, util) / 100) * 16;
   return (
@@ -335,16 +347,20 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
             aerolinea: p.nombreAerolinea,
             cantMaletas: 0,
             pedidoIds: [] as string[],
+            shipments: [] as { id: string; cant: number }[],
             lat: 0,
             lng: 0,
             heading: 0,
             fechaSalida: leg.fechaSalida,
+            fechaLlegada: leg.fechaLlegada,
+            departureTime: getDepartureTimeStr(leg.fechaSalida),
           });
         }
 
         const f = flightsMap.get(flightKey)!;
         f.cantMaletas += p.cantidadMaletas;
         f.pedidoIds.push(p.id);
+        f.shipments.push({ id: p.id, cant: p.cantidadMaletas });
 
         const pos = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, progress);
         const delta = Math.min(0.01, 1 - progress);
@@ -364,7 +380,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
       const sameContinent = fromAir && toAir ? fromAir.continent === toAir.continent : true;
       const routeColor = sameContinent
         ? (isDark ? "#22d3ee" : "#0891b2")
-        : (isDark ? "#fb7185" : "#e11d48");
+        : (isDark ? "#c4a886" : "#a8906a");
 
       if (f.from && f.to) {
         // Calculate utilization for filtering
@@ -451,7 +467,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           </Geographies>
 
           {/* Arcs/Lines */}
-          {arcsData.map((arc) => (
+          {arcsData.filter(arc => !selectedFlightKey || arc.key === `arc-${selectedFlightKey}`).map((arc) => (
             <Line
               key={arc.key}
               from={arc.from as [number, number]}
@@ -508,7 +524,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           })}
 
           {/* Plane Markers */}
-          {planesData.filter(plane => typeof plane.lng === "number" && typeof plane.lat === "number" && !isNaN(plane.lng) && !isNaN(plane.lat)).map((plane) => {
+          {planesData.filter(plane => (!selectedFlightKey || plane.key === selectedFlightKey) && typeof plane.lng === "number" && typeof plane.lat === "number" && !isNaN(plane.lng) && !isNaN(plane.lat)).map((plane) => {
             const planeUtil = plane.utilization ?? 0;
             const planeColor = getOccupancyColor(planeUtil);
             const planeStroke = getOccupancyPlaneStroke(planeUtil);
@@ -522,6 +538,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
                       kind: "flight",
                       from: plane.fromCode,
                       to: plane.toCode,
+                      departureTime: plane.departureTime,
                       load: plane.cantMaletas,
                       capacity: plane.capacity,
                       utilization: planeUtil,
@@ -567,7 +584,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           className={`fixed z-50 border rounded-lg px-3 py-2 pointer-events-none ${tooltipBg}`}
           style={{ left: hovered.x + 12, top: hovered.y - 10 }}
         >
-          <div className={`text-[11px] font-semibold ${tooltipTitle}`}>{hovered.from} → {hovered.to}</div>
+          <div className={`text-[11px] font-semibold ${tooltipTitle}`}>{hovered.from}-{hovered.to}-{hovered.departureTime}</div>
           <div className={`text-[10px] mt-1 ${tooltipSub}`}>
             Uso: <span className={tooltipVal}>{hovered.load}</span> / {hovered.capacity} maletas
           </div>

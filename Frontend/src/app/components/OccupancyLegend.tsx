@@ -298,7 +298,7 @@ export function OccupancyLegend({
             </div>
           </div>
           <div className="flex items-center gap-1.5 ml-auto">
-            <div className={`w-5 h-0.5 rounded ${isDark ? "bg-[#fb7185]" : "bg-[#e11d48]"}`} />
+            <div className={`w-5 h-0.5 rounded ${isDark ? "bg-[#c4a886]" : "bg-[#a8906a]"}`} />
             <span className={`text-[10px] ${subText}`}>Distinto continente</span>
             <div className="ml-auto flex gap-1">
               <button

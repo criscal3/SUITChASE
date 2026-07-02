@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
 import { ScrollArea } from "./ui/scroll-area";
@@ -34,6 +34,7 @@ interface BaggageTrackingProps {
   selectedFlightBaggageIds?: string[] | null;
   selectedFlightKey?: string | null;
   onClearFlightFilter?: () => void;
+  hideHeader?: boolean;
 }
 
 export function BaggageTracking({
@@ -42,6 +43,7 @@ export function BaggageTracking({
   selectedFlightBaggageIds,
   selectedFlightKey,
   onClearFlightFilter,
+  hideHeader = false,
 }: BaggageTrackingProps) {
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
@@ -122,6 +124,33 @@ export function BaggageTracking({
     .slice(-50)
     .reverse();
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 8;
+
+  // Reset page when search or flight filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedFlightKey]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+
+  const paginatedBaggages = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filtered.slice(startIndex, startIndex + pageSize);
+  }, [filtered, currentPage, pageSize]);
+
+  // Jump to the page of the selected baggage if it's selected
+  useEffect(() => {
+    if (selectedBaggage) {
+      const idx = filtered.findIndex(bg => bg.id === selectedBaggage.id);
+      if (idx !== -1) {
+        const pageOfBaggage = Math.floor(idx / pageSize) + 1;
+        setCurrentPage(pageOfBaggage);
+      }
+    }
+  }, [selectedBaggage, filtered]);
+
   const sc = selectedBaggage ? statusConfig[selectedBaggage.status] : null;
 
   // Theme tokens
@@ -140,10 +169,12 @@ export function BaggageTracking({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className={`flex items-center gap-2 px-3 py-2 border-b ${headerBorder}`}>
-        <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
-        <span className={`text-[13px] ${titleCls}`}>Monitoreo de Envíos</span>
-      </div>
+      {!hideHeader && (
+        <div className={`flex items-center gap-2 px-3 py-2 border-b ${headerBorder}`}>
+          <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
+          <span className={`text-[13px] ${titleCls}`}>Monitoreo de Envíos</span>
+        </div>
+      )}
 
       {/* Búsqueda */}
       <div className={`px-3 py-2 border-b ${headerBorder}`}>
@@ -265,7 +296,7 @@ export function BaggageTracking({
       {/* Lista */}
       <ScrollArea className="flex-1 min-h-0">
         <div className="px-2 py-1">
-          {filtered.map(bg => {
+          {paginatedBaggages.map(bg => {
             const s = statusConfig[bg.status];
             const isSelected = selectedBaggage?.id === bg.id;
             return (
@@ -297,6 +328,41 @@ export function BaggageTracking({
           )}
         </div>
       </ScrollArea>
+
+      {/* Controles de Paginación */}
+      {totalPages > 1 && (
+        <div className={`px-3 py-2 border-t ${headerBorder} bg-black/5 flex items-center justify-between shrink-0 text-[10px]`}>
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className={`px-2 py-1 rounded border transition-colors font-medium ${
+              currentPage === 1
+                ? "opacity-40 cursor-not-allowed border-transparent"
+                : isDark
+                  ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
+                  : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+            }`}
+          >
+            Anterior
+          </button>
+          <span className={mutedCls}>
+            Página <span className={`font-semibold ${titleCls}`}>{currentPage}</span> de <span className={`font-semibold ${titleCls}`}>{totalPages}</span> ({filtered.length} maletas)
+          </span>
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            className={`px-2 py-1 rounded border transition-colors font-medium ${
+              currentPage === totalPages
+                ? "opacity-40 cursor-not-allowed border-transparent"
+                : isDark
+                  ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
+                  : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+            }`}
+          >
+            Siguiente
+          </button>
+        </div>
+      )}
     </div>
   );
 }

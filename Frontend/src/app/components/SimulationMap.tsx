@@ -39,6 +39,7 @@ interface HoveredFlight {
   load: number;
   capacity: number;
   utilization: number;
+  departureTime?: string;
   x: number;
   y: number;
 }
@@ -47,7 +48,7 @@ type HoveredItem = HoveredAirport | HoveredFlight;
 
 function getArcColor(intercontinental: boolean, isDark: boolean) {
   if (intercontinental) {
-    return isDark ? "#fb7185" : "#e11d48";
+    return isDark ? "#c4a886" : "#a8906a";
   }
   return isDark ? "#22d3ee" : "#0891b2";
 }
@@ -72,6 +73,14 @@ function computeFlightMetrics(
   const capacity = resolveFlightCapacity(claveVuelo, flightCapacities, flightCapacities);
   const utilization = computeUtilizationPercent(load, capacity);
   return { load, capacity, utilization };
+}
+
+function getSimDepartureTimeStr(ts: number): string {
+  if (!ts || isNaN(ts)) return "";
+  const d = new Date(ts);
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 
 // Spherical linear interpolation for plane positions
@@ -323,6 +332,8 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
           claveVuelo: leg.claveVuelo,
           intercontinental,
           baggageGroupIds: [bg.id],
+          departureTime: leg.departureTime,
+          arrivalTime: leg.arrivalTime,
           ...metrics,
         });
         break;
@@ -426,7 +437,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
             }
           </Geographies>
 
-          {arcsData.map((arc) => (
+          {arcsData.filter(arc => !selectedFlightKey || arc.key === `act-${selectedFlightKey}`).map((arc) => (
             <Line
               key={arc.key}
               from={arc.from as [number, number]}
@@ -475,7 +486,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
             </Marker>
           ))}
 
-          {planesData.map((plane) => {
+          {planesData.filter(plane => !selectedFlightKey || (plane.routeKey || plane.flightId) === selectedFlightKey).map((plane) => {
             const planeUtil = plane.utilization ?? 0;
             const planeColor = getOccupancyColor(planeUtil);
             const planeStroke = getOccupancyPlaneStroke(planeUtil);
@@ -491,6 +502,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
                       load: plane.load ?? 0,
                       capacity: plane.capacity ?? 0,
                       utilization: plane.utilization ?? 0,
+                      departureTime: getSimDepartureTimeStr(plane.departureTime),
                     }, e);
                   }}
                   onMouseLeave={() => setHovered(null)}
@@ -530,7 +542,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
           className={`fixed z-50 border rounded-lg px-3 py-2 pointer-events-none ${tooltipBg}`}
           style={{ left: hovered.x + 12, top: hovered.y - 10 }}
         >
-          <div className={`text-[11px] ${tooltipTitle}`}>{hovered.from} → {hovered.to}</div>
+          <div className={`text-[11px] font-semibold ${tooltipTitle}`}>{hovered.from}-{hovered.to}-{hovered.departureTime}</div>
           <div className={`text-[10px] mt-1 ${tooltipSub}`}>
             Uso: <span className={tooltipVal}>{hovered.load}</span> / {hovered.capacity} maletas
           </div>
