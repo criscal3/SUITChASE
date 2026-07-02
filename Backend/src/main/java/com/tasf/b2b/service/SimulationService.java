@@ -340,10 +340,7 @@ public class SimulationService {
         Map<String, int[]> ocupacionGlobalAlmacenes = inputMaestro.getOcupacionGlobalAlmacenes();
 
         // Buscar todas las asignaciones del envío para determinar si es un vuelo directo único
-        List<AsignacionEnvioEntity> todasAsignaciones = asignacionEnvioRepository.findAll().stream()
-                .filter(a -> a.getEnvioId().equals(envio.getId()))
-                .sorted(Comparator.comparing(AsignacionEnvioEntity::getOrdenVuelo))
-                .toList();
+        List<AsignacionEnvioEntity> todasAsignaciones = asignacionEnvioRepository.findByEnvioIdOrderByOrdenVueloAsc(envio.getId());
 
         boolean esVueloDirectoUnico = todasAsignaciones.size() == 1;
 
@@ -867,8 +864,7 @@ public class SimulationService {
                 envioRepository.save(nuevoEnvio);
             }
 
-            int baseOrden = asignacionEnvioRepository.findAll().stream()
-                    .filter(a -> a.getEnvioId().equals(envio.getId()))
+            int baseOrden = asignacionEnvioRepository.findByEnvioIdOrderByOrdenVueloAsc(envio.getId()).stream()
                     .mapToInt(AsignacionEnvioEntity::getOrdenVuelo)
                     .max()
                     .orElse(0);
