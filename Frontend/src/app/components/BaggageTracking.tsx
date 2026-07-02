@@ -315,6 +315,9 @@ export function BaggageTracking({
                   <div className={`text-[9px] truncate ${subCls}`}>
                     {bg.origin} <ChevronRight className="w-2 h-2 inline" /> {bg.destination}
                   </div>
+                  <div className={`text-[8.5px] ${mutedCls} truncate`}>
+                    {bg.airline}
+                  </div>
                 </div>
                 <span className={`text-[9px] ${mutedCls}`}>{bg.currentLocation}</span>
               </button>

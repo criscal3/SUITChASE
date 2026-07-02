@@ -324,8 +324,8 @@ export function SimulationPage() {
 
   const simGmtLabel = useCallback((oaci: string) => {
     const ap = realTimeAirports.find((a: any) => a.code === oaci);
-    if (!ap || !ap.timezone) return "GMT+0";
-    return ap.timezone.replace("UTC", "GMT");
+    if (!ap || !ap.timezone) return "UTC+0";
+    return ap.timezone;
   }, [realTimeAirports]);
 
   const formatSimTimestampLocal = useCallback((ts: number, oaci: string): string => {
@@ -1204,10 +1204,10 @@ export function SimulationPage() {
                                         rtPedidosPage === 1 ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
                                       }`}
                                     >
-                                      Ant.
+                                      Anterior
                                     </button>
                                     <span className={isDark ? "text-white/50" : "text-[#6b7280]"}>
-                                      {rtPedidosPage} / {totalRTPages} ({filteredRT.length})
+                                      Página <span className={`font-semibold ${isDark ? "text-white" : "text-[#111827]"}`}>{rtPedidosPage}</span> de <span className={`font-semibold ${isDark ? "text-white" : "text-[#111827]"}`}>{totalRTPages}</span> ({filteredRT.length} envíos)
                                     </span>
                                     <button
                                       onClick={() => setRtPedidosPage(prev => Math.min(prev + 1, totalRTPages))}
@@ -1216,7 +1216,7 @@ export function SimulationPage() {
                                         rtPedidosPage === totalRTPages ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
                                       }`}
                                     >
-                                      Sig.
+                                      Siguiente
                                     </button>
                                   </div>
                                 )}

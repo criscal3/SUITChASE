@@ -296,7 +296,8 @@ export function RealTimePage() {
       const year = d.getUTCFullYear();
       const hh = String(d.getUTCHours()).padStart(2, "0");
       const mm = String(d.getUTCMinutes()).padStart(2, "0");
-      return `${day}-${month}-${year} ${hh}:${mm}`;
+      const gmtLabel = `UTC${gmtOffset >= 0 ? `+${gmtOffset}` : gmtOffset}`;
+      return `${day}-${month}-${year} ${hh}:${mm} ${gmtLabel}`;
     } catch { return "—"; }
   };
 
@@ -314,7 +315,7 @@ export function RealTimePage() {
 
         const depTime = parseUTCDate(leg.fechaSalida);
         const arrTime = parseUTCDate(leg.fechaLlegada);
-        const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${depTime}-${arrTime}-${p.nombreAerolinea}`;
+        const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${depTime}-${arrTime}`;
 
         if (!flightsMap.has(flightKey)) {
           flightsMap.set(flightKey, {
@@ -323,7 +324,6 @@ export function RealTimePage() {
             toCode: leg.destinoOaci,
             fechaSalida: leg.fechaSalida,
             fechaLlegada: leg.fechaLlegada,
-            aerolinea: p.nombreAerolinea,
             cantMaletas: 0,
             pedidoIds: [] as string[],
             shipments: [] as { id: string; cant: number }[],
@@ -356,7 +356,6 @@ export function RealTimePage() {
         arrivalTime: fmtLocal(f.fechaLlegada, toGmt),
         departureRaw: f.fechaSalida,
         arrivalRaw: f.fechaLlegada,
-        aerolinea: f.aerolinea,
         currentLoad: f.cantMaletas,
         capacity,
         utilization,
@@ -732,7 +731,7 @@ export function RealTimePage() {
                         Anterior
                       </button>
                       <span className={mutedCls}>
-                        Página <span className={`font-semibold ${titleCls}`}>{pedidosPage}</span> de <span className={`font-semibold ${titleCls}`}>{totalPedidosPages}</span> ({filtered.length} pedidos)
+                        Página <span className={`font-semibold ${titleCls}`}>{pedidosPage}</span> de <span className={`font-semibold ${titleCls}`}>{totalPedidosPages}</span> ({filtered.length} envíos)
                       </span>
                       <button
                         onClick={() => setPedidosPage(prev => Math.min(prev + 1, totalPedidosPages))}
