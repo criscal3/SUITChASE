@@ -467,7 +467,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           </Geographies>
 
           {/* Arcs/Lines */}
-          {arcsData.filter(arc => !selectedFlightKey || arc.key === `arc-${selectedFlightKey}`).map((arc) => (
+          {arcsData.filter(arc => !selectedFlightKey || selectedPedido || arc.key === `arc-${selectedFlightKey}`).map((arc) => (
             <Line
               key={arc.key}
               from={arc.from as [number, number]}
@@ -524,7 +524,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           })}
 
           {/* Plane Markers */}
-          {planesData.filter(plane => (!selectedFlightKey || plane.key === selectedFlightKey) && typeof plane.lng === "number" && typeof plane.lat === "number" && !isNaN(plane.lng) && !isNaN(plane.lat)).map((plane) => {
+          {planesData.filter(plane => (!selectedFlightKey || selectedPedido || plane.key === selectedFlightKey) && typeof plane.lng === "number" && typeof plane.lat === "number" && !isNaN(plane.lng) && !isNaN(plane.lat)).map((plane) => {
             const planeUtil = plane.utilization ?? 0;
             const planeColor = getOccupancyColor(planeUtil);
             const planeStroke = getOccupancyPlaneStroke(planeUtil);

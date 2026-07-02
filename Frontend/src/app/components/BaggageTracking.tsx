@@ -121,7 +121,6 @@ export function BaggageTracking({
         bg.destination.toLowerCase().includes(s) ||
         bg.airline.toLowerCase().includes(s);
     })
-    .slice(-50)
     .reverse();
 
   // Pagination
@@ -193,7 +192,7 @@ export function BaggageTracking({
       {selectedFlightKey && (
         <div className={`mx-3 my-2 p-2 rounded-lg flex items-center justify-between text-[10px] shrink-0 ${isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"}`}>
           <span className="truncate">
-            Filtrando vuelo: {selectedFlightKey.split("-")[0]} → {selectedFlightKey.split("-")[1]} ({state.baggageGroups.filter(bg => selectedFlightBaggageIds?.includes(bg.id)).reduce((sum, bg) => sum + bg.quantity, 0)} maletas)
+            Filtrando vuelo: {selectedFlightKey.split("-")[0]} → {selectedFlightKey.split("-")[1]} ({state.baggageGroups.filter(bg => selectedFlightBaggageIds?.includes(bg.id)).reduce((sum, bg) => sum + bg.quantity, 0)} envíos)
           </span>
           <button
             onClick={onClearFlightFilter}
@@ -346,7 +345,7 @@ export function BaggageTracking({
             Anterior
           </button>
           <span className={mutedCls}>
-            Página <span className={`font-semibold ${titleCls}`}>{currentPage}</span> de <span className={`font-semibold ${titleCls}`}>{totalPages}</span> ({filtered.length} maletas)
+            Página <span className={`font-semibold ${titleCls}`}>{currentPage}</span> de <span className={`font-semibold ${titleCls}`}>{totalPages}</span> ({filtered.length} envíos)
           </span>
           <button
             onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}

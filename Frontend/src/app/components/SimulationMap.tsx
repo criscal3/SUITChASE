@@ -437,7 +437,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
             }
           </Geographies>
 
-          {arcsData.filter(arc => !selectedFlightKey || arc.key === `act-${selectedFlightKey}`).map((arc) => (
+          {arcsData.filter(arc => !selectedFlightKey || selectedBaggage || arc.key === `act-${selectedFlightKey}`).map((arc) => (
             <Line
               key={arc.key}
               from={arc.from as [number, number]}
@@ -486,7 +486,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
             </Marker>
           ))}
 
-          {planesData.filter(plane => !selectedFlightKey || (plane.routeKey || plane.flightId) === selectedFlightKey).map((plane) => {
+          {planesData.filter(plane => !selectedFlightKey || selectedBaggage || (plane.routeKey || plane.flightId) === selectedFlightKey).map((plane) => {
             const planeUtil = plane.utilization ?? 0;
             const planeColor = getOccupancyColor(planeUtil);
             const planeStroke = getOccupancyPlaneStroke(planeUtil);
