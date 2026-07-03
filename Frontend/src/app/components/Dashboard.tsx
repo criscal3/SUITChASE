@@ -175,13 +175,31 @@ export function Dashboard() {
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [airports, setAirports] = useState<Airport[]>([]);
-  const [activity, setActivity] = useState<ActivityEvent[]>([]);
-  const [activeLineData, setActiveLineData] = useState<{ t: string; activos: number }[]>([]);
+  const [activity, setActivity] = useState<ActivityEvent[]>(() => {
+    try {
+      const saved = sessionStorage.getItem("dashboard_activity");
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [activeLineData, setActiveLineData] = useState<{ t: string; activos: number }[]>(() => {
+    try {
+      const saved = sessionStorage.getItem("dashboard_activeLineData");
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   // Keep a stable ref for pushing activity events without re-triggering effects
-  const activityRef = useRef<ActivityEvent[]>([]);
+  const activityRef = useRef<ActivityEvent[]>(activity);
+
+  // Persist to sessionStorage on changes
+  useEffect(() => {
+    try { sessionStorage.setItem("dashboard_activity", JSON.stringify(activity)); } catch {}
+  }, [activity]);
+  useEffect(() => {
+    try { sessionStorage.setItem("dashboard_activeLineData", JSON.stringify(activeLineData)); } catch {}
+  }, [activeLineData]);
 
   const pushActivity = useCallback((evt: ActivityEvent) => {
     activityRef.current = [evt, ...activityRef.current].slice(0, 60);
@@ -207,8 +225,11 @@ export function Dashboard() {
         })));
         setLastUpdated(fmtNow());
         setLoading(false);
-        // Seed line chart
-        setActiveLineData([{ t: fmtNow(), activos: res?.totalActivos ?? 0 }]);
+        // Seed line chart only if no existing data was restored from sessionStorage
+        setActiveLineData(prev => prev.length > 0
+          ? [...prev, { t: fmtNow(), activos: res?.totalActivos ?? 0 }]
+          : [{ t: fmtNow(), activos: res?.totalActivos ?? 0 }]
+        );
       } catch (e) {
         console.error("Dashboard load error:", e);
         setLoading(false);
@@ -368,9 +389,9 @@ export function Dashboard() {
           subtitle="esperan vuelo" icon={<Clock className="w-4 h-4" />} accentColor="amber" />
         <KpiCard isDark={isDark} title="Planificados" value={resumen?.planificados ?? 0}
           subtitle="vuelo asignado" icon={<CheckCircle className="w-4 h-4" />} accentColor="green" />
-        <KpiCard isDark={isDark} title="Ocup. almacenes" value={`${Math.round(resumen?.ocupacionGlobalAlmacenes ?? 0)}%`}
+        <KpiCard isDark={isDark} title="Ocup. almacenes" value={`${(resumen?.ocupacionGlobalAlmacenes ?? 0).toFixed(1)}%`}
           subtitle="global warehouses" icon={<Warehouse className="w-4 h-4" />} accentColor="purple" />
-        <KpiCard isDark={isDark} title="Ocup. vuelos" value={`${Math.round(resumen?.ocupacionGlobalVuelos ?? 0)}%`}
+        <KpiCard isDark={isDark} title="Ocup. vuelos" value={`${(resumen?.ocupacionGlobalVuelos ?? 0).toFixed(1)}%`}
           subtitle="carga aérea global" icon={<Gauge className="w-4 h-4" />} accentColor="orange" />
         <KpiCard isDark={isDark} title="Aerop. al límite" value={aeropuertosAlLimite}
           subtitle="≥80% capacidad" icon={<AlertTriangle className="w-4 h-4" />} accentColor="red" />
