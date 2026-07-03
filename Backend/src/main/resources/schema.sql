@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS usuario (
     correo           VARCHAR(100) NOT NULL UNIQUE,
     password_hash    VARCHAR(255) NOT NULL,
     nombre_completo  VARCHAR(150) NOT NULL,
+    dni              VARCHAR(20)  NULL,
+    telefono         VARCHAR(25)  NULL,
+    genero           VARCHAR(20)  NULL,
+    fecha_nacimiento DATE         NULL,
+    aeropuerto_oaci  VARCHAR(4)   NULL,
     rol              ENUM('ADMIN', 'OPERARIO', 'AEROLINEA') NOT NULL,
     aerolinea_id     BIGINT       NULL,      -- Solo si rol = AEROLINEA
     activo           BOOLEAN      NOT NULL DEFAULT TRUE,
@@ -81,6 +86,7 @@ CREATE TABLE IF NOT EXISTS simulacion (
     salto_algoritmo_sa       INT          NOT NULL,  -- minutos
     constante_k              INT          NOT NULL,
     tiempo_algoritmo_ta      INT          NOT NULL,  -- segundos
+    skip_sleep_until_block   INT          NOT NULL DEFAULT 0,
     bloque_actual            INT          NOT NULL DEFAULT 0,
     total_bloques_estimados  INT          NOT NULL DEFAULT 0,
     cursor_temporal          DATETIME     NULL,       -- Hasta dónde se procesó

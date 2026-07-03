@@ -10,6 +10,7 @@ import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, Chev
 import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
 import { computeUtilizationPercent, getOccupancyColor } from "../engine/occupancyStatus";
 import { FlightMonitoringPanel, type FlightItem } from "./FlightMonitoringPanel";
+import { WarehouseMonitoringPanel, type WarehouseItem, type WarehouseShipmentItem } from "./WarehouseMonitoringPanel";
 
 interface Tramo {
   orden: number;
@@ -84,6 +85,7 @@ export function RealTimePage() {
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [showEnvios, setShowEnvios] = useState(false); // Collapsed on load
   const [showVuelos, setShowVuelos] = useState(false); // Collapsed on load
+  const [showAlmacenes, setShowAlmacenes] = useState(false); // Collapsed on load
   const [selectedFlightKey, setSelectedFlightKey] = useState<string | null>(null);
   const [selectedFlightPedidoIds, setSelectedFlightPedidoIds] = useState<string[] | null>(null);
   const [pedidosPage, setPedidosPage] = useState(1);
@@ -159,8 +161,8 @@ export function RealTimePage() {
                   map.delete(p.id);
                 }
               } else {
-                // SIN_RUTA and COLAPSO are always removed
-                map.delete(p.id);
+                // SIN_RUTA and COLAPSO are kept so they can be shown in warehouses
+                map.set(p.id, p);
               }
             } else {
               map.set(p.id, p);
@@ -374,6 +376,100 @@ export function RealTimePage() {
     });
   }, [pedidos, flightsList, airportsList, getGmt]);
 
+  // ──────────────────────────────────────────────────────────────
+  // Warehouse items: derived from airportsList + pedidos
+  // ──────────────────────────────────────────────────────────────
+  const warehouseItems = useMemo((): WarehouseItem[] => {
+    return airportsList
+      .filter(a => (a.warehouseCapacity ?? 0) > 0)
+      .map(a => {
+        const capacity    = a.warehouseCapacity ?? 0;
+        const currentStock = a.currentStock ?? 0;
+        const utilization = capacity > 0 ? (currentStock / capacity) * 100 : 0;
+
+        // Collect shipments currently stored in this warehouse.
+        // A shipment is in a warehouse when its ubicacionActual matches the airport code
+        // and its state is PENDIENTE or PLANIFICADO (not yet in transit).
+        const shipmentsInWarehouse: WarehouseShipmentItem[] = pedidos
+          .filter(p => {
+            let currentLocation = p.origenOaci;
+            const tramos: any[] = p.tramos || [];
+            let isFlying = false;
+            for (const t of tramos) {
+              if (t.estado === "COMPLETADO") {
+                currentLocation = t.destinoOaci;
+              } else if (t.estado === "EN_VUELO") {
+                isFlying = true;
+                break;
+              } else if (t.estado === "PROGRAMADO") {
+                currentLocation = t.origenOaci;
+                break;
+              }
+            }
+            if (isFlying) return false;
+
+            // Si está en el almacén de destino final, verificar si ya pasaron 15 minutos desde su llegada
+            if (tramos.length > 0) {
+              const lastTramo = tramos[tramos.length - 1];
+              if (lastTramo.estado === "COMPLETADO" && lastTramo.destinoOaci === a.code) {
+                if (lastTramo.fechaLlegada) {
+                  const arrivalTimeMs = new Date(lastTramo.fechaLlegada.endsWith('Z') ? lastTramo.fechaLlegada : lastTramo.fechaLlegada + 'Z').getTime();
+                  const nowMs = new Date().getTime();
+                  if (nowMs >= arrivalTimeMs + 15 * 60 * 1000) {
+                    return false;
+                  }
+                  return true;
+                }
+              }
+            }
+
+            if (p.estado === "ENTREGADO") return false;
+            return currentLocation === a.code;
+          })
+          .map(p => {
+            const tramos: any[] = p.tramos || [];
+
+            // Hour the shipment arrived at this warehouse:
+            // Look for the most recent COMPLETADO tramo whose destino is this airport.
+            let arrivedAt: string | null = null;
+            for (let i = tramos.length - 1; i >= 0; i--) {
+              if (tramos[i].destinoOaci === a.code && tramos[i].estado === "COMPLETADO") {
+                arrivedAt = tramos[i].fechaLlegada || null;
+                break;
+              }
+            }
+
+            // Hour the next flight departs from this warehouse:
+            // Find the first PROGRAMADO tramo whose origen is this airport.
+            let flightDeparture: string | null = null;
+            for (const tramo of tramos) {
+              if (tramo.origenOaci === a.code && tramo.estado === "PROGRAMADO") {
+                flightDeparture = tramo.fechaSalida || null;
+                break;
+              }
+            }
+
+            return {
+              id: p.id,
+              cant: p.cantidadMaletas,
+              arrivedAt,
+              flightDeparture,
+              isFinalDestination: p.destinoOaci === a.code,
+            } as WarehouseShipmentItem;
+          });
+
+        return {
+          code: a.code,
+          cityName: a.city ?? a.code,
+          gmt: a.gmt ?? 0,
+          capacity,
+          currentStock,
+          utilization,
+          shipments: shipmentsInWarehouse,
+        } as WarehouseItem;
+      });
+  }, [airportsList, pedidos]);
+
   const filtered = useMemo(() => {
     let result = pedidos;
     if (search.trim()) {
@@ -520,7 +616,7 @@ export function RealTimePage() {
               <button
                 onClick={() => {
                   setShowEnvios(!showEnvios);
-                  if (!showEnvios) setShowVuelos(false);
+                  if (!showEnvios) { setShowVuelos(false); setShowAlmacenes(false); }
                 }}
                 className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
                   showEnvios ? `border-b ${headerBorder}` : ""
@@ -780,7 +876,7 @@ export function RealTimePage() {
               <button
                 onClick={() => {
                   setShowVuelos(!showVuelos);
-                  if (!showVuelos) setShowEnvios(false);
+                  if (!showVuelos) { setShowEnvios(false); setShowAlmacenes(false); }
                 }}
                 className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
                   showVuelos ? `border-b ${headerBorder}` : ""
@@ -803,6 +899,36 @@ export function RealTimePage() {
                       setSelectedFlightPedidoIds(pedidoIds);
                       setSelectedFlightKey(key);
                     }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Contenedor 3: Almacenes */}
+            <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
+              showAlmacenes ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+            } ${panelBg}`}>
+              <button
+                onClick={() => {
+                  setShowAlmacenes(!showAlmacenes);
+                  if (!showAlmacenes) { setShowEnvios(false); setShowVuelos(false); }
+                }}
+                className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
+                  showAlmacenes ? `border-b ${headerBorder}` : ""
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
+                  <span className={titleCls}>Monitoreo de Almacenes</span>
+                </div>
+                {showAlmacenes ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+
+              {showAlmacenes && (
+                <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
+                  <WarehouseMonitoringPanel
+                    warehouses={warehouseItems}
+                    isDark={isDark}
                   />
                 </div>
               )}
