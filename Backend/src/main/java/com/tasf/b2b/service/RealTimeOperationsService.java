@@ -14,6 +14,7 @@ import com.tasf.b2b.api.dto.PedidoRealDTO;
 import com.tasf.b2b.api.dto.TramoDTO;
 import com.tasf.b2b.api.dto.ResumenOperacionesDTO;
 import com.tasf.b2b.api.dto.RegistroPedidoRequest;
+import com.tasf.b2b.api.dto.RegistroPedidoLoteItem;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import com.tasf.b2b.repository.VueloRepository;
@@ -89,6 +90,53 @@ public class RealTimeOperationsService {
                 getPedidosActivosAerolinea(req.aerolineaId()));
 
         return dto;
+    }
+
+    /** Registrar pedidos en lote (tiempo real) */
+    public List<PedidoRealDTO> registrarPedidosEnLote(List<RegistroPedidoLoteItem> items, String origenOaci, Long operarioId) {
+        List<PedidoRealDTO> creados = new ArrayList<>();
+        Set<Long> aerolineasAfectadas = new HashSet<>();
+
+        for (var item : items) {
+            AerolineaEntity al = aerolineaRepo.findByCodigo(item.codigoAerolinea()).orElse(null);
+            if (al == null) {
+                log.warn("[RT] Aerolínea con código {} no encontrada. Omitiendo.", item.codigoAerolinea());
+                continue;
+            }
+
+            PedidoRealEntity p = new PedidoRealEntity();
+            p.setId("PED-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+            p.setOrigenOaci(origenOaci);
+            p.setDestinoOaci(item.destinoOaci());
+            p.setCantidadMaletas(item.cantidadMaletas());
+            p.setAerolineaId(al.getId());
+            p.setOperarioId(operarioId);
+            p.setFechaHoraRegistro(LocalDateTime.now());
+            p.setEstado(EstadoPedido.PENDIENTE);
+            p.setUbicacionActual(origenOaci);
+
+            pedidoRepo.save(p);
+
+            PedidoRealDTO dto = toDTO(p, List.of());
+            cache.put(p.getId(), dto);
+            creados.add(dto);
+            aerolineasAfectadas.add(al.getId());
+
+            // Push al admin para cada nuevo pedido
+            messagingTemplate.convertAndSend("/topic/tiempo-real/nuevo-pedido", dto);
+        }
+
+        if (!creados.isEmpty()) {
+            recalcularResumen();
+            messagingTemplate.convertAndSend("/topic/tiempo-real/actualizacion", resumenCache.get());
+
+            for (Long aId : aerolineasAfectadas) {
+                messagingTemplate.convertAndSend("/topic/mis-pedidos/" + aId,
+                        getPedidosActivosAerolinea(aId));
+            }
+        }
+
+        return creados;
     }
 
     /**

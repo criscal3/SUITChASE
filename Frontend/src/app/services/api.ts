@@ -116,4 +116,5 @@ export const api = {
   getMisPedidosRT: () => request<any[]>("/tiempo-real/mis-pedidos"),
   getDetallePedidoRT: (id: string) => request<any>(`/tiempo-real/pedido/${id}`),
   registrarPedidoRT: (data: any) => request("/tiempo-real/pedidos", { method: "POST", body: data }),
+  registrarPedidoRTLote: (data: any[]) => request<any[]>("/tiempo-real/pedidos/lote", { method: "POST", body: data }),
 };

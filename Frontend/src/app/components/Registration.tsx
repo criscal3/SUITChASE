@@ -147,53 +147,69 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!file.name.endsWith(".txt")) {
+      toast.error("El archivo debe tener extensión .txt");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
+    const activeOrigin = role === "OPERARIO" ? assignedAirport : origin;
+    if (!activeOrigin) {
+      toast.error("No se ha detectado el aeropuerto de origen del operario.");
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const text = ev.target?.result as string;
-        let items: { origin: string; destination: string; quantity: number; airline: string }[] = [];
+        const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+        const items: { codigoAerolinea: string; destinoOaci: string; cantidadMaletas: number }[] = [];
 
-        if (file.name.endsWith(".json")) {
-          const data = JSON.parse(text);
-          if (Array.isArray(data)) {
-            items = data.map((d: any) => ({
-              origin: String(d.origin || d.origen || "").toUpperCase(),
-              destination: String(d.destination || d.destino || "").toUpperCase(),
-              quantity: Number(d.quantity || d.cantidad || 1),
-              airline: String(d.airline || d.aerolinea || "TransGlobal"),
-            }));
+        for (const line of lines) {
+          const parts = line.split("-");
+          if (parts.length !== 3) {
+            toast.error(`Formato incorrecto en la línea: "${line}". Debe ser codigoAerolinea-destinoOaci-cantidadMaletas`);
+            return;
           }
-        } else {
-          // CSV: origin,destination,quantity,airline
-          const lines = text.split("\n").filter(l => l.trim());
-          const hasHeader = lines[0]?.toLowerCase().includes("origin") || lines[0]?.toLowerCase().includes("origen");
-          const startIdx = hasHeader ? 1 : 0;
-          for (let i = startIdx; i < lines.length; i++) {
-            const parts = lines[i].split(",").map(s => s.trim());
-            if (parts.length >= 3) {
-              items.push({
-                origin: parts[0].toUpperCase(),
-                destination: parts[1].toUpperCase(),
-                quantity: Number(parts[2]) || 1,
-                airline: parts[3] || "TransGlobal",
-              });
-            }
+
+          const codAero = parts[0].trim().toUpperCase();
+          const dest = parts[1].trim().toUpperCase();
+          const qty = parseInt(parts[2].trim(), 10);
+
+          if (!codAero || dest.length !== 4 || isNaN(qty) || qty < 1) {
+            toast.error(`Datos inválidos en la línea: "${line}"`);
+            return;
           }
+
+          if (dest === activeOrigin) {
+            toast.error(`El aeropuerto destino (${dest}) no puede ser igual al origen (${activeOrigin}).`);
+            return;
+          }
+
+          items.push({
+            codigoAerolinea: codAero,
+            destinoOaci: dest,
+            cantidadMaletas: qty
+          });
         }
 
-        const validItems = items.filter(it =>
-          it.origin && it.destination && it.origin !== it.destination && it.quantity > 0
-        );
-
-        if (validItems.length === 0) {
+        if (items.length === 0) {
           toast.error("No se encontraron registros válidos en el archivo.");
           return;
         }
 
-        const count = batchImportBaggage(validItems);
-        toast.success(`${count} lotes de maletas importados exitosamente desde ${file.name}`);
-      } catch (err) {
-        toast.error("Error al procesar el archivo. Verifique el formato.");
+        setLoading(true);
+        // Enviar lote al backend
+        await api.registrarPedidoRTLote(items);
+        toast.success(`${items.length} pedidos registrados en lote exitosamente.`);
+        setQuantity("1");
+        fetchData(); // Recargar tabla
+      } catch (err: any) {
+        toast.error(err.message || "Error al registrar el lote");
+      } finally {
+        setLoading(false);
       }
     };
     reader.readAsText(file);
@@ -367,7 +383,7 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
         <Card className={cardBg}>
           <CardHeader className="pb-3">
             <CardTitle className={`${titleColor} text-[14px] flex items-center gap-2`}>
-              <Upload className="w-4 h-4" /> Importar Maletas en Lote
+              <Upload className="w-4 h-4" /> Importar Maletas en Lote (.txt)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -375,16 +391,17 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
               <input
                 ref={fileRef}
                 type="file"
-                accept=".csv,.json"
+                accept=".txt"
                 onChange={handleFileUpload}
                 className="hidden"
               />
               <Button onClick={() => fileRef.current?.click()} className={isDark ? "bg-cyan-400 text-black hover:bg-cyan-500" : "bg-blue-600 text-white hover:bg-blue-700"}>
-                <FileText className="w-4 h-4 mr-2" /> Seleccionar Archivo (CSV/JSON)
+                <FileText className="w-4 h-4 mr-2" /> Seleccionar Archivo (.txt)
               </Button>
               <div className={`text-[11px] ${subtlerText}`}>
-                <p>Formato CSV: <code className={cyanText}>origen,destino,cantidad,aerolinea</code></p>
-                <p>Formato JSON: <code className={cyanText}>[{`{"origin","destination","quantity","airline"}`}]</code></p>
+                <p>Formato de línea: <code className={cyanText}>codigoAerolinea-destinoOaci-cantidadMaletas</code></p>
+                <p>Ejemplo: <code className={cyanText}>LAN-SPIM-5</code></p>
+                <p>El aeropuerto de origen será el asignado al operario ({assignedAirport || "No asignado"}).</p>
               </div>
             </div>
           </CardContent>

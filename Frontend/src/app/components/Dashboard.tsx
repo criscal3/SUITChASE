@@ -276,9 +276,19 @@ export function Dashboard() {
     return keys.size;
   }, [pedidos]);
 
+  const airportsWithStock = useMemo(() => {
+    return airports.map(a => {
+      const stock = resumen?.stockActualAlmacenes?.[a.code] ?? 0;
+      return {
+        ...a,
+        currentStock: stock
+      };
+    });
+  }, [airports, resumen]);
+
   const aeropuertosAlLimite = useMemo(
-    () => airports.filter(a => a.warehouseCapacity > 0 && (a.currentStock / a.warehouseCapacity) >= 0.8).length,
-    [airports]
+    () => airportsWithStock.filter(a => a.warehouseCapacity > 0 && (a.currentStock / a.warehouseCapacity) >= 0.8).length,
+    [airportsWithStock]
   );
 
   // ── Chart data ──
@@ -306,7 +316,7 @@ export function Dashboard() {
   }, [pedidos]);
 
   const topAirportsData = useMemo(() =>
-    [...airports]
+    [...airportsWithStock]
       .sort((a, b) => b.currentStock - a.currentStock)
       .slice(0, 8)
       .map(a => ({
@@ -315,7 +325,7 @@ export function Dashboard() {
         capacidad: a.warehouseCapacity,
         pct: a.warehouseCapacity > 0 ? Math.round((a.currentStock / a.warehouseCapacity) * 100) : 0,
       })),
-    [airports]
+    [airportsWithStock]
   );
 
   // ── Render ──
@@ -521,7 +531,7 @@ export function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {[...airports]
+                    {[...airportsWithStock]
                       .sort((a, b) => {
                         const pctA = a.warehouseCapacity > 0 ? a.currentStock / a.warehouseCapacity : 0;
                         const pctB = b.warehouseCapacity > 0 ? b.currentStock / b.warehouseCapacity : 0;

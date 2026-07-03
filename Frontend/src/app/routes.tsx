@@ -18,7 +18,7 @@ import { AirportMap } from "./components/AirportMap";
 import { RealTimePage } from "./components/RealTimePage";
 
 function OperatorRegistration() {
-  return <Registration showBatchImport={false} />;
+  return <Registration showBatchImport={true} />;
 }
 
 function ErrorFallback() {

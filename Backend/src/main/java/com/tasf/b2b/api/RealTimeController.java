@@ -2,6 +2,7 @@ package com.tasf.b2b.api;
 
 import com.tasf.b2b.api.dto.PedidoRealDTO;
 import com.tasf.b2b.api.dto.RegistroPedidoRequest;
+import com.tasf.b2b.api.dto.RegistroPedidoLoteItem;
 import com.tasf.b2b.api.dto.ResumenOperacionesDTO;
 import com.tasf.b2b.domain.UsuarioEntity;
 import com.tasf.b2b.repository.UsuarioRepository;
@@ -95,5 +96,30 @@ public class RealTimeController {
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(rtService.registrarPedido(req, operarioId));
+    }
+
+    /** Registrar pedidos en lote */
+    @PostMapping("/pedidos/lote")
+    @PreAuthorize("hasAnyRole('OPERARIO', 'ADMIN')")
+    public ResponseEntity<List<PedidoRealDTO>> registrarLote(
+            @RequestBody List<RegistroPedidoLoteItem> req,
+            Authentication auth) {
+        String correo = (String) auth.getPrincipal();
+        UsuarioEntity usuario = usuarioRepository.findByCorreo(correo).orElse(null);
+        Long operarioId = usuario != null ? usuario.getId() : null;
+        String origenOaci = usuario != null ? usuario.getAeropuertoOaci() : null;
+
+        if (usuario != null && usuario.getRol() == UsuarioEntity.Rol.OPERARIO) {
+            if (origenOaci == null) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+            }
+        } else if (usuario != null && usuario.getRol() == UsuarioEntity.Rol.ADMIN) {
+            if (origenOaci == null) {
+                origenOaci = "EDDI"; // Por defecto para admin si no tiene aeropuerto
+            }
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(rtService.registrarPedidosEnLote(req, origenOaci, operarioId));
     }
 }
