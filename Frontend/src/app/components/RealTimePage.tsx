@@ -47,12 +47,12 @@ interface Resumen {
 }
 
 const statusConfig: Record<string, { color: string; bg: string; lightBg: string; lightColor: string; label: string; icon: React.ReactNode }> = {
-  PENDIENTE:   { color: "text-amber-500",  bg: "bg-amber-500/20",  lightBg: "bg-amber-100", lightColor: "text-amber-700", label: "Sin vuelo",   icon: <Clock className="w-3 h-3" /> },
-  PLANIFICADO: { color: "text-blue-500",   bg: "bg-blue-500/20",   lightBg: "bg-blue-100",  lightColor: "text-blue-800",  label: "Asignado",    icon: <CheckCircle className="w-3 h-3" /> },
-  EN_RUTA:     { color: "text-cyan-500",   bg: "bg-cyan-500/20",   lightBg: "bg-cyan-100",  lightColor: "text-cyan-800",  label: "En ruta",     icon: <Plane className="w-3 h-3" /> },
-  ENTREGADO:   { color: "text-green-500",  bg: "bg-green-500/20",  lightBg: "bg-green-100", lightColor: "text-green-700", label: "Entregado",   icon: <CheckCircle className="w-3 h-3" /> },
-  SIN_RUTA:    { color: "text-red-500",    bg: "bg-red-500/20",    lightBg: "bg-red-100",   lightColor: "text-red-700",   label: "Sin ruta",    icon: <AlertTriangle className="w-3 h-3" /> },
-  COLAPSO:     { color: "text-red-500",    bg: "bg-red-500/20",    lightBg: "bg-red-100",   lightColor: "text-red-700",   label: "Colapso",     icon: <AlertTriangle className="w-3 h-3" /> },
+  PENDIENTE: { color: "text-amber-500", bg: "bg-amber-500/20", lightBg: "bg-amber-100", lightColor: "text-amber-700", label: "Sin vuelo", icon: <Clock className="w-3 h-3" /> },
+  PLANIFICADO: { color: "text-blue-500", bg: "bg-blue-500/20", lightBg: "bg-blue-100", lightColor: "text-blue-800", label: "Asignado", icon: <CheckCircle className="w-3 h-3" /> },
+  EN_RUTA: { color: "text-cyan-500", bg: "bg-cyan-500/20", lightBg: "bg-cyan-100", lightColor: "text-cyan-800", label: "En ruta", icon: <Plane className="w-3 h-3" /> },
+  ENTREGADO: { color: "text-green-500", bg: "bg-green-500/20", lightBg: "bg-green-100", lightColor: "text-green-700", label: "Entregado", icon: <CheckCircle className="w-3 h-3" /> },
+  SIN_RUTA: { color: "text-red-500", bg: "bg-red-500/20", lightBg: "bg-red-100", lightColor: "text-red-700", label: "Sin ruta", icon: <AlertTriangle className="w-3 h-3" /> },
+  COLAPSO: { color: "text-red-500", bg: "bg-red-500/20", lightBg: "bg-red-100", lightColor: "text-red-700", label: "Colapso", icon: <AlertTriangle className="w-3 h-3" /> },
 };
 
 function formatTimestamp(isoStr: string): string {
@@ -143,7 +143,7 @@ export function RealTimePage() {
           const map = new Map(prev.map(p => [p.id, p]));
           const now = new Date();
           const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
-          
+
           lista.forEach(p => {
             // If the order has finished, check if it was delivered within last 4 hours
             if (["ENTREGADO", "SIN_RUTA", "COLAPSO"].includes(p.estado)) {
@@ -238,7 +238,7 @@ export function RealTimePage() {
           if (fOrigin !== t.origenOaci.toUpperCase() || fDest !== t.destinoOaci.toUpperCase()) {
             return false;
           }
-          
+
           let matchTime = false;
           if (f.horaSalida && t.fechaSalida) {
             const parts = f.horaSalida.split(":");
@@ -292,7 +292,7 @@ export function RealTimePage() {
         const timeParts = parts[1].split(":");
         return `${timeParts[0]}:${timeParts[1]}`;
       }
-    } catch (e) {}
+    } catch (e) { }
     return "";
   };
 
@@ -357,7 +357,7 @@ export function RealTimePage() {
       const id = `${f.fromCode}-${f.toCode}-${depTimeStr}`;
       const fromGmt = getGmt(f.fromCode);
       const toGmt = getGmt(f.toCode);
-      
+
       return {
         id,
         key: f.key,
@@ -383,7 +383,7 @@ export function RealTimePage() {
     return airportsList
       .filter(a => (a.warehouseCapacity ?? 0) > 0)
       .map(a => {
-        const capacity    = a.warehouseCapacity ?? 0;
+        const capacity = a.warehouseCapacity ?? 0;
         const currentStock = a.currentStock ?? 0;
         const utilization = capacity > 0 ? (currentStock / capacity) * 100 : 0;
 
@@ -551,7 +551,7 @@ export function RealTimePage() {
       <div className="flex-1 flex relative overflow-hidden">
         {/* Panel izquierdo - Stats y Leyenda */}
         <div className="absolute left-4 top-14 bottom-4 z-10 w-52 pointer-events-auto flex flex-col gap-3 overflow-y-auto hide-scrollbar" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-          
+
           {/* Leyenda de Estados */}
           <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
             <h4 className={`text-[11px] font-semibold mb-2 ${titleCls}`}>Almacenes y Vuelos</h4>
@@ -570,15 +570,15 @@ export function RealTimePage() {
             <StatCard isDark={isDark} label="Vuelos En Tránsito" value={vuelosEnTransitoCount} colorClass="text-cyan-500" />
             <StatCard isDark={isDark} label="Envíos sin vuelos asignados" value={resumen?.pendientes ?? 0} colorClass="text-amber-500" />
             <StatCard isDark={isDark} label="Envíos con vuelos asignados" value={resumen?.planificados ?? 0} colorClass="text-blue-500" />
-            <StatCard 
-              isDark={isDark} 
-              label="Ocupación Global de Vuelos" 
+            <StatCard
+              isDark={isDark}
+              label="Ocupación Global de Vuelos"
               value={parseFloat(globalOccupancy.flightUtilization.toFixed(1))}
               valueColor={getOccupancyColor(globalOccupancy.flightUtilization)}
             />
-            <StatCard 
-              isDark={isDark} 
-              label="Ocupación Global de Almacenes" 
+            <StatCard
+              isDark={isDark}
+              label="Ocupación Global de Almacenes"
               value={parseFloat(globalOccupancy.warehouseUtilization.toFixed(1))}
               valueColor={getOccupancyColor(globalOccupancy.warehouseUtilization)}
             />
@@ -608,19 +608,17 @@ export function RealTimePage() {
         {/* Panel derecho - Rastreo y búsqueda */}
         {showRightPanel && (
           <div className="absolute right-4 top-14 bottom-4 z-10 w-92 flex flex-col gap-2 pointer-events-none">
-            
+
             {/* Contenedor 1: Envíos */}
-            <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-              showEnvios ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
-            } ${panelBg}`}>
+            <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showEnvios ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+              } ${panelBg}`}>
               <button
                 onClick={() => {
                   setShowEnvios(!showEnvios);
                   if (!showEnvios) { setShowVuelos(false); setShowAlmacenes(false); }
                 }}
-                className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                  showEnvios ? `border-b ${headerBorder}` : ""
-                }`}
+                className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showEnvios ? `border-b ${headerBorder}` : ""
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
@@ -651,9 +649,8 @@ export function RealTimePage() {
 
                   {/* Indicador de filtro de vuelo */}
                   {selectedFlightKey && (
-                    <div className={`mx-3 my-2 p-2 rounded-lg flex items-center justify-between text-[10px] shrink-0 ${
-                      isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"
-                    }`}>
+                    <div className={`mx-3 my-2 p-2 rounded-lg flex items-center justify-between text-[10px] shrink-0 ${isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"
+                      }`}>
                       <span className="truncate">
                         Filtrando por vuelo: {activeFlights.find(f => f.key === selectedFlightKey)?.id || selectedFlightKey}
                       </span>
@@ -676,9 +673,8 @@ export function RealTimePage() {
                         <span className={`text-[12px] font-bold ${titleCls}`}>{selectedPedido.id}</span>
                         <div className="flex items-center gap-1.5">
                           {detailLoading && (
-                            <span className={`w-3 h-3 rounded-full border-2 border-t-transparent animate-spin ${
-                              isDark ? "border-cyan-400" : "border-blue-600"
-                            }`} />
+                            <span className={`w-3 h-3 rounded-full border-2 border-t-transparent animate-spin ${isDark ? "border-cyan-400" : "border-blue-600"
+                              }`} />
                           )}
                           <Badge className={`text-[9px] ${isDark ? sc.bg : sc.lightBg} ${isDark ? sc.color : sc.lightColor}`}>
                             {sc.icon} <span className="ml-1">{sc.label}</span>
@@ -698,7 +694,7 @@ export function RealTimePage() {
                             const utc = isoStr.endsWith('Z') ? isoStr : isoStr + 'Z';
                             const ms = new Date(utc).getTime() + gmtOffset * 3600_000;
                             const d = new Date(ms);
-                            return `${String(d.getUTCDate()).padStart(2,"0")}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
+                            return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
                           } catch { return "—"; }
                         };
                         const getGmtTramo = (oaci: string) => airportsList.find((a: any) => a.code === oaci)?.gmt ?? 0;
@@ -729,8 +725,8 @@ export function RealTimePage() {
                             {/* Nodos intermedios y final */}
                             {tramos.map((leg: any, i: number) => {
                               const isCompleted = leg.estado === "COMPLETADO";
-                              const isCurrent   = leg.estado === "EN_VUELO";
-                              const isPending   = leg.estado === "PROGRAMADO" || leg.estado === "CANCELADO";
+                              const isCurrent = leg.estado === "EN_VUELO";
+                              const isPending = leg.estado === "PROGRAMADO" || leg.estado === "CANCELADO";
                               const isCancelled = leg.estado === "CANCELADO";
                               const isLast = i === tramos.length - 1;
                               const arriGmt = getGmtTramo(leg.destinoOaci);
@@ -743,15 +739,13 @@ export function RealTimePage() {
                                     )}
                                   </div>
                                   <div className="flex items-start gap-2">
-                                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${
-                                      isCancelled ? "bg-red-500/50" :
-                                      isCompleted ? "bg-green-500" :
-                                      isCurrent   ? "bg-cyan-500 animate-pulse" : dotInactive
-                                    }`} />
+                                    <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isCancelled ? "bg-red-500/50" :
+                                        isCompleted ? "bg-green-500" :
+                                          isCurrent ? "bg-cyan-500 animate-pulse" : dotInactive
+                                      }`} />
                                     <div className="flex-1">
-                                      <div className={`text-[10px] font-semibold ${
-                                        isCancelled ? (isDark ? "text-red-400/70" : "text-red-600/70") : titleCls
-                                      }`}>
+                                      <div className={`text-[10px] font-semibold ${isCancelled ? (isDark ? "text-red-400/70" : "text-red-600/70") : titleCls
+                                        }`}>
                                         {getCity(leg.destinoOaci)} ({leg.destinoOaci})
                                         {isCancelled && <span className={`ml-1 text-[9px] ${isDark ? "text-red-400" : "text-red-600"}`}>[Cancelado]</span>}
                                       </div>
@@ -800,9 +794,8 @@ export function RealTimePage() {
                           <button
                             key={p.id}
                             onClick={() => handleSelectPedido(isSelected ? null : p)}
-                            className={`w-full text-left px-2 py-2 rounded-md mb-1 flex items-center gap-2 transition-colors ${
-                              isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${hoverRow} border border-transparent`
-                            }`}
+                            className={`w-full text-left px-2 py-2 rounded-md mb-1 flex items-center gap-2 transition-colors ${isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${hoverRow} border border-transparent`
+                              }`}
                           >
                             <div className={`shrink-0 ${s.color}`}>{s.icon}</div>
                             <div className="flex-1 min-w-0">
@@ -837,13 +830,12 @@ export function RealTimePage() {
                       <button
                         onClick={() => setPedidosPage(prev => Math.max(prev - 1, 1))}
                         disabled={pedidosPage === 1}
-                        className={`px-2 py-1 rounded border transition-colors font-medium ${
-                          pedidosPage === 1
+                        className={`px-2 py-1 rounded border transition-colors font-medium ${pedidosPage === 1
                             ? "opacity-40 cursor-not-allowed border-transparent"
                             : isDark
                               ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
                               : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
-                        }`}
+                          }`}
                       >
                         Anterior
                       </button>
@@ -853,13 +845,12 @@ export function RealTimePage() {
                       <button
                         onClick={() => setPedidosPage(prev => Math.min(prev + 1, totalPedidosPages))}
                         disabled={pedidosPage === totalPedidosPages}
-                        className={`px-2 py-1 rounded border transition-colors font-medium ${
-                          pedidosPage === totalPedidosPages
+                        className={`px-2 py-1 rounded border transition-colors font-medium ${pedidosPage === totalPedidosPages
                             ? "opacity-40 cursor-not-allowed border-transparent"
                             : isDark
                               ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
                               : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
-                        }`}
+                          }`}
                       >
                         Siguiente
                       </button>
@@ -870,17 +861,15 @@ export function RealTimePage() {
             </div>
 
             {/* Contenedor 2: Vuelos */}
-            <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-              showVuelos ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
-            } ${panelBg}`}>
+            <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showVuelos ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+              } ${panelBg}`}>
               <button
                 onClick={() => {
                   setShowVuelos(!showVuelos);
                   if (!showVuelos) { setShowEnvios(false); setShowAlmacenes(false); }
                 }}
-                className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                  showVuelos ? `border-b ${headerBorder}` : ""
-                }`}
+                className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showVuelos ? `border-b ${headerBorder}` : ""
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <Plane className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
@@ -905,17 +894,15 @@ export function RealTimePage() {
             </div>
 
             {/* Contenedor 3: Almacenes */}
-            <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-              showAlmacenes ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
-            } ${panelBg}`}>
+            <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showAlmacenes ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+              } ${panelBg}`}>
               <button
                 onClick={() => {
                   setShowAlmacenes(!showAlmacenes);
                   if (!showAlmacenes) { setShowEnvios(false); setShowVuelos(false); }
                 }}
-                className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                  showAlmacenes ? `border-b ${headerBorder}` : ""
-                }`}
+                className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showAlmacenes ? `border-b ${headerBorder}` : ""
+                  }`}
               >
                 <div className="flex items-center gap-2">
                   <Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />

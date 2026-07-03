@@ -33,6 +33,13 @@ function formatDurationDHM(ms: number): string {
   return `${days}d ${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
+function formatHM(ms: number): string {
+  const totalMinutes = Math.floor(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m`;
+}
+
 function formatSimDate(ts: number): string {
   if (!ts || isNaN(ts)) {
     // Show today if no sim running
@@ -275,9 +282,9 @@ function LayoutInner() {
                       <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatTimestampPeruTime(Date.now())} </span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Tiempo transcurrido (real):</span>
-                      <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatDurationDHM(realTimeElapsed)}</span>
-                    </div>
+                       <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Tiempo transcurrido (real):</span>
+                       <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatHM(realTimeElapsed)}</span>
+                     </div>
                   </div>
                 )}
               </>

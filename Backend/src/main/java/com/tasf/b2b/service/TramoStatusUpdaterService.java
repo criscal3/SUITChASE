@@ -32,7 +32,10 @@ public class TramoStatusUpdaterService {
         Set<String> pedidosAfectados = new HashSet<>();
 
         // Tramos PROGRAMADO que ya deberían estar volando
-        List<AsignacionRealEntity> despegados = asignacionRepo.findTramosQueDeberianEstarEnVuelo(ahora);
+        List<AsignacionRealEntity> despegados = asignacionRepo.findByEstadoAndFechaSalidaLessThanEqual(EstadoTramo.PROGRAMADO, ahora);
+        if (!despegados.isEmpty()) {
+            log.info("[TramoUpdater] Encontrados {} tramos que deberían despegar. ahora={}", despegados.size(), ahora);
+        }
         despegados.forEach(t -> {
             t.setEstado(EstadoTramo.EN_VUELO);
             pedidosAfectados.add(t.getPedidoId());
@@ -52,7 +55,10 @@ public class TramoStatusUpdaterService {
         }
 
         // Tramos EN_VUELO que ya deberían haber aterrizado
-        List<AsignacionRealEntity> aterrizados = asignacionRepo.findTramosQueDeberianHaberAterrizado(ahora);
+        List<AsignacionRealEntity> aterrizados = asignacionRepo.findByEstadoAndFechaLlegadaLessThanEqual(EstadoTramo.EN_VUELO, ahora);
+        if (!aterrizados.isEmpty()) {
+            log.info("[TramoUpdater] Encontrados {} tramos que deberían aterrizar. ahora={}", aterrizados.size(), ahora);
+        }
         aterrizados.forEach(t -> {
             t.setEstado(EstadoTramo.COMPLETADO);
             pedidosAfectados.add(t.getPedidoId());

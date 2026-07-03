@@ -19,12 +19,10 @@ public interface AsignacionRealRepository extends JpaRepository<AsignacionRealEn
     void deleteByPedidoId(String pedidoId);
 
     // Para actualizador de estados: tramos que deberían haber despegado
-    @Query("SELECT a FROM AsignacionRealEntity a WHERE a.estado = 'PROGRAMADO' AND a.fechaSalida <= :ahora")
-    List<AsignacionRealEntity> findTramosQueDeberianEstarEnVuelo(@Param("ahora") LocalDateTime ahora);
+    List<AsignacionRealEntity> findByEstadoAndFechaSalidaLessThanEqual(EstadoTramo estado, LocalDateTime ahora);
 
     // Para actualizador de estados: tramos que ya deberían haber aterrizado
-    @Query("SELECT a FROM AsignacionRealEntity a WHERE a.estado = 'EN_VUELO' AND a.fechaLlegada <= :ahora")
-    List<AsignacionRealEntity> findTramosQueDeberianHaberAterrizado(@Param("ahora") LocalDateTime ahora);
+    List<AsignacionRealEntity> findByEstadoAndFechaLlegadaLessThanEqual(EstadoTramo estado, LocalDateTime ahora);
 
     // Para saber si todos los tramos de un pedido están en un estado que no es el indicado
     long countByPedidoIdAndEstadoNot(String pedidoId, EstadoTramo estado);

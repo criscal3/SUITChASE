@@ -337,16 +337,16 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
 
         const depTime = parseUTCDate(leg.fechaSalida);
         const arrTime = parseUTCDate(leg.fechaLlegada);
-        
-        // Salvaguarda: Si el vuelo ya llegó a su destino hace más de 1 minuto,
-        // no lo dibujamos en el mapa, evitando que se quede congelado si hay lag de red
-        // o retraso en la actualización del estado desde el backend.
-        if (nowMs > arrTime + 60000) return;
+
+        // Salvaguarda: Si el vuelo ya llegó hace más de 1 minuto Y tenemos fechas válidas, no lo dibujamos.
+        if (arrTime > 0 && depTime > 0 && nowMs > arrTime + 60000) return;
 
         const total = arrTime - depTime;
-        if (total <= 0) return;
-
-        const progress = Math.min(1, Math.max(0, (nowMs - depTime) / total));
+        // Si no tenemos fechas válidas, usamos progress=0.5 (posición media) como fallback
+        // para que el avión EN_VUELO siempre aparezca en el mapa.
+        const progress = (total > 0)
+          ? Math.min(1, Math.max(0, (nowMs - depTime) / total))
+          : 0.5;
 
         // Grouping key: unique for a specific flight leg at a specific time
         const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${depTime}-${arrTime}`;
