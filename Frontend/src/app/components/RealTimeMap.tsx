@@ -55,6 +55,8 @@ interface RealTimeMapProps {
   selectedFlightKey?: string | null;
   flightsList?: any[];
   filters?: OccupancyFilters;
+  selectedAirportCode?: string | null;
+  onSelectAirport?: (code: string | null) => void;
 }
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
@@ -241,7 +243,7 @@ export function getRealTimeFlightCapacity(
   return match ? (match.capacity || match.capacidad || 200) : 200;
 }
 
-export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsList, onSelectFlight, selectedFlightKey, flightsList, filters }: RealTimeMapProps) {
+export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsList, onSelectFlight, selectedFlightKey, flightsList, filters, selectedAirportCode, onSelectAirport }: RealTimeMapProps) {
   const { isDark } = useTheme();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
   const [hovered, setHovered] = useState<any | null>(null);
@@ -287,6 +289,15 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
       }
     }
   }, [selectedPedido, airportsList]);
+
+  useEffect(() => {
+    if (selectedAirportCode) {
+      const port = airportsList.find((a) => a.code === selectedAirportCode);
+      if (port) {
+        setPosition({ coordinates: [port.lng, port.lat], zoom: 3 });
+      }
+    }
+  }, [selectedAirportCode, airportsList]);
 
   // Arcs and Planes calculations
   const { arcsData, planesData } = useMemo(() => {
@@ -495,7 +506,10 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
                 <g
                   style={{ cursor: "pointer" }}
                   transform={`scale(${s * WAREHOUSE_SCALE})`}
-                  onClick={() => setPosition({ coordinates: [point.lng, point.lat], zoom: 3 })}
+                  onClick={() => {
+                    setPosition({ coordinates: [point.lng, point.lat], zoom: 3 });
+                    if (onSelectAirport) onSelectAirport(point.code);
+                  }}
                   onMouseEnter={(e) => {
                     setHovered({
                       kind: "airport",

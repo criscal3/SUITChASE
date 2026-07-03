@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Search, X, ArrowUpDown, ChevronDown, ChevronUp,
-  Warehouse, Package, Clock
+  Warehouse, Package, Clock, MapPin
 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { Input } from "./ui/input";
@@ -13,6 +13,7 @@ export interface WarehouseShipmentItem {
   cant: number;            // Cantidad de maletas
   arrivedAt: string | null;      // ISO string hora llegada al almacén (UTC) — null si desconocida
   flightDeparture: string | null; // ISO string hora salida del vuelo asignado (UTC) — null si sin ruta
+  isFinalDestination?: boolean;   // true si está en su destino final
 }
 
 export interface WarehouseItem {
@@ -28,6 +29,8 @@ export interface WarehouseItem {
 interface WarehouseMonitoringPanelProps {
   warehouses: WarehouseItem[];
   isDark: boolean;
+  selectedCode?: string | null;
+  onDeselect?: () => void;
 }
 
 type SortField = "occupancy" | "alpha";
@@ -51,7 +54,7 @@ function fmtLocalTime(isoStr: string | null, gmt: number): string {
   }
 }
 
-export function WarehouseMonitoringPanel({ warehouses, isDark }: WarehouseMonitoringPanelProps) {
+export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onDeselect }: WarehouseMonitoringPanelProps) {
   // Búsqueda (transiente)
   const [search, setSearch] = useState("");
 
@@ -61,6 +64,9 @@ export function WarehouseMonitoringPanel({ warehouses, isDark }: WarehouseMonito
 
   // Expansión local de filas
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
+
+  // Ref para scroll al elemento seleccionado
+  const selectedRowRef = useRef<HTMLDivElement | null>(null);
 
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -140,6 +146,17 @@ export function WarehouseMonitoringPanel({ warehouses, isDark }: WarehouseMonito
     }
   }, [searchMatchesShipment]);
 
+  // Cuando se selecciona un almacén desde el mapa: auto-expandir + scroll
+  useEffect(() => {
+    if (selectedCode) {
+      setExpandedCode(selectedCode);
+      // Dar tiempo al render para que el ref esté disponible
+      setTimeout(() => {
+        selectedRowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 80);
+    }
+  }, [selectedCode]);
+
   const totalPages = Math.ceil(processedWarehouses.length / pageSize);
   const paginatedWarehouses = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -210,19 +227,25 @@ export function WarehouseMonitoringPanel({ warehouses, isDark }: WarehouseMonito
       <ScrollArea className="flex-1">
         <div className="px-2 py-1">
           {paginatedWarehouses.map(w => {
-            const isExpanded = expandedCode === w.code;
-            const utilColor  = getOccupancyColor(w.utilization);
+            const isExpanded      = expandedCode === w.code;
+            const utilColor       = getOccupancyColor(w.utilization);
             const isShipmentMatch = searchMatchesShipment.has(w.code);
+            const isSelected      = selectedCode === w.code;
 
             return (
               <div
                 key={w.code}
+                ref={isSelected ? selectedRowRef : undefined}
                 className={`rounded-md mb-1.5 border transition-all overflow-hidden ${
-                  isShipmentMatch && searchTerm
+                  isSelected
                     ? isDark
-                      ? "border-cyan-500/40 bg-cyan-500/5"
-                      : "border-blue-400/50 bg-blue-50"
-                    : "border-transparent"
+                      ? "border-cyan-400/70 bg-cyan-500/10 shadow-[0_0_8px_#00e5ff30]"
+                      : "border-blue-500/60 bg-blue-50 shadow-sm"
+                    : isShipmentMatch && searchTerm
+                      ? isDark
+                        ? "border-cyan-500/40 bg-cyan-500/5"
+                        : "border-blue-400/50 bg-blue-50"
+                      : "border-transparent"
                 }`}
               >
                 {/* Cabecera del almacén */}
@@ -231,11 +254,27 @@ export function WarehouseMonitoringPanel({ warehouses, isDark }: WarehouseMonito
                   className={`w-full text-left px-2 py-2 flex items-center justify-between gap-1 rounded-md transition-colors ${hoverRow}`}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <Warehouse className={`w-3 h-3 shrink-0 ${isDark ? "text-cyan-400" : "text-blue-600"}`} />
                       <span className={`font-mono font-bold ${titleCls}`}>{w.code}</span>
                       <span className={`text-[9.5px] truncate ${mutedCls}`}>{w.cityName}</span>
+                      {isSelected && (
+                        <span className={`flex items-center gap-0.5 text-[8.5px] px-1.5 py-0.5 rounded-full font-semibold ${isDark ? "bg-cyan-500/20 text-cyan-300" : "bg-blue-100 text-blue-700"}`}>
+                          <MapPin className="w-2 h-2" />
+                          En mapa
+                        </span>
+                      )}
                     </div>
+                    {isSelected && onDeselect && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onDeselect(); }}
+                        className={`mt-1 flex items-center gap-1 text-[8.5px] px-1.5 py-0.5 rounded border transition-colors ${isDark ? "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10" : "border-blue-400/40 text-blue-600 hover:bg-blue-50"}`}
+                        title="Deseleccionar almacén"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                        Deseleccionar
+                      </button>
+                    )}
                     {/* Barra de progreso de ocupación */}
                     <div className={`mt-1 w-full h-1.5 rounded-full ${isDark ? "bg-[#1e293b]" : "bg-[#e2e8f0]"} overflow-hidden`}>
                       <div
@@ -294,22 +333,20 @@ export function WarehouseMonitoringPanel({ warehouses, isDark }: WarehouseMonito
                       ) : (
                         <div className={`max-h-52 overflow-y-auto pr-0.5 rounded-lg border p-1 custom-blue-scrollbar ${isDark ? "bg-black/25 border-[#1e293b]" : "bg-white/60 border-[#cbd5e1]"}`}>
                           {/* Encabezado de tabla */}
-                          <div className={`grid grid-cols-[1fr_auto_1fr_1fr] gap-1 px-1 pb-1 border-b text-[8.5px] font-semibold uppercase tracking-wider ${mutedCls} ${headerBorder}`}>
+                          <div className={`grid grid-cols-[1fr_auto_1.2fr] gap-2 px-1 pb-1 border-b text-[8.5px] font-semibold uppercase tracking-wider ${mutedCls} ${headerBorder}`}>
                             <span>Envío</span>
                             <span className="text-right">Maletas</span>
-                            <span className="text-right">Llegada</span>
                             <span className="text-right">Salida vuelo</span>
                           </div>
 
                           {w.shipments.map(s => {
-                            const arrivedFormatted   = s.arrivedAt     ? fmtLocalTime(s.arrivedAt, w.gmt)     : "—";
                             const departureFormatted = s.flightDeparture ? fmtLocalTime(s.flightDeparture, w.gmt) : null;
                             const hasDeparture       = !!s.flightDeparture;
 
                             return (
                               <div
                                 key={s.id}
-                                className={`grid grid-cols-[1fr_auto_1fr_1fr] gap-1 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}
+                                className={`grid grid-cols-[1fr_auto_1.2fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}
                               >
                                 {/* Código envío */}
                                 <span className={`font-mono font-semibold truncate ${titleCls}`}>{s.id}</span>
@@ -319,22 +356,21 @@ export function WarehouseMonitoringPanel({ warehouses, isDark }: WarehouseMonito
                                   x{s.cant}
                                 </span>
 
-                                {/* Hora llegada */}
-                                <span className={`text-right ${arrivedFormatted === "—" ? dimCls : subCls} font-mono`}>
-                                  {arrivedFormatted}
-                                </span>
-
-                                {/* Hora salida vuelo */}
-                                {hasDeparture ? (
-                                  <span className={`text-right font-mono ${subCls}`}>
-                                    {departureFormatted}
-                                  </span>
-                                ) : (
-                                  <span className={`text-right italic text-[8px] ${isDark ? "text-amber-400/80" : "text-amber-600"} flex items-center justify-end gap-0.5`}>
-                                    <Clock className="w-2 h-2 shrink-0" />
-                                    Sin ruta asignada
-                                  </span>
-                                )}
+                                 {/* Hora salida vuelo */}
+                                 {hasDeparture ? (
+                                   <span className={`text-right font-mono ${subCls}`}>
+                                     {departureFormatted}
+                                   </span>
+                                 ) : s.isFinalDestination ? (
+                                   <span className={`text-right italic text-[8.5px] ${isDark ? "text-green-400/80" : "text-green-600"} font-medium flex items-center justify-end gap-0.5`}>
+                                     Destino Final
+                                   </span>
+                                 ) : (
+                                   <span className={`text-right italic text-[8px] ${isDark ? "text-amber-400/80" : "text-amber-600"} flex items-center justify-end gap-0.5`}>
+                                     <Clock className="w-2 h-2 shrink-0" />
+                                     Sin ruta disponible
+                                   </span>
+                                 )}
                               </div>
                             );
                           })}

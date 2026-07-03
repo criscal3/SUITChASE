@@ -19,6 +19,8 @@ interface SimMapProps {
   onSelectFlight?: (baggageGroupIds: string[] | null, flightKey: string | null) => void;
   selectedFlightKey?: string | null;
   filters?: OccupancyFilters;
+  selectedAirportCode?: string | null;
+  onSelectAirport?: (code: string | null) => void;
 }
 
 interface HoveredAirport {
@@ -152,7 +154,7 @@ function PlaneIcon({ color, stroke }: { color: string; stroke: string }) {
   );
 }
 
-export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight, selectedFlightKey, filters }: SimMapProps) {
+export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight, selectedFlightKey, filters, selectedAirportCode, onSelectAirport }: SimMapProps) {
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
@@ -190,6 +192,15 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
       }
     }
   }, [selectedBaggage, airportsList]);
+
+  useEffect(() => {
+    if (selectedAirportCode) {
+      const port = airportsList.find((a) => a.code === selectedAirportCode);
+      if (port) {
+        setPosition({ coordinates: [port.lng, port.lat], zoom: 3 });
+      }
+    }
+  }, [selectedAirportCode, airportsList]);
 
   const pointsData = useMemo(() => {
     return airportsList
@@ -458,7 +469,12 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
               <g
                 style={{ cursor: "pointer" }}
                 transform={`scale(${s * WAREHOUSE_SCALE})`}
-                onClick={() => setPosition({ coordinates: [point.lng, point.lat], zoom: 3 })}
+                onClick={() => {
+                  setPosition({ coordinates: [point.lng, point.lat], zoom: 3 });
+                  if (onSelectAirport) {
+                    onSelectAirport(point.code);
+                  }
+                }}
                 onMouseEnter={(e) => {
                   const ap = state.airports[point.code];
                   setHovered({

@@ -392,7 +392,6 @@ export function RealTimePage() {
         // and its state is PENDIENTE or PLANIFICADO (not yet in transit).
         const shipmentsInWarehouse: WarehouseShipmentItem[] = pedidos
           .filter(p => {
-            if (p.estado === "ENTREGADO") return false;
             let currentLocation = p.origenOaci;
             const tramos: any[] = p.tramos || [];
             let isFlying = false;
@@ -408,6 +407,23 @@ export function RealTimePage() {
               }
             }
             if (isFlying) return false;
+
+            // Si está en el almacén de destino final, verificar si ya pasaron 15 minutos desde su llegada
+            if (tramos.length > 0) {
+              const lastTramo = tramos[tramos.length - 1];
+              if (lastTramo.estado === "COMPLETADO" && lastTramo.destinoOaci === a.code) {
+                if (lastTramo.fechaLlegada) {
+                  const arrivalTimeMs = new Date(lastTramo.fechaLlegada.endsWith('Z') ? lastTramo.fechaLlegada : lastTramo.fechaLlegada + 'Z').getTime();
+                  const nowMs = new Date().getTime();
+                  if (nowMs >= arrivalTimeMs + 15 * 60 * 1000) {
+                    return false;
+                  }
+                  return true;
+                }
+              }
+            }
+
+            if (p.estado === "ENTREGADO") return false;
             return currentLocation === a.code;
           })
           .map(p => {
@@ -438,6 +454,7 @@ export function RealTimePage() {
               cant: p.cantidadMaletas,
               arrivedAt,
               flightDeparture,
+              isFinalDestination: p.destinoOaci === a.code,
             } as WarehouseShipmentItem;
           });
 

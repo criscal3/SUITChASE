@@ -93,6 +93,8 @@ export function SimulationPage() {
   const [showSimEnvios, setShowSimEnvios] = useState(false);
   const [showSimVuelos, setShowSimVuelos] = useState(false);
   const [showSimAlmacenes, setShowSimAlmacenes] = useState(false);
+  const [selectedRTWarehouseCode, setSelectedRTWarehouseCode] = useState<string | null>(null);
+  const [selectedSimWarehouseCode, setSelectedSimWarehouseCode] = useState<string | null>(null);
   const [showCancelaciones, setShowCancelaciones] = useState(false);
   const [rtPedidosPage, setRtPedidosPage] = useState(1);
   const rtPedidosPageSize = 8;
@@ -531,7 +533,6 @@ export function SimulationPage() {
 
         const shipmentsInWarehouse: WarehouseShipmentItem[] = realTimePedidos
           .filter((p: any) => {
-            if (p.estado === "ENTREGADO") return false;
             let currentLocation = p.origenOaci;
             const tramos: any[] = p.tramos || [];
             let isFlying = false;
@@ -547,6 +548,23 @@ export function SimulationPage() {
               }
             }
             if (isFlying) return false;
+
+            // Si está en el almacén de destino final, verificar si ya pasaron 15 minutos desde su llegada
+            if (tramos.length > 0) {
+              const lastTramo = tramos[tramos.length - 1];
+              if (lastTramo.estado === "COMPLETADO" && lastTramo.destinoOaci === a.code) {
+                if (lastTramo.fechaLlegada) {
+                  const arrivalTimeMs = new Date(lastTramo.fechaLlegada.endsWith('Z') ? lastTramo.fechaLlegada : lastTramo.fechaLlegada + 'Z').getTime();
+                  const nowMs = new Date().getTime();
+                  if (nowMs >= arrivalTimeMs + 15 * 60 * 1000) {
+                    return false;
+                  }
+                  return true;
+                }
+              }
+            }
+
+            if (p.estado === "ENTREGADO") return false;
             return currentLocation === a.code;
           })
           .map((p: any) => {
@@ -565,7 +583,13 @@ export function SimulationPage() {
                 break;
               }
             }
-            return { id: p.id, cant: p.cantidadMaletas, arrivedAt, flightDeparture } as WarehouseShipmentItem;
+            return {
+              id: p.id,
+              cant: p.cantidadMaletas,
+              arrivedAt,
+              flightDeparture,
+              isFinalDestination: p.destinoOaci === a.code,
+            } as WarehouseShipmentItem;
           });
 
         return {
@@ -601,8 +625,6 @@ export function SimulationPage() {
         // Shipments "waiting" at this airport in the simulation
         const shipmentsInWarehouse: WarehouseShipmentItem[] = baggageGroups
           .filter(bg => {
-            if (bg.status === "delivered") return false;
-            
             // Si el envío aún no ha sido registrado en el sistema, no lo mostramos
             if (currentTime < bg.registeredAt) {
               return false;
@@ -610,11 +632,13 @@ export function SimulationPage() {
             
             // Si no tiene ruta, está varado en el origen
             if (!bg.route || bg.route.length === 0) {
+              if (bg.status === "delivered") return false;
               return bg.origin === ap.code;
             }
             
             // Si todavía no sale su primer vuelo, está en el origen
             if (currentTime < bg.route[0].departureTime) {
+              if (bg.status === "delivered") return false;
               return bg.origin === ap.code;
             }
             
@@ -622,9 +646,15 @@ export function SimulationPage() {
             const lastLeg = bg.route[bg.route.length - 1];
             if (currentTime >= lastLeg.arrivalTime) {
               // En simulación, si llegó a su destino y está en la bodega, lo contamos
+              // Pero solo si no han pasado más de 15 minutos (900,000 ms) desde la llegada, ya que a los 15 min se entrega al cliente
+              if (currentTime >= lastLeg.arrivalTime + 15 * 60 * 1000) {
+                return false;
+              }
               return lastLeg.to === ap.code;
             }
             
+            if (bg.status === "delivered") return false;
+
             // Entre vuelos o en vuelo
             for (let i = 0; i < bg.route.length; i++) {
               const leg = bg.route[i];
@@ -673,6 +703,7 @@ export function SimulationPage() {
               cant: bg.quantity,
               arrivedAt: toIso(arrivedAtMs),
               flightDeparture: toIso(flightDepartureMs),
+              isFinalDestination: bg.destination === ap.code,
             } as WarehouseShipmentItem;
           });
 
@@ -1107,6 +1138,11 @@ export function SimulationPage() {
                   }
                 }}
                 filters={occupancyFilters}
+                selectedAirportCode={selectedRTWarehouseCode}
+                onSelectAirport={(code) => {
+                  setSelectedRTWarehouseCode(code);
+                  if (code) setShowRTAlmacenes(true);
+                }}
               />
             </div>
             {/* RealTime Right Panel */}
@@ -1459,6 +1495,8 @@ export function SimulationPage() {
                       <WarehouseMonitoringPanel
                         warehouses={rtWarehouseItems}
                         isDark={isDark}
+                        selectedCode={selectedRTWarehouseCode}
+                        onDeselect={() => setSelectedRTWarehouseCode(null)}
                       />
                     </div>
                   )}
@@ -1489,6 +1527,11 @@ export function SimulationPage() {
                   }
                 }}
                 filters={occupancyFilters}
+                selectedAirportCode={selectedSimWarehouseCode}
+                onSelectAirport={(code) => {
+                  setSelectedSimWarehouseCode(code);
+                  if (code) setShowSimAlmacenes(true);
+                }}
               />
             </div>
 
@@ -1593,6 +1636,8 @@ export function SimulationPage() {
                       <WarehouseMonitoringPanel
                         warehouses={simWarehouseItems}
                         isDark={isDark}
+                        selectedCode={selectedSimWarehouseCode}
+                        onDeselect={() => setSelectedSimWarehouseCode(null)}
                       />
                     </div>
                   )}
