@@ -326,6 +326,12 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
 
         const depTime = parseUTCDate(leg.fechaSalida);
         const arrTime = parseUTCDate(leg.fechaLlegada);
+        
+        // Salvaguarda: Si el vuelo ya llegó a su destino hace más de 1 minuto,
+        // no lo dibujamos en el mapa, evitando que se quede congelado si hay lag de red
+        // o retraso en la actualización del estado desde el backend.
+        if (nowMs > arrTime + 60000) return;
+
         const total = arrTime - depTime;
         if (total <= 0) return;
 
