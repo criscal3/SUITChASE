@@ -428,6 +428,20 @@ export function RealTimePage() {
   const dotInactive = isDark ? "bg-[#334155]" : "bg-[#a0aec0]";
   const hoverRow = isDark ? "hover:bg-[#0f172a]" : "hover:bg-[#cfd6df]";
 
+  const vuelosEnTransitoCount = useMemo(() => {
+    const uniqueFlights = new Set<string>();
+    pedidos.forEach(p => {
+      if (!p.tramos) return;
+      p.tramos.forEach(leg => {
+        if (leg.estado === "EN_VUELO") {
+          const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${leg.fechaSalida}`;
+          uniqueFlights.add(flightKey);
+        }
+      });
+    });
+    return uniqueFlights.size;
+  }, [pedidos]);
+
   const sc = selectedPedido ? statusConfig[selectedPedido.estado] : null;
 
   return (
@@ -457,7 +471,7 @@ export function RealTimePage() {
 
           {/* KPIs Globales */}
           <div className="space-y-2">
-            <StatCard isDark={isDark} label="Vuelos En Tránsito" value={resumen?.enRuta ?? 0} colorClass="text-cyan-500" />
+            <StatCard isDark={isDark} label="Vuelos En Tránsito" value={vuelosEnTransitoCount} colorClass="text-cyan-500" />
             <StatCard isDark={isDark} label="Envíos sin vuelos asignados" value={resumen?.pendientes ?? 0} colorClass="text-amber-500" />
             <StatCard isDark={isDark} label="Envíos con vuelos asignados" value={resumen?.planificados ?? 0} colorClass="text-blue-500" />
             <StatCard 

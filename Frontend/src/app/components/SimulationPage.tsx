@@ -78,6 +78,19 @@ export function SimulationPage() {
   const [realTimePedidos, setRealTimePedidos] = useState<any[]>([]);
   const [realTimeResumen, setRealTimeResumen] = useState<any | null>(null);
   const [realTimeAirports, setRealTimeAirports] = useState<any[]>([]);
+  const realTimeVuelosEnTransitoCount = useMemo(() => {
+    const uniqueFlights = new Set<string>();
+    realTimePedidos.forEach(p => {
+      if (!p.tramos) return;
+      p.tramos.forEach((leg: any) => {
+        if (leg.estado === "EN_VUELO") {
+          const flightKey = `${leg.origenOaci}-${leg.destinoOaci}-${leg.fechaSalida}`;
+          uniqueFlights.add(flightKey);
+        }
+      });
+    });
+    return uniqueFlights.size;
+  }, [realTimePedidos]);
   const [realTimeFlights, setRealTimeFlights] = useState<any[]>([]);
   const [selectedRealTimePedido, setSelectedRealTimePedido] = useState<any | null>(null);
   const [realTimeSearch, setRealTimeSearch] = useState("");
@@ -862,7 +875,7 @@ export function SimulationPage() {
 
               {/* Stats */}
               <div className="space-y-2">
-                <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos En Tránsito" value={realTimeResumen?.enRuta ?? 0} />
+                <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos En Tránsito" value={realTimeVuelosEnTransitoCount} />
                 <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos sin vuelos asignados" value={realTimeResumen?.pendientes ?? 0} />
                 <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos con vuelos asignados" value={realTimeResumen?.planificados ?? 0} />
                 <StatCard 
