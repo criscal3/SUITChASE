@@ -484,7 +484,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           </Geographies>
 
           {/* Arcs/Lines */}
-          {arcsData.filter(arc => !selectedFlightKey || selectedPedido || arc.key === `arc-${selectedFlightKey}`).map((arc) => (
+          {arcsData.filter(arc => !selectedAirportCode && (!selectedFlightKey || selectedPedido || arc.key === `arc-${selectedFlightKey}`)).map((arc) => (
             <Line
               key={arc.key}
               from={arc.from as [number, number]}
@@ -506,14 +506,16 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
             const level = getOccupancyLevel(util);
             const color = getOccupancyColor(util);
             // Filter warehouses based on occupancy level
-            if (!activeFilters[level].warehouse) return null;
+            const filterMatch = activeFilters[level].warehouse;
+            // If a warehouse is selected, only show that warehouse
+            const selectionMatch = !selectedAirportCode || point.code === selectedAirportCode;
+            if (!filterMatch || !selectionMatch) return null;
             return (
               <Marker key={point.code} coordinates={[point.lng, point.lat]}>
                 <g
                   style={{ cursor: "pointer" }}
                   transform={`scale(${s * WAREHOUSE_SCALE})`}
                   onClick={() => {
-                    setPosition({ coordinates: [point.lng, point.lat], zoom: 3 });
                     if (onSelectAirport) onSelectAirport(point.code);
                   }}
                   onMouseEnter={(e) => {
@@ -544,7 +546,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           })}
 
           {/* Plane Markers */}
-          {planesData.filter(plane => (!selectedFlightKey || selectedPedido || plane.key === selectedFlightKey) && typeof plane.lng === "number" && typeof plane.lat === "number" && !isNaN(plane.lng) && !isNaN(plane.lat)).map((plane) => {
+          {planesData.filter(plane => !selectedAirportCode && (!selectedFlightKey || selectedPedido || plane.key === selectedFlightKey) && typeof plane.lng === "number" && typeof plane.lat === "number" && !isNaN(plane.lng) && !isNaN(plane.lat)).map((plane) => {
             const planeUtil = plane.utilization ?? 0;
             const planeColor = getOccupancyColor(planeUtil);
             const planeStroke = getOccupancyPlaneStroke(planeUtil);

@@ -35,6 +35,7 @@ interface BaggageTrackingProps {
   selectedFlightKey?: string | null;
   onClearFlightFilter?: () => void;
   hideHeader?: boolean;
+  selectedWarehouseCode?: string | null;
 }
 
 export function BaggageTracking({
@@ -44,6 +45,7 @@ export function BaggageTracking({
   selectedFlightKey,
   onClearFlightFilter,
   hideHeader = false,
+  selectedWarehouseCode,
 }: BaggageTrackingProps) {
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
@@ -110,6 +112,11 @@ export function BaggageTracking({
         return false;
       }
 
+      // Filter by selected warehouse
+      if (selectedWarehouseCode && bg.origin !== selectedWarehouseCode && bg.destination !== selectedWarehouseCode) {
+        return false;
+      }
+
       const finalArrival = bg.route && bg.route.length > 0
         ? bg.route[bg.route.length - 1].arrivalTime
         : bg.deadlineAt;
@@ -138,7 +145,7 @@ export function BaggageTracking({
   // Reset page when search or flight filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, selectedFlightKey]);
+  }, [search, selectedFlightKey, selectedWarehouseCode]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
 

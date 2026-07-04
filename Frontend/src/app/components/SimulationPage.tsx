@@ -10,7 +10,7 @@ import { hasReachedWeeklySimEnd, hasReachedCollapseSimEnd } from "../engine/type
 import { INITIAL_WAIT_SECONDS } from "../engine/useSimulation";
 import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
 import { getOccupancyColor, getOccupancyLevel, computeUtilizationPercent } from "../engine/occupancyStatus";
-import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse, Radio, ChevronRight, Search, X, ChevronUp, ChevronDown } from "lucide-react";
+import { Play, Pause, Square, Plane, Package, Clock, Download, Trophy, AlertTriangle, CheckCircle, XCircle, Warehouse, Radio, ChevronRight, ChevronLeft, Search, X, ChevronUp, ChevronDown } from "lucide-react";
 import { RealTimeMap, getRealTimeFlightCapacity } from "./RealTimeMap";
 import { RealTimeWebSocketClient } from "../services/realTimeWebSocket";
 import { api } from "../services/api";
@@ -53,7 +53,7 @@ export function SimulationPage() {
   const { state, start, startCollapse, pauseSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
   const { isDark } = useTheme();
   const [selectedBaggage, setSelectedBaggage] = useState<BaggageGroup | null>(null);
-  const [showTracking, setShowTracking] = useState(true);
+  const [showTracking, setShowTracking] = useState(false);
   const [canScrollUp, setCanScrollUp] = useState(false);
   const [canScrollDown, setCanScrollDown] = useState(false);
   const [viewMode, setViewMode] = useState<"simulation" | "tracking">("simulation");
@@ -95,7 +95,7 @@ export function SimulationPage() {
   const [realTimeFlights, setRealTimeFlights] = useState<any[]>([]);
   const [selectedRealTimePedido, setSelectedRealTimePedido] = useState<any | null>(null);
   const [realTimeSearch, setRealTimeSearch] = useState("");
-  const [showRealTimeRightPanel, setShowRealTimeRightPanel] = useState(true);
+  const [showRealTimeRightPanel, setShowRealTimeRightPanel] = useState(false);
   const [selectedFlightKey, setSelectedFlightKey] = useState<string | null>(null);
   const [selectedFlightPedidoIds, setSelectedFlightPedidoIds] = useState<string[] | null>(null);
   const [selectedSimFlightKey, setSelectedSimFlightKey] = useState<string | null>(null);
@@ -109,6 +109,8 @@ export function SimulationPage() {
   const [selectedRTWarehouseCode, setSelectedRTWarehouseCode] = useState<string | null>(null);
   const [selectedSimWarehouseCode, setSelectedSimWarehouseCode] = useState<string | null>(null);
   const [showCancelaciones, setShowCancelaciones] = useState(false);
+  const [showSimLeftPanel, setShowSimLeftPanel] = useState(false);
+  const [showRTLeftPanel, setShowRTLeftPanel] = useState(false);
   const [rtPedidosPage, setRtPedidosPage] = useState(1);
   const rtPedidosPageSize = 8;
 
@@ -892,7 +894,14 @@ export function SimulationPage() {
       <div className="flex-1 flex relative overflow-hidden">
         {/* Panel izquierdo - solo visible en modo simulación */}
         {viewMode === "simulation" && (
-          <div className="absolute left-4 top-2 bottom-4 z-10 w-56 pointer-events-auto flex flex-col">
+          <div className={`absolute left-4 top-2 bottom-4 z-10 pointer-events-auto flex flex-col transition-all duration-300 ${showSimLeftPanel ? "w-56" : "w-10"}`}>
+            {/* Toggle button */}
+            <button
+              onClick={() => setShowSimLeftPanel(!showSimLeftPanel)}
+              className={`mb-2 p-2 rounded-lg border flex items-center justify-center transition-colors ${isDark ? "bg-cyan-500/20 border-cyan-500/40 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/30 hover:bg-blue-600/20"}`}
+            >
+              {showSimLeftPanel ? <ChevronLeft className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} /> : <ChevronRight className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
+            </button>
             {/* Fade top */}
             {canScrollUp && (
               <div className={`absolute top-0 left-0 right-0 h-8 z-10 pointer-events-none rounded-t-xl ${isDark ? "bg-gradient-to-b from-[#1a2340ee] to-transparent" : "bg-gradient-to-b from-[#c8d0dcea] to-transparent"}`} />
@@ -906,18 +915,20 @@ export function SimulationPage() {
               {/* Spacer top for centering */}
               <div className="shrink-0 mt-auto" />
               {/* Estado */}
-              <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-                <h4 className={`text-[12px] mb-2 ${panelText}`}>Estado</h4>
-                <OccupancyLegend
-                  isDark={isDark}
-                  subText={subText}
-                  filters={occupancyFilters}
-                  onFiltersChange={setOccupancyFilters}
-                />
-              </div>
+              {showSimLeftPanel && (
+                <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
+                  <h4 className={`text-[12px] mb-2 ${panelText}`}>Estado</h4>
+                  <OccupancyLegend
+                    isDark={isDark}
+                    subText={subText}
+                    filters={occupancyFilters}
+                    onFiltersChange={setOccupancyFilters}
+                  />
+                </div>
+              )}
 
               {/* Línea de tiempo */}
-              {viewMode === "simulation" && state.scenario !== "collapse" && (
+              {showSimLeftPanel && viewMode === "simulation" && state.scenario !== "collapse" && (
                 <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
                   <div className={`text-[14px] font-semibold mb-3 ${panelText}`}>
                     Simulación {state.scenario === "weekly" ? "5 Días" : "1 Día"}
@@ -950,33 +961,36 @@ export function SimulationPage() {
               )}
 
               {/* Tarjetas de estadísticas */}
-              <div className="space-y-2">
-                <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos en Tránsito" value={activeFlightsCount.toLocaleString()} />
-                <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
-                <StatCard 
-                  isDark={isDark} 
-                  icon={<CheckCircle className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
-                  label="Porcentaje de Consumo de SLA" 
-                  value={`${state.stats.onTimeRate.toFixed(1)}%`}
-                />
-                <StatCard 
-                  isDark={isDark} 
-                  icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
-                  label="Ocupación Global de Vuelos" 
-                  value={`${state.stats.flightUtilization.toFixed(1)}%`}
-                  valueColor={getOccupancyColor(state.stats.flightUtilization)}
-                />
-                <StatCard 
-                  isDark={isDark} 
-                  icon={<Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
-                  label="Ocupación Global de Almacenes" 
-                  value={`${state.stats.warehouseUtilization.toFixed(1)}%`}
-                  valueColor={getOccupancyColor(state.stats.warehouseUtilization)}
-                />
-              </div>
+              {showSimLeftPanel && (
+                <div className="space-y-2">
+                  <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos en Tránsito" value={activeFlightsCount.toLocaleString()} />
+                  <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
+                  <StatCard 
+                    isDark={isDark} 
+                    icon={<CheckCircle className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
+                    label="Porcentaje de Consumo de SLA" 
+                    value={`${state.stats.onTimeRate.toFixed(1)}%`}
+                  />
+                  <StatCard 
+                    isDark={isDark} 
+                    icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
+                    label="Ocupación Global de Vuelos" 
+                    value={`${state.stats.flightUtilization.toFixed(1)}%`}
+                    valueColor={getOccupancyColor(state.stats.flightUtilization)}
+                  />
+                  <StatCard 
+                    isDark={isDark} 
+                    icon={<Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
+                    label="Ocupación Global de Almacenes" 
+                    value={`${state.stats.warehouseUtilization.toFixed(1)}%`}
+                    valueColor={getOccupancyColor(state.stats.warehouseUtilization)}
+                  />
+                </div>
+              )}
 
               {/* Controles */}
-              <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
+              {showSimLeftPanel && (
+                <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
                 <div className="flex justify-center items-center gap-2 mb-2">
                   <button
                     onClick={() => {
@@ -1021,9 +1035,11 @@ export function SimulationPage() {
                   </div>
                 )}
               </div>
+              )}
 
               {/* Escenarios */}
-              <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
+              {showSimLeftPanel && (
+                <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
                 <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
                 {([
                   { key: "tracking", label: "Operaciones Día a Día" },
@@ -1050,6 +1066,7 @@ export function SimulationPage() {
                   </button>
                 ))}
               </div>
+              )}
 
               {/* Spacer bottom for centering */}
               <div className="shrink-0 mb-auto" />
@@ -1063,43 +1080,55 @@ export function SimulationPage() {
 
         {/* Selector de modo flotante en tracking */}
         {viewMode === "tracking" && (
-          <div className="absolute left-4 top-2 bottom-4 z-30 pointer-events-auto w-56 flex flex-col">
+          <div className={`absolute left-4 top-2 bottom-4 z-30 pointer-events-auto flex flex-col transition-all duration-300 ${showRTLeftPanel ? "w-56" : "w-10"}`}>
+            {/* Toggle button */}
+            <button
+              onClick={() => setShowRTLeftPanel(!showRTLeftPanel)}
+              className={`mb-2 p-2 rounded-lg border flex items-center justify-center transition-colors ${isDark ? "bg-cyan-500/20 border-cyan-500/40 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/30 hover:bg-blue-600/20"}`}
+            >
+              {showRTLeftPanel ? <ChevronLeft className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} /> : <ChevronRight className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
+            </button>
             <div className="flex-1 flex flex-col gap-3 overflow-y-auto hide-scrollbar" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               <div className="shrink-0 mt-auto" />
               {/* Ocupación de Aeropuertos */}
-              <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-                <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Estado</h4>
-                <OccupancyLegend
-                  isDark={isDark}
-                  subText={subText}
-                  filters={occupancyFilters}
-                  onFiltersChange={setOccupancyFilters}
-                />
-              </div>
+              {showRTLeftPanel && (
+                <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
+                  <h4 className={`text-[11px] font-semibold mb-2 ${panelText}`}>Estado</h4>
+                  <OccupancyLegend
+                    isDark={isDark}
+                    subText={subText}
+                    filters={occupancyFilters}
+                    onFiltersChange={setOccupancyFilters}
+                  />
+                </div>
+              )}
 
               {/* Stats */}
-              <div className="space-y-2">
-                <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos En Tránsito" value={realTimeVuelosEnTransitoCount} />
-                <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos sin vuelos asignados" value={realTimeResumen?.pendientes ?? 0} />
-                <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos con vuelos asignados" value={realTimeResumen?.planificados ?? 0} />
-                <StatCard 
-                  isDark={isDark} 
-                  icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
-                  label="Ocupación Global de Vuelos" 
-                  value={`${globalFlightOccupancy.toFixed(1)}%`}
-                  valueColor={getOccupancyColor(globalFlightOccupancy)}
-                />
-                <StatCard 
-                  isDark={isDark} 
-                  icon={<Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
-                  label="Ocupación Global de Almacenes" 
-                  value={`${globalWarehouseOccupancy.toFixed(1)}%`}
-                  valueColor={getOccupancyColor(globalWarehouseOccupancy)}
-                />
-              </div>
+              {showRTLeftPanel && (
+                <div className="space-y-2">
+                  <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos En Tránsito" value={realTimeVuelosEnTransitoCount} />
+                  <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos sin vuelos asignados" value={realTimeResumen?.pendientes ?? 0} />
+                  <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos con vuelos asignados" value={realTimeResumen?.planificados ?? 0} />
+                  <StatCard 
+                    isDark={isDark} 
+                    icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
+                    label="Ocupación Global de Vuelos" 
+                    value={`${globalFlightOccupancy.toFixed(1)}%`}
+                    valueColor={getOccupancyColor(globalFlightOccupancy)}
+                  />
+                  <StatCard 
+                    isDark={isDark} 
+                    icon={<Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
+                    label="Ocupación Global de Almacenes" 
+                    value={`${globalWarehouseOccupancy.toFixed(1)}%`}
+                    valueColor={getOccupancyColor(globalWarehouseOccupancy)}
+                  />
+                </div>
+              )}
 
               {/* Escenarios */}
-              <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
+              {showRTLeftPanel && (
+                <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
                 <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
                 {([
                   { key: "tracking", label: "Operaciones Día a Día" },
@@ -1126,6 +1155,7 @@ export function SimulationPage() {
                   </button>
                 ))}
               </div>
+              )}
               <div className="shrink-0 mb-auto" />
             </div>
           </div>
@@ -1155,6 +1185,9 @@ export function SimulationPage() {
                 onSelectAirport={(code) => {
                   setSelectedRTWarehouseCode(code);
                   if (code) setShowRTAlmacenes(true);
+                  // Deselect any selected flight when warehouse is selected
+                  setSelectedFlightKey(null);
+                  setSelectedFlightPedidoIds(null);
                 }}
               />
             </div>
@@ -1360,6 +1393,8 @@ export function SimulationPage() {
                           {(() => {
                             const filteredRT = realTimePedidos.filter(p => {
                               if (selectedFlightPedidoIds && !selectedFlightPedidoIds.includes(p.id)) return false;
+                              // Filter by selected warehouse
+                              if (selectedRTWarehouseCode && p.origenOaci !== selectedRTWarehouseCode && p.destinoOaci !== selectedRTWarehouseCode) return false;
                               if (!realTimeSearch) return true;
                               const s = realTimeSearch.toLowerCase();
                               return p.id.toLowerCase().includes(s) ||
@@ -1509,7 +1544,17 @@ export function SimulationPage() {
                         warehouses={rtWarehouseItems}
                         isDark={isDark}
                         selectedCode={selectedRTWarehouseCode}
-                        onDeselect={() => setSelectedRTWarehouseCode(null)}
+                        onDeselect={() => {
+                          setSelectedRTWarehouseCode(null);
+                          setSelectedFlightKey(null);
+                          setSelectedFlightPedidoIds(null);
+                        }}
+                        onSelectWarehouse={(code) => {
+                          setSelectedRTWarehouseCode(code);
+                          // Deselect any selected flight when warehouse is selected
+                          setSelectedFlightKey(null);
+                          setSelectedFlightPedidoIds(null);
+                        }}
                       />
                     </div>
                   )}
@@ -1544,6 +1589,9 @@ export function SimulationPage() {
                 onSelectAirport={(code) => {
                   setSelectedSimWarehouseCode(code);
                   if (code) setShowSimAlmacenes(true);
+                  // Deselect any selected flight when warehouse is selected
+                  setSelectedSimFlightKey(null);
+                  setSelectedSimFlightBaggageIds(null);
                 }}
               />
             </div>
@@ -1584,6 +1632,7 @@ export function SimulationPage() {
                           setSelectedSimFlightBaggageIds(null);
                         }}
                         hideHeader={true}
+                        selectedWarehouseCode={selectedSimWarehouseCode}
                       />
                     </div>
                   )}
@@ -1650,7 +1699,17 @@ export function SimulationPage() {
                         warehouses={simWarehouseItems}
                         isDark={isDark}
                         selectedCode={selectedSimWarehouseCode}
-                        onDeselect={() => setSelectedSimWarehouseCode(null)}
+                        onDeselect={() => {
+                          setSelectedSimWarehouseCode(null);
+                          setSelectedSimFlightKey(null);
+                          setSelectedSimFlightBaggageIds(null);
+                        }}
+                        onSelectWarehouse={(code) => {
+                          setSelectedSimWarehouseCode(code);
+                          // Deselect any selected flight when warehouse is selected
+                          setSelectedSimFlightKey(null);
+                          setSelectedSimFlightBaggageIds(null);
+                        }}
                       />
                     </div>
                   )}

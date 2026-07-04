@@ -98,6 +98,7 @@ function LayoutInner() {
   const isSimPage = location.pathname === "/simulacion";
   const [showSimDatePicker, setShowSimDatePicker] = useState(false);
   const [realTimeElapsed, setRealTimeElapsed] = useState(0);
+  const [showTopPanel, setShowTopPanel] = useState(false);
   // Default picker to today at 00:00
   const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}T00:00`; })();
   const [pickerValue, setPickerValue] = useState(todayIso);
@@ -222,141 +223,156 @@ function LayoutInner() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className={`h-12 border-b flex items-center px-4 gap-3 shrink-0 ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-[#e8edf5] border-[#cbd5e1]"}`}>
+        <header className={`h-12 border-b flex items-center px-4 gap-3 shrink-0 transition-all duration-300 ${showTopPanel ? (isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-[#e8edf5] border-[#cbd5e1]") : (isDark ? "bg-transparent border-transparent" : "bg-transparent border-transparent")}`}>
           <button className={`lg:hidden ${isDark ? "text-white" : "text-[#0f172a]"}`} onClick={() => setSidebarOpen(true)}>
             <Menu className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-3">
-            {isDashboardPage || (isSimPage && state.scenario === "tracking") ? (
-              <>
-                <div className={`w-2.5 h-2.5 rounded-full shrink-0 animate-pulse ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
-                <span className={`text-[14px] ${isDark ? "text-white" : "text-[#0f172a]"}`}>En Vivo</span>
-                <span className={`text-[14px] ${isDark ? "text-[#cbd5e1]" : "text-[#334155]"}`}>{dateStr} • {timeStr}</span>
-              </>
-            ) : isSimPage ? (
-              <>
-                <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${state.running ? "bg-green-500 animate-pulse" : state.collapsed ? "bg-red-500" : "bg-[#94a3b8]"}`} />
-                <span className={`text-[14px] ${isDark ? "text-white" : "text-[#0f172a]"}`}>
-                  {state.running ? "Simulando" : state.collapsed ? "Colapsado" : "Detenido"}
-                </span>
-                <span className={`font-semibold text-[12px] ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Fecha y hora simulada:</span>
-                <div className="relative">
-                  
-                  <button
-                    onClick={() => setShowSimDatePicker(!showSimDatePicker)}
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[13px] border transition-colors ${
-                      isDark ? "bg-[#1e293b] border-[#334155] text-cyan-400 hover:border-cyan-500/40" : "bg-white border-[#cbd5e1] text-[#0f172a] hover:border-blue-700"
-                    }`}
-                  >
-                    <CalendarDays className={`w-3.5 h-3.5 ${!isDark ? "text-blue-700" : ""}`} />
-                    {formatSimDate(state.hasStarted ? state.currentTime : (pendingStartDate ? pendingStartDate.getTime() : 0))}
-                  </button>
-                  {showSimDatePicker && (
-                    <div className={`absolute top-full left-0 mt-1 border rounded-lg p-3 z-50 min-w-[240px] ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-white border-[#cbd5e1]"}`}>
-                      <label className={`text-[11px] block mb-1.5 ${isDark ? "text-white/70" : "text-[#475569]"}`}>Ir a fecha y hora</label>
-                      <input
-                        type="datetime-local"
-                        value={pickerValue}
-                        onChange={e => setPickerValue(e.target.value)}
-                        className={`w-full text-[12px] rounded-lg px-2 py-1.5 mb-2 border ${isDark ? "bg-[#1e293b] border-[#334155] text-white [color-scheme:dark]" : "bg-[#f0f4f8] border-[#cbd5e1] text-[#0f172a] [color-scheme:light]"}`}
-                      />
-                      <button
-                        onClick={handleDateSeek}
-                        className={`w-full text-[11px] py-1.5 rounded-lg border transition-colors ${
-                          isDark ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/20 text-blue-700 hover:bg-blue-600/20"
-                        }`}
-                      >
-                        OK
-                      </button>
+          {showTopPanel && (
+            <div className="flex items-center gap-3">
+              {isDashboardPage || (isSimPage && state.scenario === "tracking") ? (
+                <>
+                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 animate-pulse ${isDark ? "bg-cyan-500" : "bg-blue-600"}`} />
+                  <span className={`text-[14px] ${isDark ? "text-white" : "text-[#0f172a]"}`}>En Vivo</span>
+                  <span className={`text-[14px] ${isDark ? "text-[#cbd5e1]" : "text-[#334155]"}`}>{dateStr} • {timeStr}</span>
+                </>
+              ) : isSimPage ? (
+                <>
+                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${state.running ? "bg-green-500 animate-pulse" : state.collapsed ? "bg-red-500" : "bg-[#94a3b8]"}`} />
+                  <span className={`text-[14px] ${isDark ? "text-white" : "text-[#0f172a]"}`}>
+                    {state.running ? "Simulando" : state.collapsed ? "Colapsado" : "Detenido"}
+                  </span>
+                  <span className={`font-semibold text-[12px] ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Fecha y hora simulada:</span>
+                  <div className="relative">
+                    
+                    <button
+                      onClick={() => setShowSimDatePicker(!showSimDatePicker)}
+                      className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[13px] border transition-colors ${
+                        isDark ? "bg-[#1e293b] border-[#334155] text-cyan-400 hover:border-cyan-500/40" : "bg-white border-[#cbd5e1] text-[#0f172a] hover:border-blue-700"
+                      }`}
+                    >
+                      <CalendarDays className={`w-3.5 h-3.5 ${!isDark ? "text-blue-700" : ""}`} />
+                      {formatSimDate(state.hasStarted ? state.currentTime : (pendingStartDate ? pendingStartDate.getTime() : 0))}
+                    </button>
+                    {showSimDatePicker && (
+                      <div className={`absolute top-full left-0 mt-1 border rounded-lg p-3 z-50 min-w-[240px] ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-white border-[#cbd5e1]"}`}>
+                        <label className={`text-[11px] block mb-1.5 ${isDark ? "text-white/70" : "text-[#475569]"}`}>Ir a fecha y hora</label>
+                        <input
+                          type="datetime-local"
+                          value={pickerValue}
+                          onChange={e => setPickerValue(e.target.value)}
+                          className={`w-full text-[12px] rounded-lg px-2 py-1.5 mb-2 border ${isDark ? "bg-[#1e293b] border-[#334155] text-white [color-scheme:dark]" : "bg-[#f0f4f8] border-[#cbd5e1] text-[#0f172a] [color-scheme:light]"}`}
+                        />
+                        <button
+                          onClick={handleDateSeek}
+                          className={`w-full text-[11px] py-1.5 rounded-lg border transition-colors ${
+                            isDark ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/20 text-blue-700 hover:bg-blue-600/20"
+                          }`}
+                        >
+                          OK
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {state.scenario === "weekly" && (
+                    <div className="flex items-center gap-4 ml-6 text-[12px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Tiempo transcurrido (simulado):</span>
+                        <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatDurationDHM(state.currentTime - state.startTime)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Fecha y hora real:</span>
+                        <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatTimestampPeruTime(Date.now())} </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                         <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Tiempo transcurrido (real):</span>
+                         <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatHM(realTimeElapsed)}</span>
+                       </div>
                     </div>
                   )}
-                </div>
-                {state.scenario === "weekly" && (
-                  <div className="flex items-center gap-4 ml-6 text-[12px]">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Tiempo transcurrido (simulado):</span>
-                      <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatDurationDHM(state.currentTime - state.startTime)}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Fecha y hora real:</span>
-                      <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatTimestampPeruTime(Date.now())} </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                       <span className={`font-semibold ${isDark ? "text-cyan-400" : "text-blue-700"}`}>Tiempo transcurrido (real):</span>
-                       <span className={isDark ? "text-white/80" : "text-[#334155]"}>{formatHM(realTimeElapsed)}</span>
-                     </div>
-                  </div>
-                )}
-              </>
-            ) : null}
-          </div>
-          {isSimPage && state.scenario !== "tracking" && (
-          <div className="flex items-center gap-2 ml-auto">
-            <Badge className={`text-[10px] ${state.running ? "bg-blue-600/20 text-blue-400" : isDark ? "bg-[#1e293b] text-white/60" : "bg-[#dde6f0] text-[#475569]"}`}>
-              {state.scenario === "weekly" ? "5 días" : state.scenario === "daily" ? "Diario" : "Colapso"}
-            </Badge>
-            <span className={`text-[11px] ${isDark ? "text-white/80" : "text-[#334155]"}`}>
-              {state.stats.totalRegistered} envíos | {state.stats.onTimeRate.toFixed(0)}% consumo SLA
-            </span>
-
-            {/* Theme toggle button */}
-            <button
-              onClick={toggleTheme}
-              title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-              className={`
-                ml-2 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
-                ${isDark
-                  ? "bg-[#1e293b] border border-[#334155] text-amber-400 hover:bg-[#334155] hover:border-amber-400/40"
-                  : "bg-[#dde6f0] border border-[#b8ccd8] text-blue-600 hover:bg-[#c8d8e8] hover:border-blue-400"
-                }
-              `}
-            >
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-            <button
-              onClick={() => navigate("/login")}
-              title="Cerrar sesión"
-              className={`
-                w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
-                ${isDark
-                  ? "bg-[#1e293b] border border-[#334155] text-red-400 hover:bg-[#334155] hover:border-red-400/40"
-                  : "bg-[#dde6f0] border border-[#b8ccd8] text-red-500 hover:bg-[#c8d8e8] hover:border-red-400"
-                }
-              `}
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-          )}
-          {(!isSimPage || state.scenario === "tracking") && (
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={toggleTheme}
-                title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-                className={`
-                  w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
-                  ${isDark
-                    ? "bg-[#1e293b] border border-[#334155] text-amber-400 hover:bg-[#334155] hover:border-amber-400/40"
-                    : "bg-[#dde6f0] border border-[#b8ccd8] text-blue-600 hover:bg-[#c8d8e8] hover:border-blue-400"
-                  }
-                `}
-              >
-                {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              </button>
-              <button
-                onClick={() => navigate("/login")}
-                title="Cerrar sesión"
-                className={`
-                  w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
-                  ${isDark
-                    ? "bg-[#1e293b] border border-[#334155] text-red-400 hover:bg-[#334155] hover:border-red-400/40"
-                    : "bg-[#dde6f0] border border-[#b8ccd8] text-red-500 hover:bg-[#c8d8e8] hover:border-red-400"
-                  }
-                `}
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+                </>
+              ) : null}
             </div>
+          )}
+          <div className="flex-1" />
+          {showTopPanel && (
+            <>
+              {isSimPage && state.scenario !== "tracking" && (
+              <div className="flex items-center gap-2">
+                <Badge className={`text-[10px] ${state.running ? "bg-blue-600/20 text-blue-400" : isDark ? "bg-[#1e293b] text-white/60" : "bg-[#dde6f0] text-[#475569]"}`}>
+                  {state.scenario === "weekly" ? "5 días" : state.scenario === "daily" ? "Diario" : "Colapso"}
+                </Badge>
+                <span className={`text-[11px] ${isDark ? "text-white/80" : "text-[#334155]"}`}>
+                  {state.stats.totalRegistered} envíos | {state.stats.onTimeRate.toFixed(0)}% consumo SLA
+                </span>
+
+                {/* Theme toggle button */}
+                <button
+                  onClick={toggleTheme}
+                  title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+                  className={`
+                    ml-2 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
+                    ${isDark
+                      ? "bg-[#1e293b] border border-[#334155] text-amber-400 hover:bg-[#334155] hover:border-amber-400/40"
+                      : "bg-[#dde6f0] border border-[#b8ccd8] text-blue-600 hover:bg-[#c8d8e8] hover:border-blue-400"
+                    }
+                  `}
+                >
+                  {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={() => navigate("/login")}
+                  title="Cerrar sesión"
+                  className={`
+                    w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
+                    ${isDark
+                      ? "bg-[#1e293b] border border-[#334155] text-red-400 hover:bg-[#334155] hover:border-red-400/40"
+                      : "bg-[#dde6f0] border border-[#b8ccd8] text-red-500 hover:bg-[#c8d8e8] hover:border-red-400"
+                    }
+                  `}
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+              )}
+              {(!isSimPage || state.scenario === "tracking") && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleTheme}
+                    title={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+                    className={`
+                      w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
+                      ${isDark
+                        ? "bg-[#1e293b] border border-[#334155] text-amber-400 hover:bg-[#334155] hover:border-amber-400/40"
+                        : "bg-[#dde6f0] border border-[#b8ccd8] text-blue-600 hover:bg-[#c8d8e8] hover:border-blue-400"
+                      }
+                    `}
+                  >
+                    {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                  </button>
+                  <button
+                    onClick={() => navigate("/login")}
+                    title="Cerrar sesión"
+                    className={`
+                      w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200
+                      ${isDark
+                        ? "bg-[#1e293b] border border-[#334155] text-red-400 hover:bg-[#334155] hover:border-red-400/40"
+                        : "bg-[#dde6f0] border border-[#b8ccd8] text-red-500 hover:bg-[#c8d8e8] hover:border-red-400"
+                      }
+                    `}
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+          {(isSimPage || isDashboardPage) && (
+            <button
+              onClick={() => setShowTopPanel(!showTopPanel)}
+              className={`px-2 py-1 border rounded-lg text-[10px] transition-colors ${showTopPanel ? (isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700") : (isDark ? "bg-transparent border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-transparent border-[#cbd5e1] text-[#475569] hover:text-blue-700")}`}
+            >
+              {showTopPanel ? "Ocultar" : "Tiempos"}
+            </button>
           )}
         </header>
 

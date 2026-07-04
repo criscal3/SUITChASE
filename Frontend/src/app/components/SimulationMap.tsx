@@ -220,7 +220,10 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
       })
       .filter((point) => {
         // Filter warehouses based on active filters
-        return activeFilters[point.level].warehouse;
+        const filterMatch = activeFilters[point.level].warehouse;
+        // If a warehouse is selected, only show that warehouse
+        const selectionMatch = !selectedAirportCode || point.code === selectedAirportCode;
+        return filterMatch && selectionMatch;
       });
   }, [state.airports, state.currentTime, airportsList, activeFilters]);
 
@@ -448,7 +451,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
             }
           </Geographies>
 
-          {arcsData.filter(arc => !selectedFlightKey || selectedBaggage || arc.key === `act-${selectedFlightKey}`).map((arc) => (
+          {arcsData.filter(arc => !selectedAirportCode && (!selectedFlightKey || selectedBaggage || arc.key === `act-${selectedFlightKey}`)).map((arc) => (
             <Line
               key={arc.key}
               from={arc.from as [number, number]}
@@ -470,7 +473,6 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
                 style={{ cursor: "pointer" }}
                 transform={`scale(${s * WAREHOUSE_SCALE})`}
                 onClick={() => {
-                  setPosition({ coordinates: [point.lng, point.lat], zoom: 3 });
                   if (onSelectAirport) {
                     onSelectAirport(point.code);
                   }
@@ -502,7 +504,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
             </Marker>
           ))}
 
-          {planesData.filter(plane => !selectedFlightKey || selectedBaggage || (plane.routeKey || plane.flightId) === selectedFlightKey).map((plane) => {
+          {planesData.filter(plane => !selectedAirportCode && (!selectedFlightKey || selectedBaggage || (plane.routeKey || plane.flightId) === selectedFlightKey)).map((plane) => {
             const planeUtil = plane.utilization ?? 0;
             const planeColor = getOccupancyColor(planeUtil);
             const planeStroke = getOccupancyPlaneStroke(planeUtil);

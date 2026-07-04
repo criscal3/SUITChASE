@@ -31,6 +31,7 @@ interface WarehouseMonitoringPanelProps {
   isDark: boolean;
   selectedCode?: string | null;
   onDeselect?: () => void;
+  onSelectWarehouse?: (code: string | null) => void;
 }
 
 type SortField = "occupancy" | "alpha";
@@ -54,7 +55,7 @@ function fmtLocalTime(isoStr: string | null, gmt: number): string {
   }
 }
 
-export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onDeselect }: WarehouseMonitoringPanelProps) {
+export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onDeselect, onSelectWarehouse }: WarehouseMonitoringPanelProps) {
   // Búsqueda (transiente)
   const [search, setSearch] = useState("");
 
@@ -250,7 +251,12 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
               >
                 {/* Cabecera del almacén */}
                 <button
-                  onClick={() => setExpandedCode(isExpanded ? null : w.code)}
+                  onClick={() => {
+                    setExpandedCode(isExpanded ? null : w.code);
+                    if (onSelectWarehouse) {
+                      onSelectWarehouse(w.code);
+                    }
+                  }}
                   className={`w-full text-left px-2 py-2 flex items-center justify-between gap-1 rounded-md transition-colors ${hoverRow}`}
                 >
                   <div className="flex-1 min-w-0">
@@ -267,7 +273,11 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                     </div>
                     {isSelected && onDeselect && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); onDeselect(); }}
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          onDeselect(); 
+                          if (onSelectWarehouse) onSelectWarehouse(null);
+                        }}
                         className={`mt-1 flex items-center gap-1 text-[8.5px] px-1.5 py-0.5 rounded border transition-colors ${isDark ? "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10" : "border-blue-400/40 text-blue-600 hover:bg-blue-50"}`}
                         title="Deseleccionar almacén"
                       >
