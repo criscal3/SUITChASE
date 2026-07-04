@@ -113,6 +113,14 @@ public class SimulationService {
                 .orElseThrow(() -> new RuntimeException("Simulación no encontrada"));
 
         if (sim.getEstado() == EstadoSimulacion.EJECUTANDO) {
+            // Verificar inconsistencia: estado=EJECUTANDO pero pauseFlag=true
+            // Esto ocurre cuando el request de pausa llega justo antes del reanudar,
+            // causando que el hilo ejecutor nunca vea la pausa y el flag quede colgado.
+            if (Boolean.TRUE.equals(pauseFlags.get(simulacionId))) {
+                log.warn("Simulación {} — inconsistencia detectada: estado=EJECUTANDO pero pauseFlag=true. Corrigiendo...", simulacionId);
+                pauseFlags.put(simulacionId, false);
+                return;
+            }
             log.info("La simulación {} ya está ejecutándose", simulacionId);
             return;
         }
@@ -540,8 +548,9 @@ public class SimulationService {
                 simulacionId, cursor, bloqueActual, sim.getTotalBloquesEstimados());
 
         // Ancla de reloj real: bloque n inicia en (n-1)*Sa y termina su ventana en n*Sa (segundos)
+        // NOTA: no es final — se recalcula tras cada pausa para que el timing no quede obsoleto
         final long saPeriodoMs = (long) sa * 60_000L;
-        final long wallClockAnchorMs = bloqueActual > 0
+        long wallClockAnchorMs = bloqueActual > 0
                 ? System.currentTimeMillis() - (long) bloqueActual * saPeriodoMs
                 : System.currentTimeMillis();
 
@@ -566,7 +575,11 @@ public class SimulationService {
                     // La simulación fue cancelada durante la pausa
                     break;
                 }
-                log.info("Simulación {} reanudada. Continuando desde bloque {}", simulacionId, bloqueActual);
+                // Recalcular el ancla de reloj real tras la pausa.
+                // Sin esto, todos los slotStartMs y slotEndMs quedarían en el pasado
+                // y la simulación correría todos los bloques restantes sin respetar el timing.
+                wallClockAnchorMs = System.currentTimeMillis() - (long) bloqueActual * saPeriodoMs;
+                log.info("Simulación {} reanudada. Ancla de timing recalculada. Continuando desde bloque {}", simulacionId, bloqueActual);
                 continue; // Volver al inicio del loop
             }
 
