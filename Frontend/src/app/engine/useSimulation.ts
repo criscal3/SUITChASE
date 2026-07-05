@@ -372,6 +372,7 @@ export function useSimulation() {
           prev.baggageGroups,
           prev.currentTime
         );
+        newStats.lastBlockBaggageGroups = blockGroups;
       }
 
       // If collapse detected, pause simulation

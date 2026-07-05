@@ -141,6 +141,7 @@ export interface SimStats {
   totalBaggageOnTime: number;
   totalBaggageCollapsed: number;
   collapsedBaggageGroups: string[]; // IDs de envíos en colapso
+  lastBlockBaggageGroups?: BaggageGroup[];
 }
 
 export type SimEvent = {

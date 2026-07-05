@@ -2098,6 +2098,107 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
               <p className={`text-[11px] ${textSecondary}`}>{collapseReason}</p>
             </div>
           )}
+
+          {/* Download Detailed Report Button */}
+          {state.scenario === "weekly" && (
+            <div className="flex justify-center mt-4">
+              <button 
+                onClick={() => {
+                  const lastBlockShipments = state.stats.lastBlockBaggageGroups || [];
+                  
+                  const envios = lastBlockShipments.map(bg => {
+                    let totalFlightTime = 0;
+                    bg.route.forEach(leg => {
+                      totalFlightTime += (leg.arrivalTime - leg.departureTime);
+                    });
+                    const flightTimeHrs = (totalFlightTime / 3600000).toFixed(2);
+                    
+                    const routeDetails = bg.route.map(leg => 
+                      `${leg.from} -> ${leg.to} (Vuelo: ${leg.flightId || leg.claveVuelo || 'N/A'})`
+                    ).join(" | ");
+
+                    return {
+                      idEnvio: bg.id,
+                      fechaRegistro: new Date(bg.registeredAt).toISOString(),
+                      tiempoTotalVuelo: `${flightTimeHrs} hrs`,
+                      rutaPlanificada: routeDetails,
+                      numeroMaletas: bg.quantity,
+                      aerolinea: bg.airline
+                    };
+                  });
+
+                  const almacenesUsage: Record<string, any[]> = {};
+                  
+                  lastBlockShipments.forEach(bg => {
+                    if (!almacenesUsage[bg.origin]) almacenesUsage[bg.origin] = [];
+                    almacenesUsage[bg.origin].push({ idEnvio: bg.id, maletas: bg.quantity, tipo: "Origen" });
+                    
+                    bg.route.forEach((leg, index) => {
+                      if (!almacenesUsage[leg.to]) almacenesUsage[leg.to] = [];
+                      const isDestination = index === bg.route.length - 1;
+                      almacenesUsage[leg.to].push({ 
+                        idEnvio: bg.id, 
+                        maletas: bg.quantity, 
+                        tipo: isDestination ? "Destino Final" : "Escala" 
+                      });
+                    });
+                  });
+
+                  let reportContent = `REPORTE DETALLADO - BLOQUE DE PLANIFICACION ${state.currentBlock}\n`;
+                  reportContent += `==========================================================\n\n`;
+
+                  reportContent += `ENVIOS PLANIFICADOS EN ESTE BLOQUE\n`;
+                  reportContent += `----------------------------------\n`;
+                  
+                  if (envios.length === 0) {
+                    reportContent += `No se planificaron envios en este bloque.\n`;
+                  } else {
+                    envios.forEach(envio => {
+                      reportContent += `ID Envio: ${envio.idEnvio}\n`;
+                      reportContent += `  Fecha Registro : ${envio.fechaRegistro}\n`;
+                      reportContent += `  Aerolinea      : ${envio.aerolinea}\n`;
+                      reportContent += `  Numero Maletas : ${envio.numeroMaletas}\n`;
+                      reportContent += `  Tiempo Vuelo   : ${envio.tiempoTotalVuelo}\n`;
+                      reportContent += `  Ruta           : ${envio.rutaPlanificada}\n`;
+                      reportContent += `\n`;
+                    });
+                  }
+
+                  reportContent += `\nDETALLE DE USO DE ALMACENES\n`;
+                  reportContent += `---------------------------\n`;
+                  
+                  const almacenesKeys = Object.keys(almacenesUsage).sort();
+                  if (almacenesKeys.length === 0) {
+                    reportContent += `No hubo uso de almacenes registrado para los envios de este bloque.\n`;
+                  } else {
+                    almacenesKeys.forEach(almacen => {
+                      reportContent += `Almacen [${almacen}]:\n`;
+                      almacenesUsage[almacen].forEach(item => {
+                        reportContent += `  - Envio: ${item.idEnvio} | Maletas: ${item.maletas} | Tipo de paso: ${item.tipo}\n`;
+                      });
+                      reportContent += `\n`;
+                    });
+                  }
+
+                  const blob = new Blob([reportContent], { type: "text/plain" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `reporte_detallado_bloque_${state.currentBlock}.txt`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className={`px-4 py-2 w-full flex items-center justify-center gap-2 rounded-lg text-[12px] font-semibold transition-colors ${
+                  isDark 
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30" 
+                    : "bg-blue-600/10 text-blue-700 border border-blue-600/20 hover:bg-blue-600/20"
+                }`}
+              >
+                <Download className="w-4 h-4" />
+                Descargar reporte detallado
+              </button>
+            </div>
+          )}
         </div>
 
         <div className={`flex items-center justify-center gap-2 px-6 py-3 border-t ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
