@@ -199,7 +199,7 @@ export function SimulationMap({
 }: SimMapProps) {
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
-  const { settings, getOceanColor, getActiveCountryColor, getIntraColor, getInterColor, translateCountry } = useMapSettings();
+  const { settings, getOceanColor, getActiveCountryColor, getIntraColor, getInterColor, translateCountry, checkCountryMatch } = useMapSettings();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
   const [hovered, setHovered] = useState<HoveredItem | null>(null);
 
@@ -487,7 +487,7 @@ export function SimulationMap({
                 const countryNameEn = geo.properties.name || "";
                 const translatedName = translateCountry(countryNameEn);
                 const isCountryActive = airportsList.some(
-                  (a) => a.country === countryNameEn || a.country === translatedName
+                  (a) => checkCountryMatch(a.country, countryNameEn)
                 );
                 
                 const centroid = geoCentroid(geo);
@@ -643,7 +643,7 @@ export function SimulationMap({
                 const countryNameEn = geo.properties.name || "";
                 const translatedName = translateCountry(countryNameEn);
                 const isCountryActive = airportsList.some(
-                  (a) => a.country === countryNameEn || a.country === translatedName
+                  (a) => checkCountryMatch(a.country, countryNameEn)
                 );
                 
                 if (!settings.showCountryNames || !isCountryActive) return null;

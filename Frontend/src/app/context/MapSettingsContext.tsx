@@ -20,6 +20,7 @@ interface MapSettingsContextValue {
   getInterColor: () => string;
   // Country translations
   translateCountry: (englishName: string) => string;
+  checkCountryMatch: (airportCountry: string, geoEnglishName: string) => boolean;
 }
 
 const defaultSettings: MapSettings = {
@@ -54,6 +55,19 @@ const countryTranslations: Record<string, string> = {
   "South Africa": "Sudáfrica",
   "Egypt": "Egipto",
   "Russia": "Rusia",
+  "Netherlands": "Países Bajos",
+  "Belgium": "Bélgica",
+  "Belarus": "Bielorrusia",
+  "Czechia": "República Checa",
+  "Czech Republic": "República Checa",
+  "Croatia": "Croacia",
+  "Denmark": "Dinamarca",
+  "Syria": "Siria",
+  "Jordan": "Jordania",
+  "Saudi Arabia": "Arabia Saudita",
+  "United Arab Emirates": "Emiratos Árabes Unidos",
+  "Afghanistan": "Afganistán",
+  "Azerbaijan": "Azerbaiyán",
 };
 
 export function MapSettingsProvider({ children }: { children: React.ReactNode }) {
@@ -102,6 +116,29 @@ export function MapSettingsProvider({ children }: { children: React.ReactNode })
     return countryTranslations[englishName] || englishName;
   };
 
+  const checkCountryMatch = (airportCountry: string, geoEnglishName: string) => {
+    if (!airportCountry || !geoEnglishName) return false;
+    const norm = (str: string) =>
+      str
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    const cNorm = norm(airportCountry);
+    const enNorm = norm(geoEnglishName);
+    const translatedName = translateCountry(geoEnglishName);
+    const trNorm = norm(translatedName);
+
+    if (cNorm === enNorm || cNorm === trNorm) return true;
+    if (cNorm === "holanda" && (trNorm === "paises bajos" || enNorm === "netherlands")) return true;
+    if (cNorm === "paises bajos" && (trNorm === "holanda" || enNorm === "netherlands")) return true;
+    if (cNorm === "checa" && (trNorm === "republica checa" || enNorm === "czechia" || enNorm === "czech republic")) return true;
+    if (cNorm === "republica checa" && (trNorm === "checa" || enNorm === "czechia" || enNorm === "czech republic")) return true;
+    if (cNorm === "emiratos a.u" && (trNorm === "emiratos arabes unidos" || enNorm === "united arab emirates")) return true;
+    if (cNorm === "emiratos arabes unidos" && (trNorm === "emiratos a.u" || enNorm === "united arab emirates")) return true;
+    return false;
+  };
+
   return (
     <MapSettingsContext.Provider
       value={{
@@ -113,6 +150,7 @@ export function MapSettingsProvider({ children }: { children: React.ReactNode })
         getIntraColor,
         getInterColor,
         translateCountry,
+        checkCountryMatch,
       }}
     >
       {children}
