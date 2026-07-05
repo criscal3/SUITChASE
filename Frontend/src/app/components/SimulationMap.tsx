@@ -1,7 +1,10 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup, Line } from "react-simple-maps";
+import { geoCentroid } from "d3-geo";
 import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
+import { useMapSettings } from "../context/MapSettingsContext";
+import { MapSettingsPanel } from "./MapSettingsPanel";
 import type { BaggageGroup } from "../engine/types";
 import { resolveFlightCapacity } from "../engine/backendAdapter";
 import {
@@ -48,11 +51,8 @@ interface HoveredFlight {
 
 type HoveredItem = HoveredAirport | HoveredFlight;
 
-function getArcColor(intercontinental: boolean, isDark: boolean) {
-  if (intercontinental) {
-    return isDark ? "#c4a886" : "#a8906a";
-  }
-  return isDark ? "#22d3ee" : "#0891b2";
+function getArcColor(isInter: boolean, isDark: boolean, getIntraColor: () => string, getInterColor: () => string) {
+  return isInter ? getInterColor() : getIntraColor();
 }
 
 function isIntercontinentalRoute(
@@ -131,13 +131,47 @@ const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 const PLANE_SCALE = 0.60;
 const WAREHOUSE_SCALE = 0.80;
 
-function Building3D({ color, util }: { color: string; util: number }) {
-  const h = 8 + (Math.min(100, util) / 100) * 16;
+function AirportTower3D({ color, util, isDark }: { color: string; util: number; isDark?: boolean }) {
+  const h_t = 6; // terminal height
+  const h = 10 + (Math.min(100, util) / 100) * 10; // tower shaft height
+  const gridStroke = isDark ? "rgba(255, 255, 255, 0.4)" : "rgba(0, 0, 0, 0.25)";
+
   return (
     <g>
-      <path d={`M0,3 L-6,0 L-6,-${h} L0,-${h + 3} Z`} fill={color} opacity={0.8} />
-      <path d={`M0,3 L6,0 L6,-${h} L0,-${h + 3} Z`} fill={color} opacity={0.6} />
-      <path d={`M0,-${h + 3} L-6,-${h} L0,-${h + 6} L6,-${h} Z`} fill={color} />
+      {/* Terminal Building Base */}
+      {/* Left Face */}
+      <path d={`M-12,-3 L0,3 L0,${3 - h_t} L-12,${-3 - h_t} Z`} fill={color} opacity={0.8} />
+      {/* Right Face */}
+      <path d={`M0,3 L6,0 L6,${-h_t} L0,${3 - h_t} Z`} fill={color} opacity={0.6} />
+      {/* Roof */}
+      <path d={`M0,${3 - h_t} L6,${-h_t} L-6,${-6 - h_t} L-12,${-3 - h_t} Z`} fill={color} />
+
+      {/* Terminal Window Grid */}
+      {/* Left Face Grid */}
+      <line x1={-9} y1={-1.5} x2={-9} y2={-1.5 - h_t} stroke={gridStroke} strokeWidth={0.5} />
+      <line x1={-6} y1={0} x2={-6} y2={-h_t} stroke={gridStroke} strokeWidth={0.5} />
+      <line x1={-3} y1={1.5} x2={-3} y2={1.5 - h_t} stroke={gridStroke} strokeWidth={0.5} />
+      <line x1={-12} y1={-3 - h_t / 2} x2={0} y2={3 - h_t / 2} stroke={gridStroke} strokeWidth={0.5} />
+
+      {/* Right Face Grid */}
+      <line x1={3} y1={1.5} x2={3} y2={1.5 - h_t} stroke={gridStroke} strokeWidth={0.5} />
+      <line x1={0} y1={3 - h_t / 2} x2={6} y2={-h_t / 2} stroke={gridStroke} strokeWidth={0.5} />
+
+      {/* Control Tower (translated to the right side of the roof) */}
+      <g transform="translate(4.5, -5.5)">
+        {/* Shaft */}
+        <path d={`M0,1 L-1.5,0 L-1.5,-${h} L0,-${h - 1} Z`} fill={color} opacity={0.8} />
+        <path d={`M0,1 L1.5,0 L1.5,-${h} L0,-${h - 1} Z`} fill={color} opacity={0.6} />
+        
+        {/* Cabin */}
+        <path d={`M0,-${h - 1} L-3,-${h} L-3,-${h + 3.5} L0,-${h + 2.5} Z`} fill={color} opacity={0.9} />
+        <path d={`M0,-${h - 1} L3,-${h} L3,-${h + 3.5} L0,-${h + 2.5} Z`} fill={color} opacity={0.7} />
+        <path d={`M0,-${h + 2.5} L-3,-${h + 3.5} L0,-${h + 4.5} L3,-${h + 3.5} Z`} fill={color} />
+        
+        {/* Antenna */}
+        <line x1={0} y1={-(h + 3.5)} x2={0} y2={-(h + 7.5)} stroke={color} strokeWidth={0.8} />
+        <circle cx={0} cy={-(h + 7.5)} r={1} fill={color} />
+      </g>
     </g>
   );
 }
@@ -154,9 +188,18 @@ function PlaneIcon({ color, stroke }: { color: string; stroke: string }) {
   );
 }
 
-export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight, selectedFlightKey, filters, selectedAirportCode, onSelectAirport }: SimMapProps) {
+export function SimulationMap({
+  onSelectBaggage,
+  selectedBaggage,
+  onSelectFlight,
+  selectedFlightKey,
+  filters,
+  selectedAirportCode,
+  onSelectAirport,
+}: SimMapProps) {
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
+  const { settings, getOceanColor, getActiveCountryColor, getIntraColor, getInterColor, translateCountry } = useMapSettings();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
   const [hovered, setHovered] = useState<HoveredItem | null>(null);
 
@@ -171,10 +214,11 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
   const activeFilters = filters ?? defaultFilters;
 
   const s = 1 / position.zoom;
-  const mapBg      = isDark ? "#060a15"  : "#c8d8e8";
-  const geoFill    = isDark ? "#0c1a30"  : "#b0c4d8";
+  const mapBg      = getOceanColor();
+  const geoFill    = isDark ? "#0c1a30"  : "#b0c4d8"; // Default
   const geoStroke  = isDark ? "#1a2744"  : "#8fafc8";
   const geoHover   = isDark ? "#0f203d"  : "#9ab8cc";
+  const activeGeoFill = getActiveCountryColor();
   const tooltipBg  = isDark ? "bg-[#0a0f1ef0] border-[#1a2744]" : "bg-white/95 border-[#b0c4d8]";
   const tooltipTitle = isDark ? "text-cyan-400" : "text-blue-700";
   const tooltipSub = isDark ? "text-white/70" : "text-[#374151]";
@@ -221,9 +265,7 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
       .filter((point) => {
         // Filter warehouses based on active filters
         const filterMatch = activeFilters[point.level].warehouse;
-        // If a warehouse is selected, only show that warehouse
-        const selectionMatch = !selectedAirportCode || point.code === selectedAirportCode;
-        return filterMatch && selectionMatch;
+        return filterMatch;
       });
   }, [state.airports, state.currentTime, airportsList, activeFilters]);
 
@@ -245,6 +287,8 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
           arcs.push({
             from: [from.lng, from.lat],
             to: [to.lng, to.lat],
+            fromCode: leg.from,
+            toCode: leg.to,
             color: "#ff8800",
             strokeWidth: 2,
             isDashed: true,
@@ -388,7 +432,9 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
           arcs.push({
             from: [val.from.lng, val.from.lat],
             to: [val.to.lng, val.to.lat],
-            color: getArcColor(val.intercontinental, isDark),
+            fromCode: val.fromCode,
+            toCode: val.toCode,
+            color: getArcColor(val.intercontinental, isDark, getIntraColor, getInterColor),
             strokeWidth: 1 + Math.min(2, val.qty / 100),
             isActive: true,
             key: `act-${key}`,
@@ -397,7 +443,9 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
           arcs.push({
             from: [val.from.lng, val.from.lat],
             to: [val.to.lng, val.to.lat],
-            color: getArcColor(val.intercontinental, isDark),
+            fromCode: val.fromCode,
+            toCode: val.toCode,
+            color: getArcColor(val.intercontinental, isDark, getIntraColor, getInterColor),
             strokeWidth: 1 + Math.min(2, val.qty / 100),
             isActive: true,
             key: `act-${key}`,
@@ -421,11 +469,12 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
     }
 
     return { arcsData: arcs, planesData: uniquePlanes };
-  }, [state.baggageGroups, state.currentTime, state.flightOccupancy, state.flightCapacities, selectedBaggage, isDark, airportsList, activeFilters]);
+  }, [state.baggageGroups, state.currentTime, state.flightOccupancy, state.flightCapacities, selectedBaggage, isDark, airportsList, activeFilters, getIntraColor, getInterColor]);
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative transition-colors duration-200" style={{ background: mapBg }}>
-      <ComposableMap projection="geoMercator" projectionConfig={{ scale: 120 }}>
+      <MapSettingsPanel />
+      <ComposableMap projection="geoMercator" projectionConfig={{ scale: 120 }} style={{ width: "100%", height: "100%", display: "block" }}>
         <ZoomableGroup
           zoom={position.zoom}
           center={position.coordinates}
@@ -434,24 +483,43 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
         >
           <Geographies geography={geoUrl}>
             {({ geographies }) =>
-              geographies.map((geo) => (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill={geoFill}
-                  stroke={geoStroke}
-                  strokeWidth={0.5}
-                  style={{
-                    default: { outline: "none" },
-                    hover: { outline: "none", fill: geoHover },
-                    pressed: { outline: "none" },
-                  }}
-                />
-              ))
+              geographies.map((geo) => {
+                const countryNameEn = geo.properties.name || "";
+                const translatedName = translateCountry(countryNameEn);
+                const isCountryActive = airportsList.some(
+                  (a) => a.country === countryNameEn || a.country === translatedName
+                );
+                
+                const centroid = geoCentroid(geo);
+                
+                return (
+                  <React.Fragment key={geo.rsmKey}>
+                    <Geography
+                      geography={geo}
+                      fill={isCountryActive ? activeGeoFill : geoFill}
+                      stroke={geoStroke}
+                      strokeWidth={0.5}
+                      style={{
+                        default: { outline: "none" },
+                        hover: { outline: "none", fill: geoHover },
+                        pressed: { outline: "none" },
+                      }}
+                    />
+                  </React.Fragment>
+                );
+              })
             }
           </Geographies>
 
-          {arcsData.filter(arc => !selectedAirportCode && (!selectedFlightKey || selectedBaggage || arc.key === `act-${selectedFlightKey}`)).map((arc) => (
+
+
+          {arcsData.filter(arc => {
+            if (selectedAirportCode) {
+              // Show only arcs connected to the selected airport
+              return arc.fromCode === selectedAirportCode || arc.toCode === selectedAirportCode;
+            }
+            return !selectedFlightKey || selectedBaggage || arc.key === `act-${selectedFlightKey}`;
+          }).map((arc) => (
             <Line
               key={arc.key}
               from={arc.from as [number, number]}
@@ -467,44 +535,74 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
             />
           ))}
 
-          {pointsData.map((point) => (
-            <Marker key={point.code} coordinates={[point.lng, point.lat]}>
-              <g
-                style={{ cursor: "pointer" }}
-                transform={`scale(${s * WAREHOUSE_SCALE})`}
-                onClick={() => {
-                  if (onSelectAirport) {
-                    onSelectAirport(point.code);
-                  }
-                }}
-                onMouseEnter={(e) => {
-                  const ap = state.airports[point.code];
-                  setHovered({
-                    kind: "airport",
-                    code: point.code,
-                    city: point.city,
-                    stock: ap?.currentStock || 0,
-                    capacity: ap?.capacity || 0,
-                    utilization: point.utilization,
-                    x: e.clientX,
-                    y: e.clientY,
-                  });
-                }}
-                onMouseLeave={() => setHovered(null)}
-              >
-                <Building3D color={point.color} util={point.utilization} />
-                <text
-                  textAnchor="middle"
-                  y={10}
-                  style={{ fill: labelFill, fontSize: `${Math.max(4, 3 + position.zoom * 0.8)}px`, pointerEvents: "none", textShadow: "0px 0px 2px rgba(0,0,0,0.5)" }}
-                >
-                  {point.code}
-                </text>
-              </g>
-            </Marker>
-          ))}
+          {(() => {
+            const visibleAirportCodes = new Set<string>();
+            if (selectedAirportCode) {
+              visibleAirportCodes.add(selectedAirportCode);
+              arcsData.forEach(arc => {
+                if (arc.fromCode === selectedAirportCode) visibleAirportCodes.add(arc.toCode);
+                if (arc.toCode === selectedAirportCode) visibleAirportCodes.add(arc.fromCode);
+              });
+            } else if (selectedFlightKey) {
+              arcsData.forEach(arc => {
+                // In simulation, selectedFlightKey might be a routeKey, so we check if the arc key ends with it
+                if (arc.key.includes(selectedFlightKey)) {
+                  visibleAirportCodes.add(arc.fromCode);
+                  visibleAirportCodes.add(arc.toCode);
+                }
+              });
+            }
 
-          {planesData.filter(plane => !selectedAirportCode && (!selectedFlightKey || selectedBaggage || (plane.routeKey || plane.flightId) === selectedFlightKey)).map((plane) => {
+            return pointsData.map((point) => {
+              const selectionMatch = (!selectedAirportCode && !selectedFlightKey) || visibleAirportCodes.has(point.code);
+              if (!selectionMatch) return null;
+
+              return (
+              <Marker key={point.code} coordinates={[point.lng, point.lat]}>
+                <g
+                  style={{ cursor: "pointer" }}
+                  transform={`scale(${s * WAREHOUSE_SCALE})`}
+                  onClick={() => {
+                    if (onSelectAirport) {
+                      onSelectAirport(point.code);
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    const ap = state.airports[point.code];
+                    setHovered({
+                      kind: "airport",
+                      code: point.code,
+                      city: point.city,
+                      stock: ap?.currentStock || 0,
+                      capacity: ap?.capacity || 0,
+                      utilization: point.utilization,
+                      x: e.clientX,
+                      y: e.clientY,
+                    });
+                  }}
+                  onMouseLeave={() => setHovered(null)}
+                >
+                  <AirportTower3D color={point.color} util={point.utilization} isDark={isDark} />
+                  <text
+                    textAnchor="middle"
+                    y={10}
+                    style={{ fill: labelFill, fontSize: `${Math.max(4, 3 + position.zoom * 0.8)}px`, pointerEvents: "none", textShadow: "0px 0px 2px rgba(0,0,0,0.5)" }}
+                  >
+                    {point.code}
+                  </text>
+                  </g>
+                </Marker>
+              );
+            });
+          })()}
+
+          {planesData.filter(plane => {
+            if (selectedAirportCode) {
+              // Show only planes connected to the selected airport
+              return plane.fromCode === selectedAirportCode || plane.toCode === selectedAirportCode;
+            }
+            return !selectedFlightKey || selectedBaggage || (plane.routeKey || plane.flightId) === selectedFlightKey;
+          }).map((plane) => {
             const planeUtil = plane.utilization ?? 0;
             const planeColor = getOccupancyColor(planeUtil);
             const planeStroke = getOccupancyPlaneStroke(planeUtil);
@@ -537,6 +635,45 @@ export function SimulationMap({ onSelectBaggage, selectedBaggage, onSelectFlight
               </Marker>
             );
           })}
+
+          {/* Render labels on top of everything */}
+          <Geographies geography={geoUrl}>
+            {({ geographies }) =>
+              geographies.map((geo) => {
+                const countryNameEn = geo.properties.name || "";
+                const translatedName = translateCountry(countryNameEn);
+                const isCountryActive = airportsList.some(
+                  (a) => a.country === countryNameEn || a.country === translatedName
+                );
+                
+                if (!settings.showCountryNames || !isCountryActive) return null;
+                const centroid = geoCentroid(geo);
+                
+                return (
+                  <Marker key={`label-${geo.rsmKey}`} coordinates={centroid}>
+                    <g transform={`scale(${s})`}>
+                      <text
+                        textAnchor="middle"
+                        y={-8}
+                        style={{
+                          fill: isDark ? "#ffffff" : "#1e3a5f",
+                          fontSize: "6px",
+                          pointerEvents: "none",
+                          opacity: 0.85,
+                          fontWeight: "bold",
+                          textShadow: isDark
+                            ? "0px 0px 3px rgba(0,0,0,0.8)"
+                            : "0px 0px 3px rgba(255,255,255,0.8)",
+                        }}
+                      >
+                        {translatedName}
+                      </text>
+                    </g>
+                  </Marker>
+                );
+              })
+            }
+          </Geographies>
         </ZoomableGroup>
       </ComposableMap>
 

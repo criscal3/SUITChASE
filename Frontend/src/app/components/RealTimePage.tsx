@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useOutletContext } from "react-router";
 import { useTheme } from "../context/ThemeContext";
 import { RealTimeMap, getRealTimeFlightCapacity } from "./RealTimeMap";
 import { RealTimeWebSocketClient } from "../services/realTimeWebSocket";
@@ -75,6 +76,8 @@ function formatTimestamp(isoStr: string): string {
 
 export function RealTimePage() {
   const { isDark } = useTheme();
+  const context = useOutletContext<{ showTopPanel: boolean }>() || { showTopPanel: false };
+  const showTopPanel = context.showTopPanel;
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [resumen, setResumen] = useState<Resumen | null>(null);
   const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null);
@@ -88,6 +91,7 @@ export function RealTimePage() {
   const [showAlmacenes, setShowAlmacenes] = useState(false); // Collapsed on load
   const [selectedFlightKey, setSelectedFlightKey] = useState<string | null>(null);
   const [selectedFlightPedidoIds, setSelectedFlightPedidoIds] = useState<string[] | null>(null);
+  const [selectedWarehouseCode, setSelectedWarehouseCode] = useState<string | null>(null);
   const [pedidosPage, setPedidosPage] = useState(1);
   const pedidosPageSize = 8;
   const [occupancyFilters, setOccupancyFilters] = useState<OccupancyFilters>({
@@ -376,6 +380,12 @@ export function RealTimePage() {
     });
   }, [pedidos, flightsList, airportsList, getGmt]);
 
+  // Flights visible in the monitoring panel (filtered by selected airport when set)
+  const visibleFlights = useMemo(() => {
+    if (!selectedWarehouseCode) return activeFlights;
+    return activeFlights.filter(f => f.fromCode === selectedWarehouseCode || f.toCode === selectedWarehouseCode);
+  }, [activeFlights, selectedWarehouseCode]);
+
   // ──────────────────────────────────────────────────────────────
   // Warehouse items: derived from airportsList + pedidos
   // ──────────────────────────────────────────────────────────────
@@ -600,6 +610,17 @@ export function RealTimePage() {
               setSelectedFlightKey(key);
               if (key) {
                 setShowVuelos(true);
+              }
+            }}
+            selectedAirportCode={selectedWarehouseCode}
+            onSelectAirport={(code) => {
+              setSelectedWarehouseCode(code);
+              if (code) {
+                setShowAlmacenes(true);
+                setShowEnvios(false);
+                // Clear flight selection when airport is selected
+                setSelectedFlightKey(null);
+                setSelectedFlightPedidoIds(null);
               }
             }}
           />
@@ -881,7 +902,7 @@ export function RealTimePage() {
               {showVuelos && (
                 <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
                   <FlightMonitoringPanel
-                    flights={activeFlights}
+                    flights={visibleFlights}
                     isDark={isDark}
                     selectedFlightKey={selectedFlightKey}
                     onSelectFlightOnMap={(pedidoIds, key) => {
@@ -916,6 +937,16 @@ export function RealTimePage() {
                   <WarehouseMonitoringPanel
                     warehouses={warehouseItems}
                     isDark={isDark}
+                    selectedCode={selectedWarehouseCode}
+                    onDeselect={() => {
+                      setSelectedWarehouseCode(null);
+                    }}
+                    onSelectWarehouse={(code) => {
+                      setSelectedWarehouseCode(code);
+                      // Clear flight selection when warehouse is selected
+                      setSelectedFlightKey(null);
+                      setSelectedFlightPedidoIds(null);
+                    }}
                   />
                 </div>
               )}
@@ -926,7 +957,7 @@ export function RealTimePage() {
 
         <button
           onClick={() => setShowRightPanel(!showRightPanel)}
-          className={`absolute right-4 top-3 z-20 px-2.5 py-1 border rounded-lg text-[10px] transition-colors ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
+          className={`absolute right-4 ${showTopPanel ? "top-3" : "top-14"} z-20 px-2.5 py-1 border rounded-lg text-[10px] transition-all duration-300 ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
         >
           {showRightPanel ? "Ocultar" : "Monitoreo"}
         </button>

@@ -147,16 +147,24 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
     }
   }, [searchMatchesShipment]);
 
-  // Cuando se selecciona un almacén desde el mapa: auto-expandir + scroll
+  // Cuando se selecciona un almacén desde el mapa o externamente:
+  // 1. Encontrar su página y cambiar currentPage
+  // 2. Expandirlo y hacer scroll
   useEffect(() => {
     if (selectedCode) {
       setExpandedCode(selectedCode);
-      // Dar tiempo al render para que el ref esté disponible
+      const index = processedWarehouses.findIndex(w => w.code === selectedCode);
+      if (index >= 0) {
+        const page = Math.floor(index / pageSize) + 1;
+        setCurrentPage(page);
+      }
+      
+      // Dar tiempo al render de la página correcta para que el ref esté disponible
       setTimeout(() => {
         selectedRowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }, 80);
     }
-  }, [selectedCode]);
+  }, [selectedCode, processedWarehouses, pageSize]);
 
   const totalPages = Math.ceil(processedWarehouses.length / pageSize);
   const paginatedWarehouses = useMemo(() => {

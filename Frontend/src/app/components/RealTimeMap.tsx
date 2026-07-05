@@ -1,5 +1,8 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { ComposableMap, Geographies, Geography, Marker, ZoomableGroup, Line } from "react-simple-maps";
+import { geoCentroid } from "d3-geo";
+import { useMapSettings } from "../context/MapSettingsContext";
+import { MapSettingsPanel } from "./MapSettingsPanel";
 import { useTheme } from "../context/ThemeContext";
 import {
   getOccupancyColor,
@@ -137,13 +140,47 @@ function getDepartureTimeStr(isoStr: string): string {
   return "";
 }
 
-function Building3D({ color, util }: { color: string; util: number }) {
-  const h = 8 + (Math.min(100, util) / 100) * 16;
+function AirportTower3D({ color, util, isDark }: { color: string; util: number; isDark?: boolean }) {
+  const h_t = 6; // terminal height
+  const h = 10 + (Math.min(100, util) / 100) * 10; // tower shaft height
+  const gridStroke = isDark ? "rgba(255, 255, 255, 0.4)" : "rgba(0, 0, 0, 0.25)";
+
   return (
     <g>
-      <path d={`M0,3 L-6,0 L-6,-${h} L0,-${h + 3} Z`} fill={color} opacity={0.8} />
-      <path d={`M0,3 L6,0 L6,-${h} L0,-${h + 3} Z`} fill={color} opacity={0.6} />
-      <path d={`M0,-${h + 3} L-6,-${h} L0,-${h + 6} L6,-${h} Z`} fill={color} />
+      {/* Terminal Building Base */}
+      {/* Left Face */}
+      <path d={`M-12,-3 L0,3 L0,${3 - h_t} L-12,${-3 - h_t} Z`} fill={color} opacity={0.8} />
+      {/* Right Face */}
+      <path d={`M0,3 L6,0 L6,${-h_t} L0,${3 - h_t} Z`} fill={color} opacity={0.6} />
+      {/* Roof */}
+      <path d={`M0,${3 - h_t} L6,${-h_t} L-6,${-6 - h_t} L-12,${-3 - h_t} Z`} fill={color} />
+
+      {/* Terminal Window Grid */}
+      {/* Left Face Grid */}
+      <line x1={-9} y1={-1.5} x2={-9} y2={-1.5 - h_t} stroke={gridStroke} strokeWidth={0.5} />
+      <line x1={-6} y1={0} x2={-6} y2={-h_t} stroke={gridStroke} strokeWidth={0.5} />
+      <line x1={-3} y1={1.5} x2={-3} y2={1.5 - h_t} stroke={gridStroke} strokeWidth={0.5} />
+      <line x1={-12} y1={-3 - h_t / 2} x2={0} y2={3 - h_t / 2} stroke={gridStroke} strokeWidth={0.5} />
+
+      {/* Right Face Grid */}
+      <line x1={3} y1={1.5} x2={3} y2={1.5 - h_t} stroke={gridStroke} strokeWidth={0.5} />
+      <line x1={0} y1={3 - h_t / 2} x2={6} y2={-h_t / 2} stroke={gridStroke} strokeWidth={0.5} />
+
+      {/* Control Tower (translated to the right side of the roof) */}
+      <g transform="translate(4.5, -5.5)">
+        {/* Shaft */}
+        <path d={`M0,1 L-1.5,0 L-1.5,-${h} L0,-${h - 1} Z`} fill={color} opacity={0.8} />
+        <path d={`M0,1 L1.5,0 L1.5,-${h} L0,-${h - 1} Z`} fill={color} opacity={0.6} />
+        
+        {/* Cabin */}
+        <path d={`M0,-${h - 1} L-3,-${h} L-3,-${h + 3.5} L0,-${h + 2.5} Z`} fill={color} opacity={0.9} />
+        <path d={`M0,-${h - 1} L3,-${h} L3,-${h + 3.5} L0,-${h + 2.5} Z`} fill={color} opacity={0.7} />
+        <path d={`M0,-${h + 2.5} L-3,-${h + 3.5} L0,-${h + 4.5} L3,-${h + 3.5} Z`} fill={color} />
+        
+        {/* Antenna */}
+        <line x1={0} y1={-(h + 3.5)} x2={0} y2={-(h + 7.5)} stroke={color} strokeWidth={0.8} />
+        <circle cx={0} cy={-(h + 7.5)} r={1} fill={color} />
+      </g>
     </g>
   );
 }
@@ -245,6 +282,7 @@ export function getRealTimeFlightCapacity(
 
 export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsList, onSelectFlight, selectedFlightKey, flightsList, filters, selectedAirportCode, onSelectAirport }: RealTimeMapProps) {
   const { isDark } = useTheme();
+  const { settings, getOceanColor, getActiveCountryColor, getIntraColor, getInterColor, translateCountry } = useMapSettings();
   const [position, setPosition] = useState({ coordinates: [0, 20] as [number, number], zoom: 1 });
   const [hovered, setHovered] = useState<any | null>(null);
 
@@ -259,10 +297,11 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
   const activeFilters = filters ?? defaultFilters;
 
   const s = 1 / position.zoom;
-  const mapBg      = isDark ? "#060a15"  : "#c8d8e8";
-  const geoFill    = isDark ? "#0c1a30"  : "#b0c4d8";
+  const mapBg      = getOceanColor();
+  const geoFill    = isDark ? "#0c1a30"  : "#b0c4d8"; // Default
   const geoStroke  = isDark ? "#1a2744"  : "#8fafc8";
   const geoHover   = isDark ? "#0f203d"  : "#9ab8cc";
+  const activeGeoFill = getActiveCountryColor();
   const tooltipBg  = isDark ? "bg-[#0a0f1ef0] border-[#1a2744]" : "bg-white/95 border-[#b0c4d8]";
   const tooltipTitle = isDark ? "text-cyan-400" : "text-blue-700";
   const tooltipSub = isDark ? "text-white/70" : "text-[#374151]";
@@ -395,38 +434,40 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
       const fromAir = airportsList.find(a => a.code === f.fromCode);
       const toAir = airportsList.find(a => a.code === f.toCode);
       const sameContinent = fromAir && toAir ? fromAir.continent === toAir.continent : true;
-      const routeColor = sameContinent
-        ? (isDark ? "#22d3ee" : "#0891b2")
-        : (isDark ? "#c4a886" : "#a8906a");
+      const routeColor = sameContinent ? getIntraColor() : getInterColor();
 
       if (f.from && f.to) {
-        // Calculate utilization for filtering
-        const capacity = getRealTimeFlightCapacity(f.fromCode, f.toCode, f.fechaSalida, airportsList, flightsList || []);
-        const utilization = computeUtilizationPercent(f.cantMaletas, capacity);
-        const level = getOccupancyLevel(utilization);
-        
-        // Filter arcs based on flight occupancy level
-        if (activeFilters[level].flight) {
-          // Filter based on route type (intracontinental vs intercontinental)
-          if (!sameContinent && activeFilters.routes.intercontinental) {
-            arcs.push({
-              from: f.from,
-              to: f.to,
-              color: routeColor,
-              strokeWidth: 1.5,
-              key: `arc-${f.key}`,
-            });
-          } else if (sameContinent && activeFilters.routes.intracontinental) {
-            arcs.push({
-              from: f.from,
-              to: f.to,
-              color: routeColor,
-              strokeWidth: 1.5,
-              key: `arc-${f.key}`,
-            });
+          // Calculate utilization for filtering
+          const capacity = getRealTimeFlightCapacity(f.fromCode, f.toCode, f.fechaSalida, airportsList, flightsList || []);
+          const utilization = computeUtilizationPercent(f.cantMaletas, capacity);
+          const level = getOccupancyLevel(utilization);
+          
+          // Filter arcs based on flight occupancy level
+          if (activeFilters[level].flight) {
+            // Filter based on route type (intracontinental vs intercontinental)
+            if (!sameContinent && activeFilters.routes.intercontinental) {
+              arcs.push({
+                from: f.from,
+                to: f.to,
+                fromCode: f.fromCode,
+                toCode: f.toCode,
+                color: routeColor,
+                strokeWidth: 1.5,
+                key: `arc-${f.key}`,
+              });
+            } else if (sameContinent && activeFilters.routes.intracontinental) {
+              arcs.push({
+                from: f.from,
+                to: f.to,
+                fromCode: f.fromCode,
+                toCode: f.toCode,
+                color: routeColor,
+                strokeWidth: 1.5,
+                key: `arc-${f.key}`,
+              });
+            }
           }
         }
-      }
     });
 
     const activePlanes = Array.from(flightsMap.values()).map(f => {
@@ -453,11 +494,12 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
       return true;
     });
     return { arcsData: arcs, planesData: activePlanes };
-  }, [pedidos, selectedPedido, airportsList, isDark, nowMs, flightsList, activeFilters]);
+  }, [pedidos, selectedPedido, airportsList, isDark, nowMs, flightsList, activeFilters, getIntraColor, getInterColor]);
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative transition-colors duration-200" style={{ background: mapBg }}>
-      <ComposableMap projection="geoMercator" projectionConfig={{ scale: 120 }}>
+      <MapSettingsPanel />
+      <ComposableMap projection="geoMercator" projectionConfig={{ scale: 120 }} style={{ width: "100%", height: "100%", display: "block" }}>
         <ZoomableGroup
           zoom={position.zoom}
           center={position.coordinates}
@@ -466,25 +508,42 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
         >
           <Geographies geography={geoUrl}>
             {({ geographies }) =>
-              geographies.map((geo) => (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill={geoFill}
-                  stroke={geoStroke}
-                  strokeWidth={0.5}
-                  style={{
-                    default: { outline: "none" },
-                    hover: { outline: "none", fill: geoHover },
-                    pressed: { outline: "none" },
-                  }}
-                />
-              ))
+              geographies.map((geo) => {
+                const countryNameEn = geo.properties.name || "";
+                const translatedName = translateCountry(countryNameEn);
+                const isCountryActive = airportsList.some(
+                  (a) => a.country === countryNameEn || a.country === translatedName
+                );
+                
+                const centroid = geoCentroid(geo);
+                return (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    fill={isCountryActive ? activeGeoFill : geoFill}
+                    stroke={geoStroke}
+                    strokeWidth={0.5}
+                    style={{
+                      default: { outline: "none" },
+                      hover: { outline: "none", fill: geoHover },
+                      pressed: { outline: "none" },
+                    }}
+                  />
+                );
+              })
             }
           </Geographies>
 
+
+
           {/* Arcs/Lines */}
-          {arcsData.filter(arc => !selectedAirportCode && (!selectedFlightKey || selectedPedido || arc.key === `arc-${selectedFlightKey}`)).map((arc) => (
+          {arcsData.filter(arc => {
+            if (selectedAirportCode) {
+              // Show only arcs connected to the selected airport
+              return arc.fromCode === selectedAirportCode || arc.toCode === selectedAirportCode;
+            }
+            return !selectedFlightKey || selectedPedido || arc.key === `arc-${selectedFlightKey}`;
+          }).map((arc) => (
             <Line
               key={arc.key}
               from={arc.from as [number, number]}
@@ -501,16 +560,33 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           ))}
 
           {/* Airport Markers */}
-          {airportsList.map((point) => {
-            const util = computeUtilizationPercent(point.currentStock, point.warehouseCapacity);
-            const level = getOccupancyLevel(util);
-            const color = getOccupancyColor(util);
-            // Filter warehouses based on occupancy level
-            const filterMatch = activeFilters[level].warehouse;
-            // If a warehouse is selected, only show that warehouse
-            const selectionMatch = !selectedAirportCode || point.code === selectedAirportCode;
-            if (!filterMatch || !selectionMatch) return null;
-            return (
+          {(() => {
+            const visibleAirportCodes = new Set<string>();
+            if (selectedAirportCode) {
+              visibleAirportCodes.add(selectedAirportCode);
+              arcsData.forEach(arc => {
+                if (arc.fromCode === selectedAirportCode) visibleAirportCodes.add(arc.toCode);
+                if (arc.toCode === selectedAirportCode) visibleAirportCodes.add(arc.fromCode);
+              });
+            } else if (selectedFlightKey) {
+              arcsData.forEach(arc => {
+                if (arc.key === `arc-${selectedFlightKey}`) {
+                  visibleAirportCodes.add(arc.fromCode);
+                  visibleAirportCodes.add(arc.toCode);
+                }
+              });
+            }
+
+            return airportsList.map((point) => {
+              const util = computeUtilizationPercent(point.currentStock, point.warehouseCapacity);
+              const level = getOccupancyLevel(util);
+              const color = getOccupancyColor(util);
+              // Filter warehouses based on occupancy level
+              const filterMatch = activeFilters[level].warehouse;
+              // If a warehouse or flight is selected, only show related warehouses
+              const selectionMatch = (!selectedAirportCode && !selectedFlightKey) || visibleAirportCodes.has(point.code);
+              if (!filterMatch || !selectionMatch) return null;
+              return (
               <Marker key={point.code} coordinates={[point.lng, point.lat]}>
                 <g
                   style={{ cursor: "pointer" }}
@@ -532,7 +608,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
                   }}
                   onMouseLeave={() => setHovered(null)}
                 >
-                  <Building3D color={color} util={util} />
+                  <AirportTower3D color={color} util={util} isDark={isDark} />
                   <text
                     textAnchor="middle"
                     y={10}
@@ -540,13 +616,22 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
                   >
                     {point.code}
                   </text>
-                </g>
-              </Marker>
-            );
-          })}
+                  </g>
+                </Marker>
+              );
+            });
+          })()}
 
           {/* Plane Markers */}
-          {planesData.filter(plane => !selectedAirportCode && (!selectedFlightKey || selectedPedido || plane.key === selectedFlightKey) && typeof plane.lng === "number" && typeof plane.lat === "number" && !isNaN(plane.lng) && !isNaN(plane.lat)).map((plane) => {
+          {planesData.filter(plane => {
+            const validCoords = typeof plane.lng === "number" && typeof plane.lat === "number" && !isNaN(plane.lng) && !isNaN(plane.lat);
+            if (!validCoords) return false;
+            if (selectedAirportCode) {
+              // Show only planes connected to the selected airport
+              return plane.fromCode === selectedAirportCode || plane.toCode === selectedAirportCode;
+            }
+            return !selectedFlightKey || selectedPedido || plane.key === selectedFlightKey;
+          }).map((plane) => {
             const planeUtil = plane.utilization ?? 0;
             const planeColor = getOccupancyColor(planeUtil);
             const planeStroke = getOccupancyPlaneStroke(planeUtil);
@@ -582,6 +667,45 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
               </Marker>
             );
           })}
+
+          {/* Render labels on top of everything */}
+          <Geographies geography={geoUrl}>
+            {({ geographies }) =>
+              geographies.map((geo) => {
+                const countryNameEn = geo.properties.name || "";
+                const translatedName = translateCountry(countryNameEn);
+                const isCountryActive = airportsList.some(
+                  (a) => a.country === countryNameEn || a.country === translatedName
+                );
+                
+                if (!settings.showCountryNames || !isCountryActive) return null;
+                const centroid = geoCentroid(geo);
+                
+                return (
+                  <Marker key={`label-${geo.rsmKey}`} coordinates={centroid}>
+                    <g transform={`scale(${s})`}>
+                      <text
+                        textAnchor="middle"
+                        y={-8}
+                        style={{
+                          fill: isDark ? "#ffffff" : "#1e3a5f",
+                          fontSize: "6px",
+                          pointerEvents: "none",
+                          opacity: 0.85,
+                          fontWeight: "bold",
+                          textShadow: isDark
+                            ? "0px 0px 3px rgba(0,0,0,0.8)"
+                            : "0px 0px 3px rgba(255,255,255,0.8)",
+                        }}
+                      >
+                        {translatedName}
+                      </text>
+                    </g>
+                  </Marker>
+                );
+              })
+            }
+          </Geographies>
         </ZoomableGroup>
       </ComposableMap>
 

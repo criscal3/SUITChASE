@@ -2,6 +2,7 @@ import React from "react";
 import { createBrowserRouter, Outlet } from "react-router";
 import { ThemeProvider } from "./context/ThemeContext";
 import { SimProvider } from "./context/SimContext";
+import { MapSettingsProvider } from "./context/MapSettingsContext";
 import { Layout } from "./components/Layout";
 import { Dashboard } from "./components/Dashboard";
 import { Registration } from "./components/Registration";
@@ -43,11 +44,13 @@ function ErrorFallback() {
 function Root() {
   return (
     <ThemeProvider>
-      <SimProvider>
-        <div className="h-screen w-screen overflow-hidden">
-          <Outlet />
-        </div>
-      </SimProvider>
+      <MapSettingsProvider>
+        <SimProvider>
+          <div className="h-screen w-screen overflow-hidden">
+            <Outlet />
+          </div>
+        </SimProvider>
+      </MapSettingsProvider>
     </ThemeProvider>
   );
 }

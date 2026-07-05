@@ -35,7 +35,7 @@ export function FlightMonitoringPanel({
   flights,
   isDark,
   onSelectFlightOnMap,
-  selectedFlightKey
+  selectedFlightKey,
 }: FlightMonitoringPanelProps) {
   // Search state (transient)
   const [search, setSearch] = useState("");

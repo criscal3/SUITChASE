@@ -99,6 +99,7 @@ function LayoutInner() {
   const [showSimDatePicker, setShowSimDatePicker] = useState(false);
   const [realTimeElapsed, setRealTimeElapsed] = useState(0);
   const [showTopPanel, setShowTopPanel] = useState(false);
+  const isHeaderExpanded = (!isSimPage && !isDashboardPage) || showTopPanel;
   // Default picker to today at 00:00
   const todayIso = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}T00:00`; })();
   const [pickerValue, setPickerValue] = useState(todayIso);
@@ -223,11 +224,17 @@ function LayoutInner() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className={`h-12 border-b flex items-center px-4 gap-3 shrink-0 transition-all duration-300 ${showTopPanel ? (isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-[#e8edf5] border-[#cbd5e1]") : (isDark ? "bg-transparent border-transparent" : "bg-transparent border-transparent")}`}>
-          <button className={`lg:hidden ${isDark ? "text-white" : "text-[#0f172a]"}`} onClick={() => setSidebarOpen(true)}>
-            <Menu className="w-5 h-5" />
-          </button>
-          {showTopPanel && (
+        <header className={`flex items-center shrink-0 transition-all duration-300 relative ${
+          isHeaderExpanded
+            ? `h-12 border-b px-4 gap-3 ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-[#e8edf5] border-[#cbd5e1]"}`
+            : "h-0 border-b-0 px-0 overflow-visible bg-transparent border-transparent"
+        }`}>
+          {isHeaderExpanded && (
+            <button className={`lg:hidden ${isDark ? "text-white" : "text-[#0f172a]"}`} onClick={() => setSidebarOpen(true)}>
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
+          {isHeaderExpanded && (
             <div className="flex items-center gap-3">
               {isDashboardPage || (isSimPage && state.scenario === "tracking") ? (
                 <>
@@ -294,7 +301,7 @@ function LayoutInner() {
             </div>
           )}
           <div className="flex-1" />
-          {showTopPanel && (
+          {isHeaderExpanded && (
             <>
               {isSimPage && state.scenario !== "tracking" && (
               <div className="flex items-center gap-2">
@@ -369,7 +376,11 @@ function LayoutInner() {
           {(isSimPage || isDashboardPage) && (
             <button
               onClick={() => setShowTopPanel(!showTopPanel)}
-              className={`px-2 py-1 border rounded-lg text-[10px] transition-colors ${showTopPanel ? (isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700") : (isDark ? "bg-transparent border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-transparent border-[#cbd5e1] text-[#475569] hover:text-blue-700")}`}
+              className={`border rounded-lg text-[10px] transition-all duration-300 ${
+                showTopPanel
+                  ? `px-2 py-1 ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`
+                  : `absolute top-3 right-4 z-50 px-3 py-1.5 shadow-lg ${isDark ? "bg-[#0f172a] border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "bg-[#e8edf5] border-[#cbd5e1] text-blue-700 hover:bg-[#cbd5e1]"}`
+              }`}
             >
               {showTopPanel ? "Ocultar" : "Tiempos"}
             </button>
@@ -377,7 +388,7 @@ function LayoutInner() {
         </header>
 
         <main className={`flex-1 overflow-auto p-4 ${isDark ? "" : "bg-[#f0f4f8]"}`}>
-          <Outlet />
+          <Outlet context={{ showTopPanel }} />
         </main>
       </div>
       <Toaster position="bottom-right" theme={isDark ? "dark" : "light"} />

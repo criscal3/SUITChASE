@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useOutletContext } from "react-router";
 import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
 import { SimulationMap } from "./SimulationMap";
@@ -52,6 +53,8 @@ function formatDurationDHM(ms: number): string {
 export function SimulationPage() {
   const { state, start, startCollapse, pauseSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
   const { isDark } = useTheme();
+  const context = useOutletContext<{ showTopPanel: boolean }>() || { showTopPanel: false };
+  const showTopPanel = context.showTopPanel;
   const [selectedBaggage, setSelectedBaggage] = useState<BaggageGroup | null>(null);
   const [showTracking, setShowTracking] = useState(false);
   const [canScrollUp, setCanScrollUp] = useState(false);
@@ -454,6 +457,17 @@ export function SimulationPage() {
       };
     });
   }, [state.baggageGroups, state.currentTime, state.flightOccupancy, state.flightCapacities, state.cancelledFlights, realTimeAirports, formatSimTimestampLocal, computeSimFlightMetrics]);
+
+  // Filtered flight views for the monitoring panels (by selected airport when set)
+  const visibleRTFlights = useMemo(() => {
+    if (!selectedRTWarehouseCode) return activeRTFlights;
+    return activeRTFlights.filter(f => f.fromCode === selectedRTWarehouseCode || f.toCode === selectedRTWarehouseCode);
+  }, [activeRTFlights, selectedRTWarehouseCode]);
+
+  const visibleSimFlights = useMemo(() => {
+    if (!selectedSimWarehouseCode) return activeSimFlights;
+    return activeSimFlights.filter(f => f.fromCode === selectedSimWarehouseCode || f.toCode === selectedSimWarehouseCode);
+  }, [activeSimFlights, selectedSimWarehouseCode]);
 
   // Update airports with real-time stock data from resumen
   useEffect(() => {
@@ -1184,10 +1198,13 @@ export function SimulationPage() {
                 selectedAirportCode={selectedRTWarehouseCode}
                 onSelectAirport={(code) => {
                   setSelectedRTWarehouseCode(code);
-                  if (code) setShowRTAlmacenes(true);
-                  // Deselect any selected flight when warehouse is selected
-                  setSelectedFlightKey(null);
-                  setSelectedFlightPedidoIds(null);
+                  if (code) {
+                    setShowRTAlmacenes(true);
+                    setShowRTEnvios(false);
+                    // Deselect any selected flight when warehouse is selected
+                    setSelectedFlightKey(null);
+                    setSelectedFlightPedidoIds(null);
+                  }
                 }}
               />
             </div>
@@ -1506,7 +1523,7 @@ export function SimulationPage() {
                   {showRTVuelos && (
                     <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
                       <FlightMonitoringPanel
-                        flights={activeRTFlights}
+                        flights={visibleRTFlights}
                         isDark={isDark}
                         selectedFlightKey={selectedFlightKey}
                         onSelectFlightOnMap={(pedidoIds, key) => {
@@ -1565,7 +1582,7 @@ export function SimulationPage() {
 
             <button
               onClick={() => setShowRealTimeRightPanel(!showRealTimeRightPanel)}
-              className={`absolute right-4 top-3 z-20 px-2.5 py-1 border rounded-lg text-[10px] transition-colors ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
+              className={`absolute right-4 ${showTopPanel ? "top-3" : "top-14"} z-20 px-2.5 py-1 border rounded-lg text-[10px] transition-all duration-300 ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
             >
               {showRealTimeRightPanel ? "Ocultar" : "Monitoreo"}
             </button>
@@ -1588,10 +1605,13 @@ export function SimulationPage() {
                 selectedAirportCode={selectedSimWarehouseCode}
                 onSelectAirport={(code) => {
                   setSelectedSimWarehouseCode(code);
-                  if (code) setShowSimAlmacenes(true);
-                  // Deselect any selected flight when warehouse is selected
-                  setSelectedSimFlightKey(null);
-                  setSelectedSimFlightBaggageIds(null);
+                  if (code) {
+                    setShowSimAlmacenes(true);
+                    setShowSimEnvios(false);
+                    // Deselect any selected flight when warehouse is selected
+                    setSelectedSimFlightKey(null);
+                    setSelectedSimFlightBaggageIds(null);
+                  }
                 }}
               />
             </div>
@@ -1661,7 +1681,7 @@ export function SimulationPage() {
                   {showSimVuelos && (
                     <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
                       <FlightMonitoringPanel
-                        flights={activeSimFlights}
+                        flights={visibleSimFlights}
                         isDark={isDark}
                         selectedFlightKey={selectedSimFlightKey}
                         onSelectFlightOnMap={(baggageIds, key) => {
@@ -1755,7 +1775,7 @@ export function SimulationPage() {
 
             <button
               onClick={() => setShowTracking(!showTracking)}
-              className={`absolute right-4 top-3 z-20 px-2 py-1 border rounded-lg text-[10px] transition-colors ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
+              className={`absolute right-4 ${showTopPanel ? "top-3" : "top-14"} z-20 px-2 py-1 border rounded-lg text-[10px] transition-all duration-300 ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
             >
               {showTracking ? "Ocultar" : "Monitoreo"}
             </button>
