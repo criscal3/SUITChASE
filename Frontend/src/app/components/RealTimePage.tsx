@@ -551,7 +551,7 @@ export function RealTimePage() {
   const sc = selectedPedido ? statusConfig[selectedPedido.estado] : null;
 
   return (
-    <div className={`h-[calc(100vh-3rem)] -m-4 flex flex-col relative transition-colors duration-200 ${rootBg}`}>
+    <div className={`${showTopPanel ? "h-[calc(100vh-3rem)]" : "h-[100vh]"} -m-4 flex flex-col relative transition-colors duration-200 ${rootBg}`}>
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center py-3 pointer-events-none">
         <h1 className={`text-[18px] tracking-wider flex items-center gap-2 ${isDark ? "text-cyan-400" : "text-blue-800 font-bold"}`} style={{ textShadow: isDark ? "0 0 20px #00e5ff60" : "none" }}>
           <Radio className="w-5 h-5 animate-pulse text-red-500" /> Operaciones Día a Día

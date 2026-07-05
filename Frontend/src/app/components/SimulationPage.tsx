@@ -897,7 +897,7 @@ export function SimulationPage() {
   };
 
   return (
-    <div className={`h-[calc(100vh-3rem)] flex flex-col -m-4 relative transition-colors duration-200 ${rootBg}`}>
+    <div className={`${showTopPanel ? "h-[calc(100vh-3rem)]" : "h-[100vh]"} flex flex-col -m-4 relative transition-colors duration-200 ${rootBg}`}>
       {/* Barra de título */}
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center py-3 pointer-events-none">
         <h1 className={`text-[18px] tracking-wider ${isDark ? "text-cyan-400" : "text-blue-800 font-bold"}`} style={{ textShadow: isDark ? "0 0 20px #00e5ff60" : "none" }}>
