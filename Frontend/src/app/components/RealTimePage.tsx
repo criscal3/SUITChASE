@@ -7,6 +7,7 @@ import { api } from "../services/api";
 import { ScrollArea } from "./ui/scroll-area";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight, X, Radio, Warehouse, ChevronUp, ChevronDown } from "lucide-react";
 import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
 import { computeUtilizationPercent, getOccupancyColor } from "../engine/occupancyStatus";
@@ -92,6 +93,7 @@ export function RealTimePage() {
   const [selectedFlightKey, setSelectedFlightKey] = useState<string | null>(null);
   const [selectedFlightPedidoIds, setSelectedFlightPedidoIds] = useState<string[] | null>(null);
   const [selectedWarehouseCode, setSelectedWarehouseCode] = useState<string | null>(null);
+  const [selectedOriginFilter, setSelectedOriginFilter] = useState<string>("ALL");
   const [pedidosPage, setPedidosPage] = useState(1);
   const pedidosPageSize = 8;
   const [occupancyFilters, setOccupancyFilters] = useState<OccupancyFilters>({
@@ -494,13 +496,16 @@ export function RealTimePage() {
     if (selectedFlightPedidoIds) {
       result = result.filter(p => selectedFlightPedidoIds.includes(p.id));
     }
+    if (selectedOriginFilter !== "ALL") {
+      result = result.filter(p => p.origenOaci === selectedOriginFilter);
+    }
     return result;
-  }, [pedidos, search, selectedFlightPedidoIds]);
+  }, [pedidos, search, selectedFlightPedidoIds, selectedOriginFilter]);
 
   // Reset page when search or flight filter changes
   useEffect(() => {
     setPedidosPage(1);
-  }, [search, selectedFlightKey]);
+  }, [search, selectedFlightKey, selectedOriginFilter]);
 
   const totalPedidosPages = Math.ceil(filtered.length / pedidosPageSize);
 
@@ -650,8 +655,8 @@ export function RealTimePage() {
 
               {showEnvios && (
                 <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
-                  {/* Búsqueda */}
-                  <div className={`px-3 py-2 border-b ${headerBorder}`}>
+                  {/* Búsqueda y Filtros */}
+                  <div className={`px-3 py-2 border-b flex flex-col gap-2 ${headerBorder}`}>
                     <div className="relative">
                       <Search className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 ${searchIcon}`} />
                       <Input
@@ -666,6 +671,19 @@ export function RealTimePage() {
                         </button>
                       )}
                     </div>
+                    <Select value={selectedOriginFilter} onValueChange={setSelectedOriginFilter}>
+                      <SelectTrigger className={`h-7 text-[11px] ${searchBg}`}>
+                        <SelectValue placeholder="Origen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">Todos los orígenes</SelectItem>
+                        {Array.from(new Set(pedidos.map(p => p.origenOaci))).sort().map(code => (
+                          <SelectItem key={code} value={code}>
+                            {code} - {airportsList.find(a => a.code === code)?.city || code}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   {/* Indicador de filtro de vuelo */}

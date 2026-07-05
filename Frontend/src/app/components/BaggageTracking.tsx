@@ -4,6 +4,7 @@ import { useTheme } from "../context/ThemeContext";
 import { ScrollArea } from "./ui/scroll-area";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import type { BaggageGroup } from "../engine/types";
 import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight } from "lucide-react";
 
@@ -50,6 +51,7 @@ export function BaggageTracking({
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
   const [search, setSearch] = useState("");
+  const [selectedOriginFilter, setSelectedOriginFilter] = useState<string>("ALL");
 
   const getGmt = (oaci: string) => {
     const ap = airportsList.find((a: any) => a.code === oaci);
@@ -117,6 +119,10 @@ export function BaggageTracking({
         return false;
       }
 
+      if (selectedOriginFilter !== "ALL" && bg.origin !== selectedOriginFilter) {
+        return false;
+      }
+
       const finalArrival = bg.route && bg.route.length > 0
         ? bg.route[bg.route.length - 1].arrivalTime
         : bg.deadlineAt;
@@ -145,7 +151,7 @@ export function BaggageTracking({
   // Reset page when search or flight filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, selectedFlightKey, selectedWarehouseCode]);
+  }, [search, selectedFlightKey, selectedWarehouseCode, selectedOriginFilter]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
 
@@ -190,8 +196,8 @@ export function BaggageTracking({
         </div>
       )}
 
-      {/* Búsqueda */}
-      <div className={`px-3 py-2 border-b ${headerBorder}`}>
+      {/* Búsqueda y Filtros */}
+      <div className={`px-3 py-2 border-b flex flex-col gap-2 ${headerBorder}`}>
         <div className="relative">
           <Search className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 ${searchIcon}`} />
           <Input
@@ -201,6 +207,19 @@ export function BaggageTracking({
             className={`pl-7 h-7 text-[11px] ${searchBg}`}
           />
         </div>
+        <Select value={selectedOriginFilter} onValueChange={setSelectedOriginFilter}>
+          <SelectTrigger className={`h-7 text-[11px] ${searchBg}`}>
+            <SelectValue placeholder="Origen" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todos los orígenes</SelectItem>
+            {Array.from(new Set(state.baggageGroups.map(bg => bg.origin))).sort().map(code => (
+              <SelectItem key={code} value={code}>
+                {code} - {getCity(code)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Indicador de filtro de vuelo */}
