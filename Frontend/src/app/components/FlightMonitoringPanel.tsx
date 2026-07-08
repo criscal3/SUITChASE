@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Search, Plane, X, ArrowUpDown, ChevronRight, ChevronDown, ChevronUp, MapPin, Package, Filter } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { Input } from "./ui/input";
@@ -52,6 +52,10 @@ export function FlightMonitoringPanel({
 
   // Local UI expansion state
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  // Pinned flight: stays fixed at the top when selected, does not move with updates
+  const [pinnedFlight, setPinnedFlight] = useState<FlightItem | null>(null);
+  const pinnedFlightRef = useRef<FlightItem | null>(null);
 
   // Theme tokens
   const headerBorder = isDark ? "border-[#1e293b]" : "border-[#cbd5e1]";
@@ -126,8 +130,13 @@ export function FlightMonitoringPanel({
       return sortOrder === "asc" ? comparison : -comparison;
     });
 
+    // Exclude pinned flight from the rest of the list
+    if (pinnedFlightRef.current) {
+      result = result.filter(f => f.key !== pinnedFlightRef.current!.key);
+    }
+
     return result;
-  }, [flights, filterOrigin, filterDest, filterShipment, search, sortBy, sortOrder]);
+  }, [flights, filterOrigin, filterDest, filterShipment, search, sortBy, sortOrder, pinnedFlight]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 6;
@@ -144,22 +153,45 @@ export function FlightMonitoringPanel({
     return processedFlights.slice(startIndex, startIndex + pageSize);
   }, [processedFlights, currentPage, pageSize]);
 
-  // Jump to the page of the selected flight if it's set from the map
-  React.useEffect(() => {
+  const lastSelectedKeyRef = useRef<string | null>(null);
+
+  // When selectedFlightKey changes (e.g. from map click), pin that flight to the top
+  useEffect(() => {
     if (selectedFlightKey) {
-      const idx = processedFlights.findIndex(f => f.key === selectedFlightKey);
-      if (idx !== -1) {
-        const pageOfFlight = Math.floor(idx / pageSize) + 1;
-        setCurrentPage(pageOfFlight);
+      const flight = flights.find(f => f.key === selectedFlightKey);
+      if (flight) {
+        pinnedFlightRef.current = flight;
+        setPinnedFlight(flight);
         setExpandedKey(selectedFlightKey);
+        if (lastSelectedKeyRef.current !== selectedFlightKey) {
+          setCurrentPage(1);
+          lastSelectedKeyRef.current = selectedFlightKey;
+        }
       }
+    } else {
+      // Deselect clears the pin
+      pinnedFlightRef.current = null;
+      setPinnedFlight(null);
+      lastSelectedKeyRef.current = null;
     }
-  }, [selectedFlightKey, processedFlights]);
+  }, [selectedFlightKey, flights]);
 
   const handleFlightClick = (f: FlightItem) => {
-    const newKey = expandedKey === f.key ? null : f.key;
+    const isExpanding = expandedKey !== f.key;
+    const newKey = isExpanding ? f.key : null;
     setExpandedKey(newKey);
-    
+
+    if (isExpanding) {
+      // Pin the newly selected flight to the top
+      pinnedFlightRef.current = f;
+      setPinnedFlight(f);
+      setCurrentPage(1);
+    } else {
+      // Deselect: remove pin
+      pinnedFlightRef.current = null;
+      setPinnedFlight(null);
+    }
+
     // Also select on map if expanded
     if (onSelectFlightOnMap) {
       if (newKey) {
@@ -182,7 +214,7 @@ export function FlightMonitoringPanel({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 text-[11px]">
+    <div className="flex flex-col flex-1 min-h-0 text-[11px]">
       {/* Búsqueda */}
       <div className={`px-3 py-2 border-b ${headerBorder}`}>
         <div className="relative">
@@ -218,7 +250,6 @@ export function FlightMonitoringPanel({
 
         {/* Ordenar */}
         <div className="flex items-center gap-1">
-          <ArrowUpDown className={`w-3 h-3 ${dimCls}`} />
           <select
             value={sortBy}
             onChange={e => setSortBy(e.target.value as SortField)}
@@ -300,29 +331,101 @@ export function FlightMonitoringPanel({
         </div>
       )}
 
-      {/* Lista de Vuelos */}
-      <ScrollArea className="flex-1">
-        <div className="px-2 py-1">
-          {selectedFlightKey && (
-            <div className={`mb-2.5 p-2 rounded-lg flex items-center justify-between text-[10px] shrink-0 ${
-              isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"
+      {/* ── Vuelo fijado FUERA del scroll (header estático) ── */}
+      {pinnedFlight && (() => {
+        const f = flights.find(fl => fl.key === pinnedFlight.key) ?? pinnedFlight;
+        const utilColor = getOccupancyColor(f.utilization);
+        return (
+          <div className={`px-2 pt-2 pb-0 shrink-0 border-b ${headerBorder}`}>
+            {/* Etiqueta de pinned */}
+            <div className={`mb-1 px-1.5 py-0.5 flex items-center gap-1 text-[9px] font-semibold rounded ${
+              isDark ? "text-cyan-400/80" : "text-blue-600/80"
             }`}>
-              <span className="truncate font-mono">
-                Vuelo seleccionado: {flights.find(f => f.key === selectedFlightKey)?.id || selectedFlightKey}
-              </span>
+              <MapPin className="w-2.5 h-2.5" />
+              <span>Vuelo fijado</span>
               <button
                 onClick={() => {
-                  if (onSelectFlightOnMap) {
-                    onSelectFlightOnMap(null, null);
-                  }
+                  pinnedFlightRef.current = null;
+                  setPinnedFlight(null);
                   setExpandedKey(null);
+                  if (onSelectFlightOnMap) onSelectFlightOnMap(null, null);
                 }}
-                className="ml-2 font-bold hover:underline shrink-0"
+                className="ml-auto hover:text-red-400 transition-colors"
+                title="Desfijar vuelo"
               >
-                Deseleccionar
+                <X className="w-2.5 h-2.5" />
               </button>
             </div>
-          )}
+
+            <div className={`rounded-md mb-2 border transition-all overflow-hidden ${activeRow}`}>
+              <button
+                onClick={() => handleFlightClick(f)}
+                className="w-full text-left px-2 py-2 flex items-center justify-between gap-1"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Plane className={`w-3 h-3 shrink-0 ${isDark ? "text-cyan-400" : "text-blue-600"}`} />
+                    <span className={`font-mono font-bold ${titleCls} truncate`}>{f.id}</span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0 flex flex-col items-end gap-0.5">
+                  <span className="font-mono text-[10.5px]">
+                    {f.currentLoad} / <span className={mutedCls}>{f.capacity}</span>
+                  </span>
+                  <Badge
+                    className="text-[9px] py-0 px-1 font-mono font-bold border"
+                    style={{
+                      backgroundColor: `${utilColor}15`,
+                      color: utilColor,
+                      borderColor: `${utilColor}30`
+                    }}
+                  >
+                    {f.utilization.toFixed(1)}%
+                  </Badge>
+                </div>
+              </button>
+
+              {expandedKey === f.key && (
+                <div className={`px-2.5 pb-2.5 pt-1.5 border-t text-[10px] space-y-2 bg-black/15 ${headerBorder}`}>
+                  <div className="space-y-1.5 text-[9.5px]">
+                    <div>
+                      <span className={mutedCls}>Salida:</span>
+                      <div className={`font-medium ${subCls}`}>{f.departureTime}</div>
+                    </div>
+                    <div>
+                      <span className={mutedCls}>Llegada:</span>
+                      <div className={`font-medium ${subCls}`}>{f.arrivalTime}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <div className={`text-[9px] font-semibold uppercase tracking-wider ${mutedCls} flex items-center gap-1`}>
+                      <Package className="w-2.5 h-2.5" />
+                      Envíos a bordo ({f.shipments.length})
+                    </div>
+                    <div className="max-h-40 overflow-y-auto pr-1 space-y-0.5 border rounded-lg p-1 bg-black/25">
+                      {f.shipments.map(s => (
+                        <div key={s.id} className="flex items-center justify-between py-0.5 px-1 rounded hover:bg-white/5 font-mono">
+                          <span className={titleCls}>{s.id}</span>
+                          <span className="text-cyan-400 font-bold">x{s.cant}</span>
+                        </div>
+                      ))}
+                      {f.shipments.length === 0 && (
+                        <div className={`text-center py-2 italic ${dimCls}`}>
+                          Sin envíos registrados
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Lista de Vuelos scrolleable (independiente del fijado) */}
+      <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 custom-blue-scrollbar">
+        <div className="px-2 py-1">
           {paginatedFlights.map(f => {
             const isSelected = selectedFlightKey === f.key || expandedKey === f.key;
             const utilColor = getOccupancyColor(f.utilization);
@@ -408,7 +511,7 @@ export function FlightMonitoringPanel({
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Controles de Paginación */}
       {totalPages > 1 && (

@@ -739,24 +739,32 @@ export function SimulationPage() {
             } as WarehouseShipmentItem;
           });
 
-        const incomingFlights: any[] = [];
-        const outgoingFlights: any[] = [];
+        const incomingFlightsMap = new Map<string, any>();
+        const outgoingFlightsMap = new Map<string, any>();
 
-        activeSimFlights.forEach(f => {
-          if (f.toCode === ap.code) {
-            if (!incomingFlights.some(inc => inc.id === f.id)) {
-              incomingFlights.push({ id: f.id, airportCode: f.fromCode, timeRaw: f.arrivalRaw });
+        baggageGroups.forEach(bg => {
+          if (!bg.route || bg.route.length === 0) return;
+          if (bg.status === "delivered") return;
+          bg.route.forEach(leg => {
+            // Vuelo próximo a llegar a este aeropuerto (arrivalTime en el futuro)
+            if (leg.to === ap.code && leg.arrivalTime > currentTime) {
+              const key = leg.claveVuelo || `${leg.from}-${leg.to}-${leg.departureTime}`;
+              if (!incomingFlightsMap.has(key)) {
+                incomingFlightsMap.set(key, { id: key, airportCode: leg.from, timeRaw: leg.arrivalTime });
+              }
             }
-          }
-          if (f.fromCode === ap.code) {
-            if (!outgoingFlights.some(out => out.id === f.id)) {
-              outgoingFlights.push({ id: f.id, airportCode: f.toCode, timeRaw: f.departureRaw });
+            // Vuelo próximo a salir de este aeropuerto (departureTime en el futuro)
+            if (leg.from === ap.code && leg.departureTime > currentTime) {
+              const key = leg.claveVuelo || `${leg.from}-${leg.to}-${leg.departureTime}`;
+              if (!outgoingFlightsMap.has(key)) {
+                outgoingFlightsMap.set(key, { id: key, airportCode: leg.to, timeRaw: leg.departureTime });
+              }
             }
-          }
+          });
         });
 
-        incomingFlights.sort((a, b) => a.timeRaw - b.timeRaw);
-        outgoingFlights.sort((a, b) => a.timeRaw - b.timeRaw);
+        const incomingFlights = Array.from(incomingFlightsMap.values()).sort((a, b) => a.timeRaw - b.timeRaw);
+        const outgoingFlights = Array.from(outgoingFlightsMap.values()).sort((a, b) => a.timeRaw - b.timeRaw);
 
         return {
           code: ap.code,
@@ -770,7 +778,7 @@ export function SimulationPage() {
           outgoingFlights,
         } as WarehouseItem;
       });
-  }, [state.airports, state.baggageGroups, state.currentTime, realTimeAirports, activeSimFlights]);
+  }, [state.airports, state.baggageGroups, state.currentTime, realTimeAirports]);
 
   /** Detener: pausa (reanudable tras Cerrar) y abre Highlights. */
   const handleStopSimulation = useCallback(async () => {
@@ -1526,7 +1534,7 @@ export function SimulationPage() {
 
                 {/* Contenedor 2: Vuelos */}
                 <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showRTVuelos ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+                  showRTVuelos ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
                 } ${panelBg}`}>
                   <button
                     onClick={() => {
@@ -1561,7 +1569,7 @@ export function SimulationPage() {
 
                 {/* Contenedor 3: Almacenes (tracking mode) */}
                 <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showRTAlmacenes ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+                  showRTAlmacenes ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
                 } ${panelBg}`}>
                   <button
                     onClick={() => {
@@ -1684,7 +1692,7 @@ export function SimulationPage() {
 
                 {/* Contenedor 2: Vuelos */}
                 <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showSimVuelos ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+                  showSimVuelos ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
                 } ${panelBg}`}>
                   <button
                     onClick={() => {
@@ -1719,7 +1727,7 @@ export function SimulationPage() {
 
                 {/* Contenedor 3: Almacenes (simulation mode) */}
                 <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showSimAlmacenes ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+                  showSimAlmacenes ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
                 } ${panelBg}`}>
                   <button
                     onClick={() => {
@@ -1763,7 +1771,7 @@ export function SimulationPage() {
                 {/* Cancelación */}
                 {state.scenario !== "collapse" && (
                   <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                    showCancelaciones ? "flex-grow flex-1 min-h-[150px]" : "h-10 shrink-0"
+                    showCancelaciones ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
                   } ${panelBg}`}>
                     <button
                       onClick={() => {

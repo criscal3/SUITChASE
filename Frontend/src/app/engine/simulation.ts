@@ -357,7 +357,7 @@ export function cancelFlight(state: SimulationState, flightId: string): { state:
           type: "system",
           description: `Error de replanificación: sin ruta alternativa para ${bg.id} (${bg.currentLocation}→${bg.destination})`,
         });
-        return { ...bg, status: "delayed" as const };
+        return { ...bg, status: "delayed" as const, route: [], currentLegIndex: 0 };
       }
     }
     return bg;

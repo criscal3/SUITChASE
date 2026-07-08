@@ -182,14 +182,23 @@ export function mapBlockResultToBaggageGroups(
     }
 
     const firstDep = route.length > 0 ? route[0].departureTime : cursorTime;
-    const lastArr  = route.length > 0
-      ? route[route.length - 1].arrivalTime
-      : parseSimDate(resumen.llegadaFinal, cursorTime + 48 * 3600 * 1000);
 
     // Use fechaHoraRegistro from backend if available, otherwise fallback to firstDep
     const registeredAt = resumen.fechaHoraRegistro
       ? parseSimDate(resumen.fechaHoraRegistro, cursorTime)
       : firstDep;
+
+    // Calculate actual deadline based on same continent (24h) vs different continent (48h)
+    const getAirportContinent = (code: string) => {
+      const ap = (airportsList || []).find(a => String(a.code).toUpperCase() === String(code).toUpperCase());
+      return ap?.continent || null;
+    };
+
+    const originCont = getAirportContinent(resumen.origen);
+    const destCont = getAirportContinent(resumen.destino);
+    const isInter = originCont && destCont ? originCont !== destCont : false;
+    const deadlineHours = isInter ? 48 : 24;
+    const deadlineAt = registeredAt + deadlineHours * 3600000;
 
     return {
       id: String(resumen.envioId),
@@ -198,7 +207,7 @@ export function mapBlockResultToBaggageGroups(
       destination: resumen.destino,
       quantity: resumen.maletas,
       registeredAt,
-      deadlineAt: lastArr,
+      deadlineAt,
       currentLocation: resumen.origen,
       status: resumen.estado === "CON_RUTA" ? "in_transit" : "failed",
       route,
