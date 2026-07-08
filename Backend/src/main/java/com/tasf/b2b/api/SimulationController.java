@@ -95,6 +95,15 @@ public class SimulationController {
     }
 
     // ========================================
+    // HEARTBEAT
+    // ========================================
+    @PostMapping("/{id}/heartbeat")
+    public ResponseEntity<?> heartbeat(@PathVariable Long id) {
+        simulationService.registrarHeartbeat(id);
+        return ResponseEntity.ok().build();
+    }
+
+    // ========================================
     // CONSULTAR ESTADO
     // ========================================
     @GetMapping("/{id}")

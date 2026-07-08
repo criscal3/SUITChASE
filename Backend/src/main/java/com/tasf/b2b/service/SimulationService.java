@@ -16,6 +16,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentHashMap.KeySetView;
 import java.util.stream.Collectors;
+import org.springframework.scheduling.annotation.Scheduled;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +41,9 @@ public class SimulationService {
     
     // Almacena los envíos que fueron afectados por una cancelación y deben ser replanificados
     private final Map<Long, List<EnvioAlgoritmo>> enviosAReplanificarPorSimulacion = new ConcurrentHashMap<>();
+
+    // Timestamp del último latido por simulación activa
+    private final Map<Long, Long> lastHeartbeatMap = new ConcurrentHashMap<>();
 
     /** Evita dos hilos @Async procesando la misma simulación (p. ej. al reanudar). */
     private final KeySetView<Long, Boolean> simulacionesEnEjecucion = ConcurrentHashMap.newKeySet();
@@ -86,6 +90,7 @@ public class SimulationService {
 
         simulacionRepository.save(sim);
         pauseFlags.put(sim.getId(), false);
+        registrarHeartbeat(sim.getId());
 
         // Lanzar ejecución asíncrona vía proxy Spring para habilitar @Async
         self.ejecutarSimulacionAsync(sim.getId());
@@ -148,6 +153,7 @@ public class SimulationService {
     // ========================================================
     public void cancelarSimulacion(Long simulacionId) {
         pauseFlags.remove(simulacionId); // Remover para marcar como cancelada
+        lastHeartbeatMap.remove(simulacionId);
         SimulacionEntity sim = simulacionRepository.findById(simulacionId)
                 .orElseThrow(() -> new RuntimeException("Simulación no encontrada"));
         sim.setEstado(EstadoSimulacion.CANCELADA);
@@ -406,10 +412,40 @@ public class SimulationService {
                 int idxFinDest = TimeUtils.getIndiceMinuto(recogidaCliente);
                 
                 int[] almacenDest = ocupacionGlobalAlmacenes.get(oaciDest);
-                if (almacenDest != null && TimeUtils.intervaloAlmacenValido(idxInicioDest, idxFinDest)) {
+if (almacenDest != null && TimeUtils.intervaloAlmacenValido(idxInicioDest, idxFinDest)) {
                     for (int i = idxInicioDest; i < idxFinDest; i++) {
                         almacenDest[i] = Math.max(0, almacenDest[i] - envio.getCantidadMaletas());
                     }
+                }
+            }
+        }
+    }
+
+    // ========================================================
+    // HEARTBEAT
+    // ========================================================
+    public void registrarHeartbeat(Long simulacionId) {
+        lastHeartbeatMap.put(simulacionId, System.currentTimeMillis());
+    }
+
+    @Scheduled(fixedRate = 60000)
+    public void revisarSimulacionesInactivas() {
+        long now = System.currentTimeMillis();
+        long limiteInactividad = 300_000L; // 5 minutos
+
+        for (Map.Entry<Long, Long> entry : lastHeartbeatMap.entrySet()) {
+            Long simulacionId = entry.getKey();
+            Long ultimoLatido = entry.getValue();
+
+            if (now - ultimoLatido > limiteInactividad) {
+                log.warn("La simulación {} ha superado el tiempo límite de inactividad (5 min). Cancelando automáticamente...", simulacionId);
+                try {
+                    cancelarSimulacion(simulacionId);
+                } catch (Exception e) {
+                    log.error("Error al auto-cancelar simulación huérfana {}", simulacionId, e);
+                    // Asegurar limpieza de memoria si falló la DB
+                    lastHeartbeatMap.remove(simulacionId);
+                    pauseFlags.remove(simulacionId);
                 }
             }
         }
@@ -484,6 +520,7 @@ public class SimulationService {
                 aeropuertosMap.remove(simulacionId);
                 vuelosMap.remove(simulacionId);
                 indiceVuelosMap.remove(simulacionId);
+                lastHeartbeatMap.remove(simulacionId);
             }
             simulacionesEnEjecucion.remove(simulacionId);
         }
@@ -776,6 +813,7 @@ public class SimulationService {
         sim.setBloqueActual(bloqueActual);
         simulacionRepository.save(sim);
         pauseFlags.remove(simulacionId);
+        lastHeartbeatMap.remove(simulacionId);
 
         messagingTemplate.convertAndSend("/topic/simulacion/" + simulacionId, Map.of(
                 "simulacionId", simulacionId,

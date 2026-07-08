@@ -845,10 +845,12 @@ export function useSimulation() {
 
   const teardownActiveSimulation = useCallback(async (cancelBackend: boolean) => {
     if (cancelBackend && activeSimIdRef.current) {
+      console.log(`Cancelando simulación huérfana/activa en backend (ID: ${activeSimIdRef.current})...`);
       try {
         await api.cancelarSimulacion(activeSimIdRef.current);
+        console.log(`Simulación (ID: ${activeSimIdRef.current}) cancelada exitosamente en el backend.`);
       } catch (error: any) {
-        console.warn("Error cancelando simulación:", error.message);
+        console.warn(`Error cancelando simulación (ID: ${activeSimIdRef.current}):`, error.message);
       }
     }
     if (wsClientRef.current) {
@@ -981,14 +983,59 @@ export function useSimulation() {
     });
   }, [teardownActiveSimulation]);
 
-  // Clean up on unmount
+  // Clean up on unmount and handle browser refresh/close (F5) to prevent orphan simulations
   useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (activeSimIdRef.current) {
+        console.log(`Navegación detectada (F5 o cierre). Intentando cancelar simulación ID: ${activeSimIdRef.current}`);
+        const token = localStorage.getItem("suitchase_token");
+        const headers: HeadersInit = {
+          "Content-Type": "application/json"
+        };
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+        
+        // Use keepalive: true to ensure the request is sent even if the page unloads
+        fetch(`/api/simulacion/${activeSimIdRef.current}/cancelar`, {
+          method: "POST",
+          headers,
+          keepalive: true,
+        }).catch(err => console.error(`Error cancelando simulación huérfana en unload (ID: ${activeSimIdRef.current}):`, err));
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       if (wsClientRef.current) {
         wsClientRef.current.disconnect();
       }
     };
   }, []);
+
+  // Heartbeat (Latido) para simulación activa
+  useEffect(() => {
+    let intervalId: any = null;
+
+    if (activeSimIdRef.current && (state.running || state.hasStarted)) {
+      // Enviar el primer latido inmediatamente al montar/iniciar
+      api.enviarHeartbeat(activeSimIdRef.current).catch(() => {});
+      
+      intervalId = setInterval(() => {
+        if (activeSimIdRef.current) {
+          api.enviarHeartbeat(activeSimIdRef.current).catch((err) => {
+            console.debug("Latido fallido (ignorado):", err);
+          });
+        }
+      }, 30000); // 30 segundos
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [state.running, state.hasStarted]);
 
   // Mocks for compatibility with other components
   const handleCancelFlight = useCallback((flightId: string) => { }, []);

@@ -92,6 +92,7 @@ export const api = {
   pausarSimulacion: (id) => request(`/simulacion/${id}/pausar`, { method: "POST" }),
   reanudarSimulacion: (id) => request(`/simulacion/${id}/reanudar`, { method: "POST" }),
   cancelarSimulacion: (id) => request(`/simulacion/${id}/cancelar`, { method: "POST" }),
+  enviarHeartbeat: (id) => request(`/simulacion/${id}/heartbeat`, { method: "POST" }),
   actualizarK: (id, k) => request(`/simulacion/${id}/k`, { method: "PUT", body: { k } }),
   getRutasBloque: (simId, bloqueId) => request<any[]>(`/simulacion/${simId}/bloques/${bloqueId}/rutas`),
   getPedidosAfectadosSimulacion: (simId, origen, destino, fechaSalida) => 
