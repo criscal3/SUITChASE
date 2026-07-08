@@ -450,6 +450,9 @@ export function RealTimePage() {
                 break;
               }
             }
+            if (!arrivedAt && p.origenOaci === a.code) {
+              arrivedAt = p.fechaHoraRegistro;
+            }
 
             // Hour the next flight departs from this warehouse:
             // Find the first PROGRAMADO tramo whose origen is this airport.
@@ -461,6 +464,7 @@ export function RealTimePage() {
               }
             }
 
+
             return {
               id: p.id,
               cant: p.cantidadMaletas,
@@ -470,6 +474,25 @@ export function RealTimePage() {
             } as WarehouseShipmentItem;
           });
 
+        const incomingMap = new Map<string, any>();
+        const outgoingMap = new Map<string, any>();
+
+        activeFlights.forEach(f => {
+          if (f.toCode === a.code) {
+            if (!incomingMap.has(f.id)) {
+              incomingMap.set(f.id, { id: f.id, airportCode: f.fromCode, timeRaw: f.arrivalRaw });
+            }
+          }
+          if (f.fromCode === a.code) {
+            if (!outgoingMap.has(f.id)) {
+              outgoingMap.set(f.id, { id: f.id, airportCode: f.toCode, timeRaw: f.departureRaw });
+            }
+          }
+        });
+
+        const incomingFlights = Array.from(incomingMap.values()).sort((x, y) => String(x.timeRaw).localeCompare(String(y.timeRaw)));
+        const outgoingFlights = Array.from(outgoingMap.values()).sort((x, y) => String(x.timeRaw).localeCompare(String(y.timeRaw)));
+
         return {
           code: a.code,
           cityName: a.city ?? a.code,
@@ -478,9 +501,11 @@ export function RealTimePage() {
           currentStock,
           utilization,
           shipments: shipmentsInWarehouse,
+          incomingFlights,
+          outgoingFlights,
         } as WarehouseItem;
       });
-  }, [airportsList, pedidos]);
+  }, [airportsList, pedidos, activeFlights]);
 
   const filtered = useMemo(() => {
     let result = pedidos;
@@ -955,6 +980,7 @@ export function RealTimePage() {
                   <WarehouseMonitoringPanel
                     warehouses={warehouseItems}
                     isDark={isDark}
+                    currentTime={Date.now()}
                     selectedCode={selectedWarehouseCode}
                     onDeselect={() => {
                       setSelectedWarehouseCode(null);

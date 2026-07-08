@@ -711,6 +711,9 @@ export function SimulationPage() {
                 break;
               }
             }
+            if (arrivedAtMs === null && bg.origin === ap.code) {
+              arrivedAtMs = bg.registeredAt;
+            }
             // flightDeparture: next scheduled leg from this airport
             let flightDepartureMs: number | null = null;
             for (let i = bg.currentLegIndex; i < bg.route.length; i++) {
@@ -736,6 +739,25 @@ export function SimulationPage() {
             } as WarehouseShipmentItem;
           });
 
+        const incomingFlights: any[] = [];
+        const outgoingFlights: any[] = [];
+
+        activeSimFlights.forEach(f => {
+          if (f.toCode === ap.code) {
+            if (!incomingFlights.some(inc => inc.id === f.id)) {
+              incomingFlights.push({ id: f.id, airportCode: f.fromCode, timeRaw: f.arrivalRaw });
+            }
+          }
+          if (f.fromCode === ap.code) {
+            if (!outgoingFlights.some(out => out.id === f.id)) {
+              outgoingFlights.push({ id: f.id, airportCode: f.toCode, timeRaw: f.departureRaw });
+            }
+          }
+        });
+
+        incomingFlights.sort((a, b) => a.timeRaw - b.timeRaw);
+        outgoingFlights.sort((a, b) => a.timeRaw - b.timeRaw);
+
         return {
           code: ap.code,
           cityName,
@@ -744,9 +766,11 @@ export function SimulationPage() {
           currentStock,
           utilization,
           shipments: shipmentsInWarehouse,
+          incomingFlights,
+          outgoingFlights,
         } as WarehouseItem;
       });
-  }, [state.airports, state.baggageGroups, state.currentTime, realTimeAirports]);
+  }, [state.airports, state.baggageGroups, state.currentTime, realTimeAirports, activeSimFlights]);
 
   /** Detener: pausa (reanudable tras Cerrar) y abre Highlights. */
   const handleStopSimulation = useCallback(async () => {
@@ -1718,6 +1742,7 @@ export function SimulationPage() {
                       <WarehouseMonitoringPanel
                         warehouses={simWarehouseItems}
                         isDark={isDark}
+                        currentTime={state.currentTime}
                         selectedCode={selectedSimWarehouseCode}
                         onDeselect={() => {
                           setSelectedSimWarehouseCode(null);

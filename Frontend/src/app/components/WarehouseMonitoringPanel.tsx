@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Search, X, ArrowUpDown, ChevronDown, ChevronUp,
-  Warehouse, Package, Clock, MapPin
+  Warehouse, Package, Clock, MapPin, Plane
 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { Input } from "./ui/input";
@@ -16,6 +16,12 @@ export interface WarehouseShipmentItem {
   isFinalDestination?: boolean;   // true si está en su destino final
 }
 
+export interface WarehouseUpcomingFlight {
+  id: string;
+  airportCode: string;
+  timeRaw: string | number;
+}
+
 export interface WarehouseItem {
   code: string;           // Código OACI aeropuerto/almacén
   cityName: string;       // Nombre de ciudad
@@ -24,6 +30,8 @@ export interface WarehouseItem {
   currentStock: number;   // Stock actual
   utilization: number;    // % de ocupación (0–100)
   shipments: WarehouseShipmentItem[];
+  incomingFlights?: WarehouseUpcomingFlight[];
+  outgoingFlights?: WarehouseUpcomingFlight[];
 }
 
 interface WarehouseMonitoringPanelProps {
@@ -32,9 +40,10 @@ interface WarehouseMonitoringPanelProps {
   selectedCode?: string | null;
   onDeselect?: () => void;
   onSelectWarehouse?: (code: string | null) => void;
+  currentTime?: number;
 }
 
-type SortField = "occupancy" | "alpha";
+type SortField = "occupancy" | "alpha" | "closest_departure" | "closest_arrival";
 
 /** Formatea una cadena ISO como hora local del almacén según su offset GMT. */
 function fmtLocalTime(isoStr: string | null, gmt: number): string {
@@ -43,11 +52,11 @@ function fmtLocalTime(isoStr: string | null, gmt: number): string {
     const utcMs = new Date(isoStr.endsWith("Z") ? isoStr : isoStr + "Z").getTime();
     const localMs = utcMs + gmt * 3_600_000;
     const d = new Date(localMs);
-    const day   = String(d.getUTCDate()).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
     const month = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const year  = d.getUTCFullYear();
-    const hh    = String(d.getUTCHours()).padStart(2, "0");
-    const mm    = String(d.getUTCMinutes()).padStart(2, "0");
+    const year = d.getUTCFullYear();
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
     const label = `UTC${gmt >= 0 ? `+${gmt}` : gmt}`;
     return `${day}-${month}-${year} ${hh}:${mm} ${label}`;
   } catch {
@@ -55,7 +64,7 @@ function fmtLocalTime(isoStr: string | null, gmt: number): string {
   }
 }
 
-export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onDeselect, onSelectWarehouse }: WarehouseMonitoringPanelProps) {
+export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onDeselect, onSelectWarehouse, currentTime = Date.now() }: WarehouseMonitoringPanelProps) {
   // Búsqueda (transiente)
   const [search, setSearch] = useState("");
 
@@ -75,18 +84,18 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
 
   // Theme tokens
   const headerBorder = isDark ? "border-[#1e293b]" : "border-[#cbd5e1]";
-  const titleCls     = isDark ? "text-white"       : "text-[#111827]";
-  const subCls       = isDark ? "text-white/70"    : "text-[#374151]";
-  const mutedCls     = isDark ? "text-white/50"    : "text-[#6b7280]";
-  const dimCls       = isDark ? "text-white/40"    : "text-[#9ca3af]";
-  const searchBg     = isDark
+  const titleCls = isDark ? "text-white" : "text-[#111827]";
+  const subCls = isDark ? "text-white/70" : "text-[#374151]";
+  const mutedCls = isDark ? "text-white/50" : "text-[#6b7280]";
+  const dimCls = isDark ? "text-white/40" : "text-[#9ca3af]";
+  const searchBg = isDark
     ? "bg-[#0a0f1e] border-[#1e293b] text-white placeholder:text-white/30"
     : "bg-white border-[#cbd5e1] text-[#111827] placeholder:text-[#9ca3af]";
-  const hoverRow     = isDark ? "hover:bg-[#0f172a]" : "hover:bg-[#cfd6df]";
-  const selectBg     = isDark
+  const hoverRow = isDark ? "hover:bg-[#0f172a]" : "hover:bg-[#cfd6df]";
+  const selectBg = isDark
     ? "bg-[#0f172a] border-[#1e293b] text-white text-[11px]"
     : "bg-white border-[#cbd5e1] text-[#111827] text-[11px]";
-  const shipmentBg   = isDark ? "bg-black/25"        : "bg-slate-100";
+  const shipmentBg = isDark ? "bg-black/25" : "bg-slate-100";
 
   // ──────────────────────────────────────────────────────────────
   // Búsqueda transiente: por OACI, ciudad, nombre, o código envío
@@ -126,6 +135,40 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
       let cmp = 0;
       if (sortBy === "occupancy") {
         cmp = a.utilization - b.utilization;
+      } else if (sortBy === "closest_departure") {
+        const getVal = (w: WarehouseItem) => (w.outgoingFlights && w.outgoingFlights.length > 0) ? w.outgoingFlights[0].timeRaw : null;
+        const aVal = getVal(a);
+        const bVal = getVal(b);
+        if (!aVal && !bVal) {
+          cmp = 0;
+        } else if (!aVal) {
+          return 1; // Empty to the bottom
+        } else if (!bVal) {
+          return -1; // Empty to the bottom
+        } else {
+          if (typeof aVal === "number" && typeof bVal === "number") {
+            cmp = aVal - bVal;
+          } else {
+            cmp = String(aVal).localeCompare(String(bVal));
+          }
+        }
+      } else if (sortBy === "closest_arrival") {
+        const getVal = (w: WarehouseItem) => (w.incomingFlights && w.incomingFlights.length > 0) ? w.incomingFlights[0].timeRaw : null;
+        const aVal = getVal(a);
+        const bVal = getVal(b);
+        if (!aVal && !bVal) {
+          cmp = 0;
+        } else if (!aVal) {
+          return 1;
+        } else if (!bVal) {
+          return -1;
+        } else {
+          if (typeof aVal === "number" && typeof bVal === "number") {
+            cmp = bVal - aVal;
+          } else {
+            cmp = String(bVal).localeCompare(String(aVal));
+          }
+        }
       } else {
         cmp = a.code.localeCompare(b.code);
       }
@@ -158,7 +201,7 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
         const page = Math.floor(index / pageSize) + 1;
         setCurrentPage(page);
       }
-      
+
       // Dar tiempo al render de la página correcta para que el ref esté disponible
       setTimeout(() => {
         selectedRowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -221,6 +264,8 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
           >
             <option value="occupancy">Ocupación</option>
             <option value="alpha">Alfabético</option>
+            <option value="closest_departure">Próximo a salir</option>
+            <option value="closest_arrival">Próximo a llegar</option>
           </select>
           <button
             onClick={() => setSortOrder(prev => prev === "asc" ? "desc" : "asc")}
@@ -236,17 +281,16 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
       <ScrollArea className="flex-1">
         <div className="px-2 py-1">
           {paginatedWarehouses.map(w => {
-            const isExpanded      = expandedCode === w.code;
-            const utilColor       = getOccupancyColor(w.utilization);
+            const isExpanded = expandedCode === w.code;
+            const utilColor = getOccupancyColor(w.utilization);
             const isShipmentMatch = searchMatchesShipment.has(w.code);
-            const isSelected      = selectedCode === w.code;
+            const isSelected = selectedCode === w.code;
 
             return (
               <div
                 key={w.code}
                 ref={isSelected ? selectedRowRef : undefined}
-                className={`rounded-md mb-1.5 border transition-all overflow-hidden ${
-                  isSelected
+                className={`rounded-md mb-1.5 border transition-all overflow-hidden ${isSelected
                     ? isDark
                       ? "border-cyan-400/70 bg-cyan-500/10 shadow-[0_0_8px_#00e5ff30]"
                       : "border-blue-500/60 bg-blue-50 shadow-sm"
@@ -255,17 +299,19 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                         ? "border-cyan-500/40 bg-cyan-500/5"
                         : "border-blue-400/50 bg-blue-50"
                       : "border-transparent"
-                }`}
+                  }`}
               >
                 {/* Cabecera del almacén */}
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
                     setExpandedCode(isExpanded ? null : w.code);
                     if (onSelectWarehouse) {
                       onSelectWarehouse(w.code);
                     }
                   }}
-                  className={`w-full text-left px-2 py-2 flex items-center justify-between gap-1 rounded-md transition-colors ${hoverRow}`}
+                  className={`w-full text-left px-2 py-2 flex items-center justify-between gap-1 rounded-md transition-colors cursor-pointer ${hoverRow}`}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -281,9 +327,9 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                     </div>
                     {isSelected && onDeselect && (
                       <button
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          onDeselect(); 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeselect();
                           if (onSelectWarehouse) onSelectWarehouse(null);
                         }}
                         className={`mt-1 flex items-center gap-1 text-[8.5px] px-1.5 py-0.5 rounded border transition-colors ${isDark ? "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10" : "border-blue-400/40 text-blue-600 hover:bg-blue-50"}`}
@@ -327,7 +373,7 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                       : <ChevronDown className={`w-3 h-3 ${dimCls}`} />
                     }
                   </div>
-                </button>
+                </div>
 
                 {/* Detalle expandido: lista de envíos */}
                 {isExpanded && (
@@ -351,20 +397,23 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                       ) : (
                         <div className={`max-h-52 overflow-y-auto pr-0.5 rounded-lg border p-1 custom-blue-scrollbar ${isDark ? "bg-black/25 border-[#1e293b]" : "bg-white/60 border-[#cbd5e1]"}`}>
                           {/* Encabezado de tabla */}
-                          <div className={`grid grid-cols-[1fr_auto_1.2fr] gap-2 px-1 pb-1 border-b text-[8.5px] font-semibold uppercase tracking-wider ${mutedCls} ${headerBorder}`}>
+                          <div className={`grid grid-cols-[1fr_auto_1.2fr_1.2fr] gap-2 px-1 pb-1 border-b text-[8.5px] font-semibold uppercase tracking-wider ${mutedCls} ${headerBorder}`}>
                             <span>Envío</span>
                             <span className="text-right">Maletas</span>
+                            <span className="text-right">Llegada almacén</span>
                             <span className="text-right">Salida vuelo</span>
                           </div>
 
                           {w.shipments.map(s => {
                             const departureFormatted = s.flightDeparture ? fmtLocalTime(s.flightDeparture, w.gmt) : null;
-                            const hasDeparture       = !!s.flightDeparture;
+                            const hasDeparture = !!s.flightDeparture;
+                            const arrivalFormatted = s.arrivedAt ? fmtLocalTime(s.arrivedAt, w.gmt) : null;
+                            const hasArrival = !!s.arrivedAt;
 
                             return (
                               <div
                                 key={s.id}
-                                className={`grid grid-cols-[1fr_auto_1.2fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}
+                                className={`grid grid-cols-[1fr_auto_1.2fr_1.2fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}
                               >
                                 {/* Código envío */}
                                 <span className={`font-mono font-semibold truncate ${titleCls}`}>{s.id}</span>
@@ -374,27 +423,87 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                                   x{s.cant}
                                 </span>
 
-                                 {/* Hora salida vuelo */}
-                                 {hasDeparture ? (
-                                   <span className={`text-right font-mono ${subCls}`}>
-                                     {departureFormatted}
-                                   </span>
-                                 ) : s.isFinalDestination ? (
-                                   <span className={`text-right italic text-[8.5px] ${isDark ? "text-green-400/80" : "text-green-600"} font-medium flex items-center justify-end gap-0.5`}>
-                                     Destino Final
-                                   </span>
-                                 ) : (
-                                   <span className={`text-right italic text-[8px] ${isDark ? "text-amber-400/80" : "text-amber-600"} flex items-center justify-end gap-0.5`}>
-                                     <Clock className="w-2 h-2 shrink-0" />
-                                     Sin ruta disponible
-                                   </span>
-                                 )}
+                                {/* Hora llegada almacén */}
+                                {hasArrival ? (
+                                  <span className={`text-right font-mono ${subCls}`}>
+                                    {arrivalFormatted}
+                                  </span>
+                                ) : (
+                                  <span className={`text-right italic text-[8.5px] ${isDark ? "text-cyan-400/50" : "text-blue-600/50"}`}>
+                                    —
+                                  </span>
+                                )}
+
+                                {/* Hora salida vuelo */}
+                                {hasDeparture ? (
+                                  <span className={`text-right font-mono ${subCls}`}>
+                                    {departureFormatted}
+                                  </span>
+                                ) : s.isFinalDestination ? (
+                                  <span className={`text-right italic text-[8.5px] ${isDark ? "text-green-400/80" : "text-green-600"} font-medium flex items-center justify-end gap-0.5`}>
+                                    Destino Final
+                                  </span>
+                                ) : (
+                                  <span className={`text-right italic text-[8px] ${isDark ? "text-amber-400/80" : "text-amber-600"} flex items-center justify-end gap-0.5`}>
+                                    <Clock className="w-2 h-2 shrink-0" />
+                                    Sin ruta
+                                  </span>
+                                )}
                               </div>
                             );
                           })}
                         </div>
                       )}
                     </div>
+
+                    {/* Listado de vuelos próximos a llegar */}
+                    {w.incomingFlights && w.incomingFlights.length > 0 && (
+                      <div className="space-y-0.5 mt-2">
+                        <div className={`text-[9px] font-semibold uppercase tracking-wider ${mutedCls} flex items-center gap-1 mb-1`}>
+                          <Plane className="w-2.5 h-2.5 transform rotate-90" />
+                          Vuelos próximos a llegar ({w.incomingFlights.length})
+                        </div>
+                        <div className={`max-h-32 overflow-y-auto pr-0.5 rounded-lg border p-1 custom-blue-scrollbar ${isDark ? "bg-black/25 border-[#1e293b]" : "bg-white/60 border-[#cbd5e1]"}`}>
+                          <div className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 pb-1 border-b text-[8.5px] font-semibold uppercase tracking-wider ${mutedCls} ${headerBorder}`}>
+                            <span>Origen</span>
+                            <span className="text-right">Llegada</span>
+                          </div>
+                          {w.incomingFlights.map(f => (
+                            <div key={f.id} className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}>
+                              <span className={`font-mono font-semibold truncate ${titleCls}`}>{f.airportCode}</span>
+                              <span className={`text-right font-mono ${subCls}`}>
+                                {typeof f.timeRaw === "number" ? fmtLocalTime(new Date(f.timeRaw).toISOString(), w.gmt) : fmtLocalTime(String(f.timeRaw), w.gmt)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Listado de vuelos próximos a salir */}
+                    {w.outgoingFlights && w.outgoingFlights.length > 0 && (
+                      <div className="space-y-0.5 mt-2">
+                        <div className={`text-[9px] font-semibold uppercase tracking-wider ${mutedCls} flex items-center gap-1 mb-1`}>
+                          <Plane className="w-2.5 h-2.5 transform rotate-45" />
+                          Vuelos próximos a salir ({w.outgoingFlights.length})
+                        </div>
+                        <div className={`max-h-32 overflow-y-auto pr-0.5 rounded-lg border p-1 custom-blue-scrollbar ${isDark ? "bg-black/25 border-[#1e293b]" : "bg-white/60 border-[#cbd5e1]"}`}>
+                          <div className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 pb-1 border-b text-[8.5px] font-semibold uppercase tracking-wider ${mutedCls} ${headerBorder}`}>
+                            <span>Destino</span>
+                            <span className="text-right">Salida</span>
+                          </div>
+                          {w.outgoingFlights.map(f => (
+                            <div key={f.id} className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}>
+                              <span className={`font-mono font-semibold truncate ${titleCls}`}>{f.airportCode}</span>
+                              <span className={`text-right font-mono ${subCls}`}>
+                                {typeof f.timeRaw === "number" ? fmtLocalTime(new Date(f.timeRaw).toISOString(), w.gmt) : fmtLocalTime(String(f.timeRaw), w.gmt)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 )}
               </div>
@@ -415,13 +524,12 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
           <button
             onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
             disabled={currentPage === 1}
-            className={`px-2 py-1 rounded border transition-colors font-medium ${
-              currentPage === 1
+            className={`px-2 py-1 rounded border transition-colors font-medium ${currentPage === 1
                 ? "opacity-40 cursor-not-allowed border-transparent"
                 : isDark
                   ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
                   : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
-            }`}
+              }`}
           >
             Anterior
           </button>
@@ -433,13 +541,12 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
           <button
             onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
             disabled={currentPage === totalPages}
-            className={`px-2 py-1 rounded border transition-colors font-medium ${
-              currentPage === totalPages
+            className={`px-2 py-1 rounded border transition-colors font-medium ${currentPage === totalPages
                 ? "opacity-40 cursor-not-allowed border-transparent"
                 : isDark
                   ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
                   : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
-            }`}
+              }`}
           >
             Siguiente
           </button>
