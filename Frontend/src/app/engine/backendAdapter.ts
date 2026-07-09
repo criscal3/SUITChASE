@@ -128,8 +128,14 @@ export function mapBlockResultToBaggageGroups(
           const depUtc = parseSimDate(tramo.salida, cursorTime);
           const arrUtc = parseSimDate(tramo.llegada, depUtc + 3600000);
           const depUtcFixed = fixDepartureTime(depUtc, arrUtc);
+          
+          let fromAirport = String(tramo.origen).toUpperCase();
+          if (i > 0 && route[i - 1].to !== fromAirport) {
+            fromAirport = route[i - 1].to;
+          }
+
           route.push({
-            from: String(tramo.origen).toUpperCase(),
+            from: fromAirport,
             to: String(tramo.destino).toUpperCase(),
             departureTime: depUtcFixed,
             arrivalTime: arrUtc,
@@ -219,6 +225,29 @@ export function mapBlockResultToBaggageGroups(
       status = isFailed ? "failed" : "waiting_replan";
     }
 
+    let currentLocation = resumen.origen;
+    let currentLegIndex = 0;
+    if (route.length > 0) {
+      const flyingIdx = route.findIndex(
+        (leg: any) => cursorTime >= leg.departureTime && cursorTime < leg.arrivalTime
+      );
+      if (flyingIdx !== -1) {
+        currentLegIndex = flyingIdx;
+        currentLocation = route[flyingIdx].from;
+      } else {
+        const nextFutureIdx = route.findIndex(
+          (leg: any) => cursorTime < leg.departureTime
+        );
+        if (nextFutureIdx !== -1) {
+          currentLegIndex = nextFutureIdx;
+          currentLocation = nextFutureIdx === 0 ? resumen.origen : route[nextFutureIdx - 1].to;
+        } else {
+          currentLegIndex = route.length;
+          currentLocation = route[route.length - 1].to;
+        }
+      }
+    }
+
     return {
       id: String(resumen.envioId),
       airline: "BackendAirline",
@@ -227,10 +256,10 @@ export function mapBlockResultToBaggageGroups(
       quantity: resumen.maletas,
       registeredAt,
       deadlineAt,
-      currentLocation: resumen.origen,
+      currentLocation,
       status,
       route,
-      currentLegIndex: 0, // SimulationMap computes the active leg from currentTime dynamically
+      currentLegIndex,
     } as BaggageGroup;
   });
 

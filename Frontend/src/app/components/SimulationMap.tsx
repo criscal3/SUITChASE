@@ -227,12 +227,10 @@ export function SimulationMap({
 
   useEffect(() => {
     if (selectedBaggage) {
-      const leg = selectedBaggage.route[selectedBaggage.currentLegIndex] || selectedBaggage.route[0];
-      if (leg) {
-        const port = airportsList.find((a) => a.code === leg.from);
-        if (port) {
-          setPosition({ coordinates: [port.lng, port.lat], zoom: 2.5 });
-        }
+      const currentLoc = selectedBaggage.currentLocation || selectedBaggage.origin;
+      const port = airportsList.find((a) => a.code === currentLoc);
+      if (port) {
+        setPosition({ coordinates: [port.lng, port.lat], zoom: 2.5 });
       }
     }
   }, [selectedBaggage, airportsList]);

@@ -349,6 +349,15 @@ export function useSimulation() {
             if (activeLeg) {
               mergedRoute.push(activeLeg);
             }
+            if (newFutureLegs.length > 0) {
+              const lastLeg = mergedRoute[mergedRoute.length - 1];
+              if (lastLeg && newFutureLegs[0].from !== lastLeg.to) {
+                newFutureLegs[0] = {
+                  ...newFutureLegs[0],
+                  from: lastLeg.to
+                };
+              }
+            }
             mergedRoute.push(...newFutureLegs);
 
             const isFlying = !!activeLeg;
@@ -523,22 +532,54 @@ export function useSimulation() {
       }
 
       const updatedBaggageGroups = prev.baggageGroups.map(bg => {
+        let currentLocation = bg.currentLocation || bg.origin;
+        let currentLegIndex = bg.currentLegIndex || 0;
+
+        if (bg.route && bg.route.length > 0) {
+          const smoothTime = clampedTime;
+          const flyingIdx = bg.route.findIndex(
+            (leg: any) => smoothTime >= leg.departureTime && smoothTime < leg.arrivalTime
+          );
+          if (flyingIdx !== -1) {
+            currentLegIndex = flyingIdx;
+            currentLocation = bg.route[flyingIdx].from;
+          } else {
+            const nextFutureIdx = bg.route.findIndex(
+              (leg: any) => smoothTime < leg.departureTime
+            );
+            if (nextFutureIdx !== -1) {
+              currentLegIndex = nextFutureIdx;
+              currentLocation = nextFutureIdx === 0 ? bg.origin : bg.route[nextFutureIdx - 1].to;
+            } else {
+              currentLegIndex = bg.route.length;
+              currentLocation = bg.route[bg.route.length - 1].to;
+            }
+          }
+        }
+
         if ((bg.status === "in_transit" || bg.status === "scheduled") && bg.route && bg.route.length > 0) {
           const lastLeg = bg.route[bg.route.length - 1];
           if (clampedTime >= lastLeg.arrivalTime && lastLeg.to !== bg.destination) {
             return {
               ...bg,
+              currentLocation,
+              currentLegIndex,
               status: "waiting_replan" as const
             };
           }
           const isFlying = bg.route.some((leg: any) => clampedTime >= leg.departureTime && clampedTime < leg.arrivalTime);
           if (isFlying && bg.status !== "in_transit") {
-            return { ...bg, status: "in_transit" as const };
+            return { ...bg, currentLocation, currentLegIndex, status: "in_transit" as const };
           } else if (!isFlying && clampedTime < lastLeg.arrivalTime && bg.status !== "scheduled") {
-            return { ...bg, status: "scheduled" as const };
+            return { ...bg, currentLocation, currentLegIndex, status: "scheduled" as const };
           }
         }
-        return bg;
+
+        return {
+          ...bg,
+          currentLocation,
+          currentLegIndex
+        };
       });
 
       return {
