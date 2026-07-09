@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useTheme } from "../context/ThemeContext";
 import { RealTimeMap } from "./RealTimeMap";
 import { ScrollArea } from "./ui/scroll-area";
@@ -63,6 +63,9 @@ export function AirlineTracking() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [airportsList, setAirportsList] = useState<any[]>([]);
   const [search, setSearch] = useState("");
+  const [selectedOriginFilter, setSelectedOriginFilter] = useState("ALL");
+  const [selectedDestFilter, setSelectedDestFilter] = useState("ALL");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState("ALL");
   const [showPanel, setShowPanel] = useState(true);
 
   const aerolineaIdStr = localStorage.getItem("suitchase_aerolinea_id");
@@ -111,6 +114,9 @@ export function AirlineTracking() {
   const getCity = (code: string) => airportsList.find(a => a.code === code)?.city || code;
 
   const filtered = pedidos.filter(p => {
+    if (selectedOriginFilter !== "ALL" && p.origenOaci !== selectedOriginFilter) return false;
+    if (selectedDestFilter !== "ALL" && p.destinoOaci !== selectedDestFilter) return false;
+    if (selectedStatusFilter !== "ALL" && p.estado !== selectedStatusFilter) return false;
     if (!search) return true;
     const s = search.toLowerCase();
     return p.id.toLowerCase().includes(s) ||
@@ -118,6 +124,20 @@ export function AirlineTracking() {
       p.destinoOaci.toLowerCase().includes(s) ||
       p.nombreAerolinea.toLowerCase().includes(s);
   });
+
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
+
+  // Reset page when filters or search change
+  useEffect(() => {
+    setPage(1);
+  }, [search, selectedOriginFilter, selectedDestFilter, selectedStatusFilter]);
+
+  const totalPages = useMemo(() => Math.ceil(filtered.length / pageSize), [filtered.length, pageSize]);
+  const paginatedPedidos = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
 
   const handleSelectPedido = async (p: Pedido | null) => {
     if (!p) { setSelectedPedido(null); setSearch(""); return; }
@@ -174,7 +194,7 @@ export function AirlineTracking() {
 
         {/* Panel derecho - Tracking */}
         {showPanel && (
-          <div className={`absolute right-4 top-14 bottom-4 z-10 w-72 border rounded-xl backdrop-blur-sm overflow-hidden flex flex-col pointer-events-auto ${panelBg}`}>
+          <div className={`absolute right-4 top-14 max-h-[calc(100vh-5.5rem)] h-auto z-10 w-72 border rounded-xl backdrop-blur-sm overflow-hidden flex flex-col pointer-events-auto ${panelBg}`}>
             {/* Header */}
             <div className={`flex items-center gap-2 px-3 py-2 border-b ${headerBorder}`}>
               <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
@@ -182,7 +202,7 @@ export function AirlineTracking() {
             </div>
 
             {/* Búsqueda */}
-            <div className={`px-3 py-2 border-b ${headerBorder}`}>
+            <div className={`px-3 py-2 border-b ${headerBorder} flex flex-col gap-2`}>
               <div className="relative">
                 <Search className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 ${searchIcon}`} />
                 <Input
@@ -196,6 +216,53 @@ export function AirlineTracking() {
                     <X className="w-3 h-3" />
                   </button>
                 )}
+              </div>
+
+              {/* Filtros de origen, destino y estado */}
+              <div className="flex gap-2">
+                <select
+                  value={selectedOriginFilter}
+                  onChange={e => setSelectedOriginFilter(e.target.value)}
+                  className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
+                    isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                  }`}
+                >
+                  <option value="ALL">Origen: Todos</option>
+                  {Array.from(new Set(pedidos.map(p => p.origenOaci))).sort().map(code => (
+                    <option key={code} value={code}>{code}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={selectedDestFilter}
+                  onChange={e => setSelectedDestFilter(e.target.value)}
+                  className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
+                    isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                  }`}
+                >
+                  <option value="ALL">Destino: Todos</option>
+                  {Array.from(new Set(pedidos.map(p => p.destinoOaci))).sort().map(code => (
+                    <option key={code} value={code}>{code}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-2">
+                <select
+                  value={selectedStatusFilter}
+                  onChange={e => setSelectedStatusFilter(e.target.value)}
+                  className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
+                    isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                  }`}
+                >
+                  <option value="ALL">Estado: Todos</option>
+                  <option value="PENDIENTE">Sin vuelo</option>
+                  <option value="PLANIFICADO">Asignado</option>
+                  <option value="EN_RUTA">En ruta</option>
+                  <option value="ENTREGADO">Entregado</option>
+                  <option value="SIN_RUTA">Sin ruta</option>
+                  <option value="COLAPSO">Colapso</option>
+                </select>
               </div>
             </div>
 
@@ -232,7 +299,7 @@ export function AirlineTracking() {
                     } catch { return "—"; }
                   };
                   const getGmt = (oaci: string) => airportsList.find((a: any) => a.code === oaci)?.gmt ?? 0;
-                  const gmtLabel = (g: number) => `GMT${g >= 0 ? `+${g}` : g}`;
+                  const gmtLabel = (g: number) => `UTC${g >= 0 ? `+${g}` : g}`;
                   const registroAirport = selectedPedido.operarioOaci || selectedPedido.origenOaci;
                   const registroGmt = getGmt(registroAirport);
 
@@ -306,6 +373,42 @@ export function AirlineTracking() {
                       {tramos.length === 0 && (
                         <div className={`pl-5 text-[10px] py-2 ${dimCls}`}>Sin ruta planificada</div>
                       )}
+
+                      {/* Plazo como nodo de la línea de tiempo */}
+                      <div className={`ml-[4px] w-[2px] h-3 ${trackLineBg}`} />
+                      <div className="flex items-start gap-2">
+                        {(() => {
+                          const getAirportContinent = (code: string) => {
+                            const ap = airportsList.find((a: any) => a.code === code);
+                            return ap?.continent || null;
+                          };
+                          const originCont = getAirportContinent(selectedPedido.origenOaci);
+                          const destCont = getAirportContinent(selectedPedido.destinoOaci);
+                          const isInter = originCont && destCont ? originCont !== destCont : false;
+                          const deadlineHours = isInter ? 48 : 24;
+                          const registeredTime = new Date(selectedPedido.fechaHoraRegistro.endsWith('Z') ? selectedPedido.fechaHoraRegistro : selectedPedido.fechaHoraRegistro + 'Z').getTime();
+                          const deadlineTime = registeredTime + deadlineHours * 3600000;
+                          const deadlineStr = fmtLocal(new Date(deadlineTime).toISOString(), getGmt(selectedPedido.destinoOaci)) + " " + gmtLabel(getGmt(selectedPedido.destinoOaci));
+
+                          const isDelivered = selectedPedido.estado === "ENTREGADO";
+                          const isFailed = selectedPedido.estado === "FALLIDO" || (new Date().getTime() > deadlineTime && !isDelivered);
+                          const dotColor = isDelivered ? "bg-green-500" : isFailed ? "bg-red-500" : dotInactive;
+
+                          return (
+                            <>
+                              <div
+                                className={`w-2.5 h-2.5 shrink-0 mt-0.5 ${dotColor}`}
+                                style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }}
+                              />
+                              <div className="flex-1">
+                                <div className={`text-[9px] ${mutedCls}`}>
+                                  Plazo: {deadlineStr}
+                                </div>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                   );
                 })()}
@@ -320,14 +423,14 @@ export function AirlineTracking() {
             )}
 
             {/* Lista de resultados */}
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 min-h-0">
               <div className="px-2 py-1">
                 {filtered.length === 0 && (
                   <div className={`text-[11px] text-center py-8 ${dimCls}`}>
                     No se encontraron pedidos activos.
                   </div>
                 )}
-                {!selectedPedido && filtered.map(p => {
+                {!selectedPedido && paginatedPedidos.map(p => {
                   const s = statusConfig[p.estado] || statusConfig.PENDIENTE;
                   return (
                     <button
@@ -353,13 +456,40 @@ export function AirlineTracking() {
                 })}
               </div>
             </ScrollArea>
+
+            {/* Controles de paginación */}
+            {!selectedPedido && totalPages > 1 && (
+              <div className={`px-2 py-1.5 border-t ${headerBorder} flex items-center justify-between text-[9px] shrink-0`}>
+                <button
+                  onClick={() => setPage(prev => Math.max(prev - 1, 1))}
+                  disabled={page === 1}
+                  className={`px-1.5 py-0.5 text-[8px] rounded border transition-colors ${
+                    page === 1 ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+                  }`}
+                >
+                  Anterior
+                </button>
+                <span className={isDark ? "text-white/50" : "text-[#6b7280]"}>
+                  Página <span className={`font-semibold ${isDark ? "text-white" : "text-[#111827]"}`}>{page}</span> de <span className={`font-semibold ${isDark ? "text-white" : "text-[#111827]"}`}>{totalPages}</span> ({filtered.length} envíos)
+                </span>
+                <button
+                  onClick={() => setPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={page === totalPages}
+                  className={`px-1.5 py-0.5 text-[8px] rounded border transition-colors ${
+                    page === totalPages ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+                  }`}
+                >
+                  Siguiente
+                </button>
+              </div>
+            )}
           </div>
         )}
 
         {/* Botón toggle panel */}
         <button
           onClick={() => setShowPanel(!showPanel)}
-          className={`absolute right-4 top-3 z-20 px-2 py-1 border rounded-lg text-[10px] transition-colors ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
+          className={`absolute right-4 top-3 z-20 px-2.5 py-1 border rounded-lg text-[10px] transition-colors ${isDark ? "bg-[#0a0f1ecc] border-[#1a2744] text-white/70 hover:text-cyan-400" : "bg-white/80 border-[#cbd5e1] text-[#475569] hover:text-blue-700"}`}
         >
           {showPanel ? "Ocultar" : "Rastreo"}
         </button>

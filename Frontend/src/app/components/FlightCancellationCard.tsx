@@ -6,7 +6,7 @@ import { useTheme } from "../context/ThemeContext";
 import { api } from "../services/api";
 import { toast } from "sonner";
 
-export function FlightCancellationCard() {
+export function FlightCancellationCard({ isRealTime = false }: { isRealTime?: boolean }) {
   const { state, activeSimId } = useSim();
   const { isDark } = useTheme();
 
@@ -17,7 +17,7 @@ export function FlightCancellationCard() {
   const [destination, setDestination] = useState("");
   const [timeValue, setTimeValue] = useState("");
 
-  const [confirmCancel, setConfirmCancel] = useState<{ origin: string; destination: string; date: string; simId: number; tzLabel: string; gmt: number } | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState<{ origin: string; destination: string; date: string; simId: number; tzLabel: string; gmt: number; flightId?: number } | null>(null);
   const [affectedOrders, setAffectedOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -73,8 +73,8 @@ export function FlightCancellationCard() {
       f => (f.origenOaci || f.origin) === origin && (f.destinoOaci || f.destination) === destination && !cancelledFlightIds.includes(f.id || f.vueloId)
     );
 
-    const options: { label: string; value: string; date: Date; tzLabel?: string }[] = [];
-    const simTime = new Date(state.currentTime);
+    const options: { label: string; value: string; date: Date; tzLabel?: string; flightId: number }[] = [];
+    const simTime = isRealTime ? new Date() : new Date(state.currentTime);
 
     matchingFlights.forEach(f => {
       const hourStr = f.horaSalida || "00:00:00";
@@ -106,58 +106,87 @@ export function FlightCancellationCard() {
       [candidate1UTC, candidate2UTC].forEach(cand => {
         // Solo permitir cancelación si faltan al menos 1 hora para el despegue
         if (cand > simTime && cand.getTime() - simTime.getTime() >= 60 * 60 * 1000 && cand.getTime() - simTime.getTime() <= 24 * 3600 * 1000) {
-          // Check if already cancelled in simulation
           const pad = (n: number) => String(n).padStart(2, "0");
-          const utcKey = `${origin}-${destination}-${cand.getUTCFullYear()}-${pad(cand.getUTCMonth() + 1)}-${pad(cand.getUTCDate())}T${pad(cand.getUTCHours())}:${pad(cand.getUTCMinutes())}`;
           
-          if (cancelledSimKeys.includes(utcKey)) {
-            return;
+          if (!isRealTime) {
+            const utcKey = `${origin}-${destination}-${cand.getUTCFullYear()}-${pad(cand.getUTCMonth() + 1)}-${pad(cand.getUTCDate())}T${pad(cand.getUTCHours())}:${pad(cand.getUTCMinutes())}`;
+            if (cancelledSimKeys.includes(utcKey)) {
+              return;
+            }
           }
 
-          // Convert cand de UTC a hora local del aeropuerto para mostrar y enviar
           const candInLocalTimezone = new Date(cand.getTime() + gmt * 60 * 60 * 1000);
           
-          // ISO format sin milliseconds en HORA LOCAL (lo que espera el backend)
-          // Example: 2026-06-17T14:30:00
-          const value = `${candInLocalTimezone.getUTCFullYear()}-${pad(candInLocalTimezone.getUTCMonth() + 1)}-${pad(candInLocalTimezone.getUTCDate())}T${pad(candInLocalTimezone.getUTCHours())}:${pad(candInLocalTimezone.getUTCMinutes())}:${pad(candInLocalTimezone.getUTCSeconds())}`;
+          const value = isRealTime 
+            ? String(f.id || f.vueloId)
+            : `${candInLocalTimezone.getUTCFullYear()}-${pad(candInLocalTimezone.getUTCMonth() + 1)}-${pad(candInLocalTimezone.getUTCDate())}T${pad(candInLocalTimezone.getUTCHours())}:${pad(candInLocalTimezone.getUTCMinutes())}:${pad(candInLocalTimezone.getUTCSeconds())}`;
+          
           const label = `${pad(candInLocalTimezone.getUTCDate())}/${pad(candInLocalTimezone.getUTCMonth() + 1)}/${candInLocalTimezone.getUTCFullYear()} ${pad(candInLocalTimezone.getUTCHours())}:${pad(candInLocalTimezone.getUTCMinutes())} (${tzLabel})`;
           
           options.push({
             label,
             value,
             date: cand,
-            tzLabel
+            tzLabel,
+            flightId: f.id || f.vueloId
           });
         }
       });
     });
 
     return options.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [origin, destination, flights, state.currentTime, cancelledFlightIds, cancelledSimKeys]);
+  }, [origin, destination, flights, state.currentTime, cancelledFlightIds, cancelledSimKeys, isRealTime]);
 
   const handleSelectTime = (val: string) => {
     setTimeValue(val);
   };
 
   const handleCancelClick = async () => {
+    if (!origin || !destination || !timeValue) {
+      toast.error("Seleccione origen, destino y hora del vuelo");
+      return;
+    }
+
+    const selectedOption = occurrences.find(o => o.value === timeValue);
+    if (!selectedOption) return;
+    const tzLabelToUse = selectedOption.tzLabel || "UTC";
+
+    // Obtener el GMT del aeropuerto origen
+    const originFlight = flights.find(f => (f.origenOaci || f.origin) === origin);
+    const gmtToUse = originFlight ? (originFlight.origenGmt || 0) : 0;
+
+    if (isRealTime) {
+      setConfirmCancel({
+        origin,
+        destination,
+        date: selectedOption.label,
+        simId: 0,
+        tzLabel: tzLabelToUse,
+        gmt: gmtToUse,
+        flightId: selectedOption.flightId
+      });
+      setAffectedOrders([]);
+      setLoadingOrders(true);
+      try {
+        const orders = await api.getPedidosAfectadosHoy(selectedOption.flightId);
+        setAffectedOrders(orders || []);
+      } catch (err) {
+        console.error(err);
+        toast.error("Error al obtener envíos afectados");
+        setConfirmCancel(null);
+      } finally {
+        setLoadingOrders(false);
+      }
+      return;
+    }
+
     const simIdToUse = activeSimId ?? state.activeSimId;
     if (!simIdToUse) {
       toast.error("No hay una simulación activa en este momento.");
       return;
     }
-    if (!origin || !destination || !timeValue) {
-      toast.error("Seleccione origen, destino y hora del vuelo");
-      return;
-    }
     
-    const selectedOption = occurrences.find(o => o.value === timeValue);
-    const tzLabelToUse = selectedOption ? selectedOption.tzLabel : "UTC";
-    
-    // Obtener el GMT del aeropuerto origen
-    const originFlight = flights.find(f => (f.origenOaci || f.origin) === origin);
-    const gmtToUse = originFlight ? (originFlight.origenGmt || 0) : 0;
-    
-    setConfirmCancel({ origin, destination, date: timeValue, simId: simIdToUse, tzLabel: tzLabelToUse, gmt: gmtToUse });
+    setConfirmCancel({ origin, destination, date: timeValue, simId: simIdToUse, tzLabel: tzLabelToUse, gmt: gmtToUse, flightId: selectedOption.flightId });
     setAffectedOrders([]);
     setLoadingOrders(true);
     try {
@@ -176,6 +205,24 @@ export function FlightCancellationCard() {
     if (!confirmCancel) return;
     setCancelLoading(true);
     try {
+      if (isRealTime && confirmCancel.flightId) {
+        const res = await api.cancelarVueloHoy(confirmCancel.flightId);
+        toast.warning(
+          res.pedidosAfectados > 0
+            ? `Vuelo cancelado hoy. ${res.pedidosAfectados} pedido(s) afectados.`
+            : `Vuelo cancelado hoy. No había pedidos afectados.`,
+          { duration: 6000 }
+        );
+        setConfirmCancel(null);
+        
+        // Refrescar la lista de cancelaciones activas
+        const activeCancels = await api.getCancelacionesActivas();
+        if (activeCancels) {
+          setCancelledFlightIds(activeCancels);
+        }
+        return;
+      }
+
       await api.cancelarVueloSimulacion(confirmCancel.simId, confirmCancel.origin, confirmCancel.destination, confirmCancel.date);
       toast.warning(
         affectedOrders.length > 0
@@ -200,7 +247,7 @@ export function FlightCancellationCard() {
         }).catch(console.error);
       }
     } catch (err: any) {
-      toast.error(err?.message ?? "Error al cancelar el vuelo en la simulación");
+      toast.error(err?.message ?? "Error al cancelar el vuelo");
     } finally {
       setCancelLoading(false);
     }

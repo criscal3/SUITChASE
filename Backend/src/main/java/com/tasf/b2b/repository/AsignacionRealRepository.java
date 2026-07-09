@@ -18,6 +18,10 @@ public interface AsignacionRealRepository extends JpaRepository<AsignacionRealEn
     @Modifying
     void deleteByPedidoId(String pedidoId);
 
+    @Transactional
+    @Modifying
+    void deleteByPedidoIdAndEstadoIn(String pedidoId, List<EstadoTramo> estados);
+
     // Para actualizador de estados: tramos que deberían haber despegado
     List<AsignacionRealEntity> findByEstadoAndFechaSalidaLessThanEqual(EstadoTramo estado, LocalDateTime ahora);
 

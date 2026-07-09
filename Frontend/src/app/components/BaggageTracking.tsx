@@ -64,7 +64,7 @@ export function BaggageTracking({
     if (!selectedBaggage) return 0;
     const smoothTime = state.currentTime;
 
-    if (state.scenario === "daily") {
+    if (state.scenario === "daily" || state.scenario === "tracking") {
       return selectedBaggage.currentLegIndex;
     }
 
@@ -291,10 +291,23 @@ export function BaggageTracking({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todos los estados</SelectItem>
-              <SelectItem value="scheduled">Programado</SelectItem>
-              <SelectItem value="in_transit">{statusConfig.in_transit.label}</SelectItem>
-              <SelectItem value="waiting_replan">Esperando replanificación</SelectItem>
-              <SelectItem value="failed">Fuera de plazo</SelectItem>
+              {state.scenario === "daily" || state.scenario === "tracking" ? (
+                <>
+                  <SelectItem value="waiting">En espera</SelectItem>
+                  <SelectItem value="in_transit">En tránsito</SelectItem>
+                  <SelectItem value="delayed">Retrasado</SelectItem>
+                  <SelectItem value="delivered">Entregado</SelectItem>
+                  <SelectItem value="failed">Fallido</SelectItem>
+                </>
+              ) : (
+                <>
+                  <SelectItem value="scheduled">Programado</SelectItem>
+                  <SelectItem value="in_transit">En tránsito</SelectItem>
+                  <SelectItem value="waiting_replan">Esperando replanificación</SelectItem>
+                  <SelectItem value="delivered">Entregado</SelectItem>
+                  <SelectItem value="failed">Fuera de plazo</SelectItem>
+                </>
+              )}
             </SelectContent>
           </Select>
         </div>

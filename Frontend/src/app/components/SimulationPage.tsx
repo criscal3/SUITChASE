@@ -98,6 +98,9 @@ export function SimulationPage() {
   const [realTimeFlights, setRealTimeFlights] = useState<any[]>([]);
   const [selectedRealTimePedido, setSelectedRealTimePedido] = useState<any | null>(null);
   const [realTimeSearch, setRealTimeSearch] = useState("");
+  const [selectedRTOriginFilter, setSelectedRTOriginFilter] = useState("ALL");
+  const [selectedRTDestFilter, setSelectedRTDestFilter] = useState("ALL");
+  const [selectedRTStatusFilter, setSelectedRTStatusFilter] = useState("ALL");
   const [showRealTimeRightPanel, setShowRealTimeRightPanel] = useState(false);
   const [selectedFlightKey, setSelectedFlightKey] = useState<string | null>(null);
   const [selectedFlightPedidoIds, setSelectedFlightPedidoIds] = useState<string[] | null>(null);
@@ -112,21 +115,25 @@ export function SimulationPage() {
   const [selectedRTWarehouseCode, setSelectedRTWarehouseCode] = useState<string | null>(null);
   const [selectedSimWarehouseCode, setSelectedSimWarehouseCode] = useState<string | null>(null);
   const [showCancelaciones, setShowCancelaciones] = useState(false);
+  const [showRTCancelaciones, setShowRTCancelaciones] = useState(false);
   const [showSimLeftPanel, setShowSimLeftPanel] = useState(false);
   const [showRTLeftPanel, setShowRTLeftPanel] = useState(false);
   const [rtPedidosPage, setRtPedidosPage] = useState(1);
   const rtPedidosPageSize = 8;
 
-  // Reset page when realTimeSearch or selectedFlightKey changes
+  // Reset page when realTimeSearch, selectedFlightKey or filters change
   useEffect(() => {
     setRtPedidosPage(1);
-  }, [realTimeSearch, selectedFlightKey]);
+  }, [realTimeSearch, selectedFlightKey, selectedRTOriginFilter, selectedRTDestFilter, selectedRTStatusFilter]);
 
   // Jump page if selectedRealTimePedido is set
   useEffect(() => {
     if (selectedRealTimePedido && realTimePedidos) {
       const filteredRT = realTimePedidos.filter(p => {
         if (selectedFlightPedidoIds && !selectedFlightPedidoIds.includes(p.id)) return false;
+        if (selectedRTOriginFilter !== "ALL" && p.origenOaci !== selectedRTOriginFilter) return false;
+        if (selectedRTDestFilter !== "ALL" && p.destinoOaci !== selectedRTDestFilter) return false;
+        if (selectedRTStatusFilter !== "ALL" && p.estado !== selectedRTStatusFilter) return false;
         if (!realTimeSearch) return true;
         const s = realTimeSearch.toLowerCase();
         return p.id.toLowerCase().includes(s) ||
@@ -140,7 +147,7 @@ export function SimulationPage() {
         setRtPedidosPage(pageOfPedido);
       }
     }
-  }, [selectedRealTimePedido, realTimePedidos, selectedFlightPedidoIds, realTimeSearch]);
+  }, [selectedRealTimePedido, realTimePedidos, selectedFlightPedidoIds, realTimeSearch, selectedRTOriginFilter, selectedRTDestFilter, selectedRTStatusFilter]);
 
   // Load real-time airports
   useEffect(() => {
@@ -621,6 +628,49 @@ export function SimulationPage() {
             } as WarehouseShipmentItem;
           });
 
+        const incomingFlightsMap = new Map<string, any>();
+        const outgoingFlightsMap = new Map<string, any>();
+
+        realTimePedidos.forEach(p => {
+          if (!p || p.estado === "ENTREGADO" || p.estado === "COLAPSO") return;
+          const tramos = p.tramos || [];
+          tramos.forEach(leg => {
+            if (!leg) return;
+            const key = leg.claveVuelo || `${leg.origenOaci || ""}-${leg.destinoOaci || ""}-${leg.fechaSalida || ""}`;
+            
+            if (leg.destinoOaci === a.code && (leg.estado === "PROGRAMADO" || leg.estado === "EN_VUELO")) {
+              if (!incomingFlightsMap.has(key)) {
+                incomingFlightsMap.set(key, { 
+                  id: key, 
+                  airportCode: leg.origenOaci, 
+                  timeRaw: leg.fechaLlegada 
+                });
+              }
+            }
+            
+            if (leg.origenOaci === a.code && leg.estado === "PROGRAMADO") {
+              if (!outgoingFlightsMap.has(key)) {
+                outgoingFlightsMap.set(key, { 
+                  id: key, 
+                  airportCode: leg.destinoOaci, 
+                  timeRaw: leg.fechaSalida 
+                });
+              }
+            }
+          });
+        });
+
+        const incomingFlights = Array.from(incomingFlightsMap.values()).sort((x, y) => {
+          const tx = x.timeRaw ? new Date(x.timeRaw).getTime() : 0;
+          const ty = y.timeRaw ? new Date(y.timeRaw).getTime() : 0;
+          return tx - ty;
+        });
+        const outgoingFlights = Array.from(outgoingFlightsMap.values()).sort((x, y) => {
+          const tx = x.timeRaw ? new Date(x.timeRaw).getTime() : 0;
+          const ty = y.timeRaw ? new Date(y.timeRaw).getTime() : 0;
+          return tx - ty;
+        });
+
         return {
           code: a.code,
           cityName: a.city ?? a.code,
@@ -629,6 +679,8 @@ export function SimulationPage() {
           currentStock,
           utilization,
           shipments: shipmentsInWarehouse,
+          incomingFlights,
+          outgoingFlights,
         } as WarehouseItem;
       });
   }, [realTimeAirports, realTimePedidos]);
@@ -1251,7 +1303,7 @@ export function SimulationPage() {
                   <button
                     onClick={() => {
                       setShowRTEnvios(!showRTEnvios);
-                      if (!showRTEnvios) { setShowRTVuelos(false); setShowRTAlmacenes(false); }
+                      if (!showRTEnvios) { setShowRTVuelos(false); setShowRTAlmacenes(false); setShowRTCancelaciones(false); }
                     }}
                     className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
                       showRTEnvios ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
@@ -1267,7 +1319,7 @@ export function SimulationPage() {
                   {showRTEnvios && (
                     <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
                       {/* Búsqueda */}
-                      <div className={`px-3 py-2 border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}`}>
+                      <div className={`px-3 py-2 border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"} flex flex-col gap-2`}>
                         <div className="relative">
                           <Search className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`} />
                           <input
@@ -1296,6 +1348,51 @@ export function SimulationPage() {
                               <X className="w-3.5 h-3.5" />
                             </button>
                           )}
+                        </div>
+                        {/* Filtros de origen, destino y estado */}
+                        <div className="flex gap-2">
+                          <select
+                            value={selectedRTOriginFilter}
+                            onChange={e => setSelectedRTOriginFilter(e.target.value)}
+                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
+                              isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                            }`}
+                          >
+                            <option value="ALL">Origen: Todos</option>
+                            {Array.from(new Set(realTimePedidos.map(p => p.origenOaci))).sort().map(code => (
+                              <option key={code} value={code}>{code}</option>
+                            ))}
+                          </select>
+
+                          <select
+                            value={selectedRTDestFilter}
+                            onChange={e => setSelectedRTDestFilter(e.target.value)}
+                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
+                              isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                            }`}
+                          >
+                            <option value="ALL">Destino: Todos</option>
+                            {Array.from(new Set(realTimePedidos.map(p => p.destinoOaci))).sort().map(code => (
+                              <option key={code} value={code}>{code}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex gap-2">
+                          <select
+                            value={selectedRTStatusFilter}
+                            onChange={e => setSelectedRTStatusFilter(e.target.value)}
+                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
+                              isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                            }`}
+                          >
+                            <option value="ALL">Estado: Todos</option>
+                            <option value="PENDIENTE">Sin vuelo</option>
+                            <option value="PLANIFICADO">Asignado</option>
+                            <option value="EN_RUTA">En ruta</option>
+                            <option value="ENTREGADO">Entregado</option>
+                            <option value="SIN_RUTA">Sin ruta</option>
+                            <option value="COLAPSO">Colapso</option>
+                          </select>
                         </div>
                       </div>
 
@@ -1423,8 +1520,43 @@ export function SimulationPage() {
                                 {tramos.length === 0 && (
                                   <div className={`pl-5 text-[10px] py-2 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`}>Sin ruta planificada</div>
                                 )}
+                              {/* Plazo como nodo de la línea de tiempo */}
+                              <div className={`ml-[4px] w-[2px] h-3 ${isDark ? "bg-[#1e293b]" : "bg-[#c8d0d8]"}`} />
+                              <div className="flex items-start gap-2">
+                                {(() => {
+                                  const getAirportContinent = (code: string) => {
+                                    const ap = realTimeAirports.find((a: any) => a.code === code);
+                                    return ap?.continent || null;
+                                  };
+                                  const originCont = getAirportContinent(selectedRealTimePedido.origenOaci);
+                                  const destCont = getAirportContinent(selectedRealTimePedido.destinoOaci);
+                                  const isInter = originCont && destCont ? originCont !== destCont : false;
+                                  const deadlineHours = isInter ? 48 : 24;
+                                  const registeredTime = new Date(selectedRealTimePedido.fechaHoraRegistro.endsWith('Z') ? selectedRealTimePedido.fechaHoraRegistro : selectedRealTimePedido.fechaHoraRegistro + 'Z').getTime();
+                                  const deadlineTime = registeredTime + deadlineHours * 3600000;
+                                  const deadlineStr = fmtLocal(new Date(deadlineTime).toISOString(), getGmt(selectedRealTimePedido.destinoOaci));
+
+                                  const isDelivered = selectedRealTimePedido.estado === "ENTREGADO";
+                                  const isFailed = selectedRealTimePedido.estado === "FALLIDO" || (new Date().getTime() > deadlineTime && !isDelivered);
+                                  const dotColor = isDelivered ? "bg-green-500" : isFailed ? "bg-red-500" : (isDark ? "bg-[#334155]" : "bg-[#a0aec0]");
+
+                                  return (
+                                    <>
+                                      <div
+                                        className={`w-2.5 h-2.5 shrink-0 mt-0.5 ${dotColor}`}
+                                        style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }}
+                                      />
+                                      <div className="flex-1">
+                                        <div className={`text-[9px] ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>
+                                          Plazo: {deadlineStr}
+                                        </div>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
-                            );
+                            </div>
+                          );
                           })()}
 
                           <button
@@ -1444,6 +1576,9 @@ export function SimulationPage() {
                               if (selectedFlightPedidoIds && !selectedFlightPedidoIds.includes(p.id)) return false;
                               // Filter by selected warehouse
                               if (selectedRTWarehouseCode && p.origenOaci !== selectedRTWarehouseCode && p.destinoOaci !== selectedRTWarehouseCode) return false;
+                              if (selectedRTOriginFilter !== "ALL" && p.origenOaci !== selectedRTOriginFilter) return false;
+                              if (selectedRTDestFilter !== "ALL" && p.destinoOaci !== selectedRTDestFilter) return false;
+                              if (selectedRTStatusFilter !== "ALL" && p.estado !== selectedRTStatusFilter) return false;
                               if (!realTimeSearch) return true;
                               const s = realTimeSearch.toLowerCase();
                               return p.id.toLowerCase().includes(s) ||
@@ -1539,7 +1674,7 @@ export function SimulationPage() {
                   <button
                     onClick={() => {
                       setShowRTVuelos(!showRTVuelos);
-                      if (!showRTVuelos) { setShowRTEnvios(false); setShowRTAlmacenes(false); }
+                      if (!showRTVuelos) { setShowRTEnvios(false); setShowRTAlmacenes(false); setShowRTCancelaciones(false); }
                     }}
                     className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
                       showRTVuelos ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
@@ -1574,7 +1709,7 @@ export function SimulationPage() {
                   <button
                     onClick={() => {
                       setShowRTAlmacenes(!showRTAlmacenes);
-                      if (!showRTAlmacenes) { setShowRTEnvios(false); setShowRTVuelos(false); }
+                      if (!showRTAlmacenes) { setShowRTEnvios(false); setShowRTVuelos(false); setShowRTCancelaciones(false); }
                     }}
                     className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
                       showRTAlmacenes ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
@@ -1605,6 +1740,40 @@ export function SimulationPage() {
                           setSelectedFlightPedidoIds(null);
                         }}
                       />
+                    </div>
+                  )}
+                </div>
+
+                {/* Contenedor 4: Cancelación (tracking mode) */}
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
+                  showRTCancelaciones ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
+                } ${panelBg}`}>
+                  <button
+                    onClick={() => {
+                      setShowRTCancelaciones(!showRTCancelaciones);
+                      if (showRTCancelaciones) {
+                        // Allow collapse
+                      } else {
+                        // Collapse others to give space
+                        setShowRTEnvios(false);
+                        setShowRTVuelos(false);
+                        setShowRTAlmacenes(false);
+                      }
+                    }}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
+                      showRTCancelaciones ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className={`w-4 h-4 ${isDark ? "text-red-400" : "text-red-700"}`} />
+                      <span className={`text-[13px] ${isDark ? "text-white" : "text-[#111827]"}`}>Cancelación de Vuelos</span>
+                    </div>
+                    {showRTCancelaciones ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+
+                  {showRTCancelaciones && (
+                    <div className="flex-grow flex flex-col min-h-0 overflow-y-auto">
+                      <FlightCancellationCard isRealTime={true} />
                     </div>
                   )}
                 </div>

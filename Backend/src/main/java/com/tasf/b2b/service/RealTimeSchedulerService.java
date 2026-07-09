@@ -117,11 +117,24 @@ public class RealTimeSchedulerService {
                 String destinoAlcanzado = ruta.vuelosUsados.get(ruta.vuelosUsados.size() - 1).getDestinoOaci();
                 entity.setEstado(destinoAlcanzado.equals(envioAlg.getDestinoOaci())
                         ? EstadoPedido.PLANIFICADO : EstadoPedido.SIN_RUTA);
-                entity.setTotalTramos(ruta.vuelosUsados.size());
-                entity.setUbicacionActual(entity.getOrigenOaci());
 
-                // Limpiar asignaciones anteriores (puede venir de un intento SIN_RUTA previo)
-                asignacionRealRepository.deleteByPedidoId(envioAlg.getId());
+                // Obtener tramos existentes (COMPLETADO o EN_VUELO)
+                List<AsignacionRealEntity> tramosExistentes = asignacionRealRepository
+                        .findByPedidoIdOrderByOrdenVueloAsc(envioAlg.getId()).stream()
+                        .filter(t -> t.getEstado() == EstadoTramo.COMPLETADO || t.getEstado() == EstadoTramo.EN_VUELO)
+                        .collect(Collectors.toList());
+
+                int offset = tramosExistentes.size();
+                entity.setTotalTramos(offset + ruta.vuelosUsados.size());
+
+                // No sobreescribir ubicacionActual al origen si ya avanzó
+                if (offset == 0) {
+                    entity.setUbicacionActual(entity.getOrigenOaci());
+                }
+
+                // Limpiar asignaciones anteriores que no sean COMPLETADO o EN_VUELO
+                asignacionRealRepository.deleteByPedidoIdAndEstadoIn(envioAlg.getId(), 
+                        List.of(EstadoTramo.PROGRAMADO, EstadoTramo.CANCELADO));
 
                 // Guardar tramos de ruta
                 for (int i = 0; i < ruta.vuelosUsados.size(); i++) {
@@ -132,7 +145,7 @@ public class RealTimeSchedulerService {
 
                     AsignacionRealEntity asig = new AsignacionRealEntity();
                     asig.setPedidoId(envioAlg.getId());
-                    asig.setOrdenVuelo(i + 1);
+                    asig.setOrdenVuelo(offset + i + 1);
                     asig.setVueloId(buscarVueloId(vuelo));
                     asig.setOrigenOaci(vuelo.getOrigenOaci());
                     asig.setDestinoOaci(vuelo.getDestinoOaci());

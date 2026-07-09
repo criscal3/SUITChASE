@@ -483,7 +483,7 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                     )}
                   </div>
 
-                  {w.incomingFlights && w.incomingFlights.length > 0 && (
+                  {w.incomingFlights && (
                     <div className="space-y-0.5 mt-2">
                       {/* Botón colapsable Vuelos de llegada */}
                       <button
@@ -503,20 +503,24 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                             <span>Origen</span>
                             <span className="text-right">Llegada</span>
                           </div>
-                          {w.incomingFlights.map(f => (
-                            <div key={f.id} className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}>
-                              <span className={`font-mono font-semibold truncate ${titleCls}`}>{f.airportCode}</span>
-                              <span className={`text-right font-mono ${subCls}`}>
-                                {typeof f.timeRaw === "number" ? fmtLocalTime(new Date(f.timeRaw).toISOString(), w.gmt) : fmtLocalTime(String(f.timeRaw), w.gmt)}
-                              </span>
-                            </div>
-                          ))}
+                          {w.incomingFlights.length === 0 ? (
+                            <div className={`text-center py-2 italic ${dimCls} text-[9.5px]`}>No hay vuelos programados</div>
+                          ) : (
+                            w.incomingFlights.map(f => (
+                              <div key={f.id} className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}>
+                                <span className={`font-mono font-semibold truncate ${titleCls}`}>{f.airportCode}</span>
+                                <span className={`text-right font-mono ${subCls}`}>
+                                  {typeof f.timeRaw === "number" ? fmtLocalTime(new Date(f.timeRaw).toISOString(), w.gmt) : fmtLocalTime(String(f.timeRaw), w.gmt)}
+                                </span>
+                              </div>
+                            ))
+                          )}
                         </div>
                       )}
                     </div>
                   )}
 
-                  {w.outgoingFlights && w.outgoingFlights.length > 0 && (
+                  {w.outgoingFlights && (
                     <div className="space-y-0.5 mt-2">
                       {/* Botón colapsable Vuelos de salida */}
                       <button
@@ -536,14 +540,18 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                             <span>Destino</span>
                             <span className="text-right">Salida</span>
                           </div>
-                          {w.outgoingFlights.map(f => (
-                            <div key={f.id} className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}>
-                              <span className={`font-mono font-semibold truncate ${titleCls}`}>{f.airportCode}</span>
-                              <span className={`text-right font-mono ${subCls}`}>
-                                {typeof f.timeRaw === "number" ? fmtLocalTime(new Date(f.timeRaw).toISOString(), w.gmt) : fmtLocalTime(String(f.timeRaw), w.gmt)}
-                              </span>
-                            </div>
-                          ))}
+                          {w.outgoingFlights.length === 0 ? (
+                            <div className={`text-center py-2 italic ${dimCls} text-[9.5px]`}>No hay vuelos programados</div>
+                          ) : (
+                            w.outgoingFlights.map(f => (
+                              <div key={f.id} className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}>
+                                <span className={`font-mono font-semibold truncate ${titleCls}`}>{f.airportCode}</span>
+                                <span className={`text-right font-mono ${subCls}`}>
+                                  {typeof f.timeRaw === "number" ? fmtLocalTime(new Date(f.timeRaw).toISOString(), w.gmt) : fmtLocalTime(String(f.timeRaw), w.gmt)}
+                                </span>
+                              </div>
+                            ))
+                          )}
                         </div>
                       )}
                     </div>
@@ -715,7 +723,7 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                       )}
                     </div>
 
-                    {w.incomingFlights && w.incomingFlights.length > 0 && (
+                    {w.incomingFlights && (
                       <div className="space-y-0.5 mt-2">
                         {/* Botón colapsable Vuelos de llegada */}
                         <button
@@ -735,20 +743,24 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                               <span>Origen</span>
                               <span className="text-right">Llegada</span>
                             </div>
-                            {w.incomingFlights.map(f => (
-                              <div key={f.id} className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}>
-                                <span className={`font-mono font-semibold truncate ${titleCls}`}>{f.airportCode}</span>
-                                <span className={`text-right font-mono ${subCls}`}>
-                                  {typeof f.timeRaw === "number" ? fmtLocalTime(new Date(f.timeRaw).toISOString(), w.gmt) : fmtLocalTime(String(f.timeRaw), w.gmt)}
-                                </span>
-                              </div>
-                            ))}
+                            {w.incomingFlights.length === 0 ? (
+                              <div className={`text-center py-2 italic ${dimCls} text-[9.5px]`}>No hay vuelos programados</div>
+                            ) : (
+                              w.incomingFlights.map(f => (
+                                <div key={f.id} className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}>
+                                  <span className={`font-mono font-semibold truncate ${titleCls}`}>{f.airportCode}</span>
+                                  <span className={`text-right font-mono ${subCls}`}>
+                                    {typeof f.timeRaw === "number" ? fmtLocalTime(new Date(f.timeRaw).toISOString(), w.gmt) : fmtLocalTime(String(f.timeRaw), w.gmt)}
+                                  </span>
+                                </div>
+                              ))
+                            )}
                           </div>
                         )}
                       </div>
                     )}
 
-                    {w.outgoingFlights && w.outgoingFlights.length > 0 && (
+                    {w.outgoingFlights && (
                       <div className="space-y-0.5 mt-2">
                         {/* Botón colapsable Vuelos de salida */}
                         <button
@@ -768,14 +780,18 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                               <span>Destino</span>
                               <span className="text-right">Salida</span>
                             </div>
-                            {w.outgoingFlights.map(f => (
-                              <div key={f.id} className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}>
-                                <span className={`font-mono font-semibold truncate ${titleCls}`}>{f.airportCode}</span>
-                                <span className={`text-right font-mono ${subCls}`}>
-                                  {typeof f.timeRaw === "number" ? fmtLocalTime(new Date(f.timeRaw).toISOString(), w.gmt) : fmtLocalTime(String(f.timeRaw), w.gmt)}
-                                </span>
-                              </div>
-                            ))}
+                            {w.outgoingFlights.length === 0 ? (
+                              <div className={`text-center py-2 italic ${dimCls} text-[9.5px]`}>No hay vuelos programados</div>
+                            ) : (
+                              w.outgoingFlights.map(f => (
+                                <div key={f.id} className={`grid grid-cols-[1fr_1.5fr] gap-2 px-1 py-0.5 rounded hover:bg-white/5 items-start text-[8.5px]`}>
+                                  <span className={`font-mono font-semibold truncate ${titleCls}`}>{f.airportCode}</span>
+                                  <span className={`text-right font-mono ${subCls}`}>
+                                    {typeof f.timeRaw === "number" ? fmtLocalTime(new Date(f.timeRaw).toISOString(), w.gmt) : fmtLocalTime(String(f.timeRaw), w.gmt)}
+                                  </span>
+                                </div>
+                              ))
+                            )}
                           </div>
                         )}
                       </div>

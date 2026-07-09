@@ -65,7 +65,15 @@ public class DataMapperService {
     public EnvioAlgoritmo toEnvioAlgoritmo(com.tasf.b2b.domain.PedidoRealEntity entity) {
         EnvioAlgoritmo envio = new EnvioAlgoritmo();
         envio.setId(entity.getId());
-        envio.setOrigenOaci(entity.getOrigenOaci());
+        
+        String ubicacion = entity.getUbicacionActual();
+        if (ubicacion != null && ubicacion.startsWith("EN_VUELO:")) {
+            String[] parts = ubicacion.split("->");
+            if (parts.length > 1) {
+                ubicacion = parts[1].trim();
+            }
+        }
+        envio.setOrigenOaci(ubicacion != null && !ubicacion.isBlank() ? ubicacion : entity.getOrigenOaci());
         envio.setDestinoOaci(entity.getDestinoOaci());
 
         // fechaHoraRegistro ya está en UTC (guardado con LocalDateTime.now() en servidor UTC).

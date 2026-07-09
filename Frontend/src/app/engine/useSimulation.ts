@@ -366,8 +366,8 @@ export function useSimulation() {
               mergedStatus = "in_transit";
             } else if (newFutureLegs.length > 0) {
               mergedStatus = "scheduled";
-            } else if (mergedRoute.length > 0 && smoothTime >= mergedRoute[mergedRoute.length - 1].arrivalTime && mergedRoute[mergedRoute.length - 1].to !== bg.destination) {
-              mergedStatus = "waiting_replan";
+            } else if (mergedRoute.length > 0 && smoothTime >= mergedRoute[mergedRoute.length - 1].arrivalTime) {
+              mergedStatus = mergedRoute[mergedRoute.length - 1].to === bg.destination ? "delivered" : "waiting_replan";
             }
 
             mergedMap.set(bg.id, {
@@ -559,13 +559,22 @@ export function useSimulation() {
 
         if ((bg.status === "in_transit" || bg.status === "scheduled") && bg.route && bg.route.length > 0) {
           const lastLeg = bg.route[bg.route.length - 1];
-          if (clampedTime >= lastLeg.arrivalTime && lastLeg.to !== bg.destination) {
-            return {
-              ...bg,
-              currentLocation,
-              currentLegIndex,
-              status: "waiting_replan" as const
-            };
+          if (clampedTime >= lastLeg.arrivalTime) {
+            if (lastLeg.to === bg.destination) {
+              return {
+                ...bg,
+                currentLocation,
+                currentLegIndex,
+                status: "delivered" as const
+              };
+            } else {
+              return {
+                ...bg,
+                currentLocation,
+                currentLegIndex,
+                status: "waiting_replan" as const
+              };
+            }
           }
           const isFlying = bg.route.some((leg: any) => clampedTime >= leg.departureTime && clampedTime < leg.arrivalTime);
           if (isFlying && bg.status !== "in_transit") {

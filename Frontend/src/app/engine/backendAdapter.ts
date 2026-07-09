@@ -217,8 +217,8 @@ export function mapBlockResultToBaggageGroups(
       } else if (hasFutureLegs) {
         status = "scheduled";
       } else {
-        status = (route.length > 0 && cursorTime >= route[route.length - 1].arrivalTime && route[route.length - 1].to !== resumen.destino) 
-          ? "waiting_replan" 
+        status = (route.length > 0 && cursorTime >= route[route.length - 1].arrivalTime)
+          ? (route[route.length - 1].to === resumen.destino ? "delivered" : "waiting_replan")
           : "in_transit";
       }
     } else {
