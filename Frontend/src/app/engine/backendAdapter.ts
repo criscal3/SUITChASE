@@ -201,9 +201,23 @@ export function mapBlockResultToBaggageGroups(
     const deadlineAt = registeredAt + deadlineHours * 3600000;
 
     const isFailed = cursorTime >= deadlineAt;
-    const status = resumen.estado === "CON_RUTA"
-      ? "in_transit"
-      : (isFailed ? "failed" : "waiting_replan");
+    
+    let status: BaggageGroup["status"] = "waiting_replan";
+    if (resumen.estado === "CON_RUTA") {
+      const isFlying = route.some(leg => cursorTime >= leg.departureTime && cursorTime < leg.arrivalTime);
+      const hasFutureLegs = route.some(leg => cursorTime < leg.departureTime);
+      if (isFlying) {
+        status = "in_transit";
+      } else if (hasFutureLegs) {
+        status = "scheduled";
+      } else {
+        status = (route.length > 0 && cursorTime >= route[route.length - 1].arrivalTime && route[route.length - 1].to !== resumen.destino) 
+          ? "waiting_replan" 
+          : "in_transit";
+      }
+    } else {
+      status = isFailed ? "failed" : "waiting_replan";
+    }
 
     return {
       id: String(resumen.envioId),

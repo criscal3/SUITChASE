@@ -29,7 +29,7 @@ export interface BaggageGroup {
   registeredAt: number;
   deadlineAt: number;
   currentLocation: string;
-  status: "waiting" | "in_transit" | "delivered" | "delayed" | "failed" | "waiting_replan";
+  status: "waiting" | "in_transit" | "delivered" | "delayed" | "failed" | "waiting_replan" | "scheduled";
   route: RouteLeg[];
   currentLegIndex: number;
 }

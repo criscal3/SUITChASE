@@ -10,6 +10,7 @@ import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, Chev
 
 const statusConfig: Record<string, { color: string; bg: string; label: string; icon: React.ReactNode }> = {
   waiting:    { color: "text-amber-500",  bg: "bg-amber-500/20",  label: "En espera",   icon: <Clock className="w-3 h-3" /> },
+  scheduled:  { color: "text-purple-500", bg: "bg-purple-500/20", label: "Programado",  icon: <Clock className="w-3 h-3" /> },
   in_transit: { color: "text-blue-700",   bg: "bg-blue-600/20",   label: "En tránsito", icon: <Plane className="w-3 h-3" /> },
   delivered:  { color: "text-green-500",  bg: "bg-green-500/20",  label: "Entregado",   icon: <CheckCircle className="w-3 h-3" /> },
   delayed:    { color: "text-orange-500", bg: "bg-orange-500/20", label: "Retrasado",   icon: <AlertTriangle className="w-3 h-3" /> },
@@ -290,6 +291,7 @@ export function BaggageTracking({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todos los estados</SelectItem>
+              <SelectItem value="scheduled">Programado</SelectItem>
               <SelectItem value="in_transit">{statusConfig.in_transit.label}</SelectItem>
               <SelectItem value="waiting_replan">Esperando replanificación</SelectItem>
               <SelectItem value="failed">Fuera de plazo</SelectItem>
