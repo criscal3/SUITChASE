@@ -290,7 +290,6 @@ export function BaggageTracking({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todos los estados</SelectItem>
-              <SelectItem value="waiting">{statusConfig.waiting.label}</SelectItem>
               <SelectItem value="in_transit">{statusConfig.in_transit.label}</SelectItem>
               <SelectItem value="waiting_replan">Esperando replanificación</SelectItem>
               <SelectItem value="failed">Fuera de plazo</SelectItem>
