@@ -78,10 +78,25 @@ public class RealTimeSchedulerService {
                 .map(dataMapper::toEnvioAlgoritmo)
                 .collect(Collectors.toList());
 
-        // Asegurar que no se planifiquen vuelos en el pasado relativo a 'ahora'
+        // Asegurar que no se planifiquen vuelos en el pasado relativo a la disponibilidad real del pedido
         for (EnvioAlgoritmo env : enviosAlg) {
-            if (env.getFechaHoraRegistro().isBefore(ahora)) {
-                env.setFechaHoraRegistro(ahora);
+            // Obtener tramos existentes (COMPLETADO o EN_VUELO)
+            List<AsignacionRealEntity> tramosExistentes = asignacionRealRepository
+                    .findByPedidoIdOrderByOrdenVueloAsc(env.getId()).stream()
+                    .filter(t -> t.getEstado() == AsignacionRealEntity.EstadoTramo.COMPLETADO 
+                            || t.getEstado() == AsignacionRealEntity.EstadoTramo.EN_VUELO)
+                    .collect(Collectors.toList());
+
+            if (!tramosExistentes.isEmpty()) {
+                // Si el pedido está en tránsito o ya llegó a algún punto intermedio, 
+                // estará disponible a partir de la llegada del último tramo activo
+                AsignacionRealEntity ultimoTramo = tramosExistentes.get(tramosExistentes.size() - 1);
+                LocalDateTime disponible = ultimoTramo.getFechaLlegada().plusMinutes(15); // 15 min de handling
+                env.setFechaHoraRegistro(disponible.isAfter(ahora) ? disponible : ahora);
+            } else {
+                if (env.getFechaHoraRegistro().isBefore(ahora)) {
+                    env.setFechaHoraRegistro(ahora);
+                }
             }
         }
 

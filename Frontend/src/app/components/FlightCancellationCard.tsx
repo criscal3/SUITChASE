@@ -104,8 +104,8 @@ export function FlightCancellationCard({ isRealTime = false }: { isRealTime?: bo
       const candidate2UTC = new Date(candidate2LocalTime.getTime() - gmt * 60 * 60 * 1000);
 
       [candidate1UTC, candidate2UTC].forEach(cand => {
-        // Solo permitir cancelación si faltan al menos 1 hora para el despegue
-        if (cand > simTime && cand.getTime() - simTime.getTime() >= 60 * 60 * 1000 && cand.getTime() - simTime.getTime() <= 24 * 3600 * 1000) {
+        // Solo permitir cancelación si faltan al menos 10 minutos para el despegue
+        if (cand > simTime && cand.getTime() - simTime.getTime() >= 10 * 60 * 1000 && cand.getTime() - simTime.getTime() <= 24 * 3600 * 1000) {
           const pad = (n: number) => String(n).padStart(2, "0");
           
           if (!isRealTime) {

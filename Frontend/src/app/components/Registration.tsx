@@ -33,6 +33,12 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
   const [airlineOpen, setAirlineOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 50;
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
 
   useEffect(() => {
     if (role === "OPERARIO" && assignedAirport) {
@@ -225,6 +231,9 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
       bg.destination.toLowerCase().includes(s) ||
       String(bg.airline).toLowerCase().includes(s);
   });
+
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedItems = [...filtered].reverse().slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
   const statusColors: Record<string, string> = {
     waiting: isDark ? "bg-amber-500/20 text-amber-400" : "bg-amber-100 text-amber-700 border border-amber-300",
@@ -458,7 +467,7 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.slice(-100).reverse().map(bg => (
+                {paginatedItems.map(bg => (
                   <TableRow key={bg.id} className={`${rowBorder} ${rowHover}`}>
                     <TableCell className={`${cellText} text-[11px]`}>{bg.id}</TableCell>
                     <TableCell className={`${cellTextSub} text-[11px]`}>{bg.airline}</TableCell>
@@ -481,6 +490,33 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
               </TableBody>
             </Table>
           </ScrollArea>
+
+          {/* Controles de paginación */}
+          {totalPages > 1 && (
+            <div className={`px-2 py-3 border-t ${headerBorder} flex items-center justify-between text-[11px] shrink-0 mt-3`}>
+              <button
+                onClick={() => setPage(prev => Math.max(prev - 1, 1))}
+                disabled={page === 1}
+                className={`px-3 py-1 text-[11px] rounded border transition-colors ${
+                  page === 1 ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#334155] text-cyan-400 hover:bg-[#1e293b] bg-[#0f172a]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100 bg-white"
+                }`}
+              >
+                Anterior
+              </button>
+              <span className={isDark ? "text-white/50" : "text-[#6b7280]"}>
+                Página <span className={`font-semibold ${isDark ? "text-white" : "text-[#111827]"}`}>{page}</span> de <span className={`font-semibold ${isDark ? "text-white" : "text-[#111827]"}`}>{totalPages}</span> ({filtered.length} envíos)
+              </span>
+              <button
+                onClick={() => setPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={page === totalPages}
+                className={`px-3 py-1 text-[11px] rounded border transition-colors ${
+                  page === totalPages ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#334155] text-cyan-400 hover:bg-[#1e293b] bg-[#0f172a]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100 bg-white"
+                }`}
+              >
+                Siguiente
+              </button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
