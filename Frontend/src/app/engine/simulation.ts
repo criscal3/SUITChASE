@@ -341,8 +341,43 @@ export function cancelFlight(state: SimulationState, flightId: string): { state:
   // Replan affected baggage
   newState.baggageGroups = state.baggageGroups.map(bg => {
     if (bg.status === "delivered" || bg.status === "failed") return bg;
-    const affectedLeg = bg.route.find((leg, idx) => idx >= bg.currentLegIndex && leg.flightId === flightId);
-    if (affectedLeg) {
+    const affectedLegIdx = bg.route.findIndex((leg, idx) => idx >= bg.currentLegIndex && leg.flightId === flightId);
+    if (affectedLegIdx === -1) return bg;
+
+    if (bg.status === "in_transit") {
+      // Bag is currently flying — preserve the current leg and replan only from the landing airport
+      const currentLeg = bg.route[bg.currentLegIndex];
+      if (!currentLeg) return bg;
+      const landingAirport = currentLeg.to;
+      const landingTime = currentLeg.arrivalTime;
+
+      if (landingAirport === bg.destination) {
+        // Already landing at the final destination — nothing to replan
+        return bg;
+      }
+
+      const remainingRoute = planRoute(landingAirport, bg.destination, landingTime, bg.deadlineAt, state.turnaroundHours, newState.flights);
+      if (remainingRoute) {
+        const completedLegs = bg.route.slice(0, bg.currentLegIndex + 1);
+        const newRoute = [...completedLegs, ...remainingRoute];
+        events.push({
+          time: state.currentTime,
+          type: "system",
+          description: `Ruta replanificada para ${bg.id} (en vuelo): ${landingAirport}→${bg.destination} (${remainingRoute.length} tramos restantes)`,
+        });
+        return { ...bg, route: newRoute };
+      } else {
+        // No route found from landing — keep flying to landing airport, clear future legs
+        const routeUpToCurrent = bg.route.slice(0, bg.currentLegIndex + 1);
+        events.push({
+          time: state.currentTime,
+          type: "system",
+          description: `Sin ruta alternativa para ${bg.id} desde ${landingAirport}→${bg.destination}. Llegará a ${landingAirport} sin tramos restantes.`,
+        });
+        return { ...bg, route: routeUpToCurrent };
+      }
+    } else {
+      // Bag is waiting or delayed — replan from current location
       const newRoute = replanRoute(bg, state.currentTime, state.turnaroundHours, newState.flights);
       if (newRoute) {
         events.push({
@@ -357,10 +392,10 @@ export function cancelFlight(state: SimulationState, flightId: string): { state:
           type: "system",
           description: `Error de replanificación: sin ruta alternativa para ${bg.id} (${bg.currentLocation}→${bg.destination})`,
         });
-        return { ...bg, status: "delayed" as const, route: [], currentLegIndex: 0 };
+        const routeUpToCurrent = bg.route.slice(0, bg.currentLegIndex);
+        return { ...bg, status: "delayed" as const, route: routeUpToCurrent };
       }
     }
-    return bg;
   });
 
   return { state: newState, events };

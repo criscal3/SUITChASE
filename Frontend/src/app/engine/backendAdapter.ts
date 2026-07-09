@@ -200,6 +200,11 @@ export function mapBlockResultToBaggageGroups(
     const deadlineHours = isInter ? 48 : 24;
     const deadlineAt = registeredAt + deadlineHours * 3600000;
 
+    const isFailed = cursorTime >= deadlineAt;
+    const status = resumen.estado === "CON_RUTA"
+      ? "in_transit"
+      : (isFailed ? "failed" : "waiting_replan");
+
     return {
       id: String(resumen.envioId),
       airline: "BackendAirline",
@@ -209,7 +214,7 @@ export function mapBlockResultToBaggageGroups(
       registeredAt,
       deadlineAt,
       currentLocation: resumen.origen,
-      status: resumen.estado === "CON_RUTA" ? "in_transit" : "failed",
+      status,
       route,
       currentLegIndex: 0, // SimulationMap computes the active leg from currentTime dynamically
     } as BaggageGroup;

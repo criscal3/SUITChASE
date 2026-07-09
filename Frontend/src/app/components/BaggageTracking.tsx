@@ -14,6 +14,7 @@ const statusConfig: Record<string, { color: string; bg: string; label: string; i
   delivered:  { color: "text-green-500",  bg: "bg-green-500/20",  label: "Entregado",   icon: <CheckCircle className="w-3 h-3" /> },
   delayed:    { color: "text-orange-500", bg: "bg-orange-500/20", label: "Retrasado",   icon: <AlertTriangle className="w-3 h-3" /> },
   failed:     { color: "text-red-500",    bg: "bg-red-500/20",    label: "Fallido",     icon: <AlertTriangle className="w-3 h-3" /> },
+  waiting_replan: { color: "text-amber-500 animate-pulse", bg: "bg-amber-500/20 border border-amber-500/30", label: "Esperando replanificación", icon: <Clock className="w-3 h-3 animate-spin" style={{ animationDuration: '3s' }} /> },
 };
 
 const SIM_BASE_DATE = new Date(2026, 3, 2, 0, 0, 0);
@@ -40,7 +41,7 @@ interface BaggageTrackingProps {
 }
 
 export function BaggageTracking({
-  selectedBaggage,
+  selectedBaggage: selectedBaggageProp,
   onSelectBaggage,
   selectedFlightBaggageIds,
   selectedFlightKey,
@@ -50,6 +51,35 @@ export function BaggageTracking({
 }: BaggageTrackingProps) {
   const { state, airportsList } = useSim();
   const { isDark } = useTheme();
+
+  // Siempre usar la versión más actualizada del equipaje desde el estado global
+  const selectedBaggage = useMemo(() => {
+    if (!selectedBaggageProp) return null;
+    return state.baggageGroups.find(bg => bg.id === selectedBaggageProp.id) || selectedBaggageProp;
+  }, [selectedBaggageProp, state.baggageGroups]);
+
+  // Resolver dinámicamente el tramo actual en base al currentTime
+  const currentLegIndexResolved = useMemo(() => {
+    if (!selectedBaggage) return 0;
+    const smoothTime = state.currentTime;
+
+    if (state.scenario === "daily") {
+      return selectedBaggage.currentLegIndex;
+    }
+
+    const flyingIdx = (selectedBaggage.route || []).findIndex(
+      (leg: any) => smoothTime >= leg.departureTime && smoothTime < leg.arrivalTime
+    );
+    if (flyingIdx !== -1) return flyingIdx;
+
+    const nextFutureIdx = (selectedBaggage.route || []).findIndex(
+      (leg: any) => smoothTime < leg.departureTime
+    );
+    if (nextFutureIdx !== -1) return nextFutureIdx;
+
+    return (selectedBaggage.route || []).length;
+  }, [selectedBaggage, state.currentTime, state.scenario]);
+
   const [search, setSearch] = useState("");
   const [selectedOriginFilter, setSelectedOriginFilter] = useState<string>("ALL");
   const [selectedDestFilter, setSelectedDestFilter] = useState<string>("ALL");
@@ -262,6 +292,7 @@ export function BaggageTracking({
               <SelectItem value="ALL">Todos los estados</SelectItem>
               <SelectItem value="waiting">{statusConfig.waiting.label}</SelectItem>
               <SelectItem value="in_transit">{statusConfig.in_transit.label}</SelectItem>
+              <SelectItem value="waiting_replan">Esperando replanificación</SelectItem>
               <SelectItem value="failed">Fuera de plazo</SelectItem>
             </SelectContent>
           </Select>
@@ -330,8 +361,8 @@ export function BaggageTracking({
             </div>
 
             {selectedBaggage.route.map((leg, i) => {
-              const isCompleted = i < selectedBaggage.currentLegIndex;
-              const isCurrent = i === selectedBaggage.currentLegIndex && selectedBaggage.status === "in_transit";
+              const isCompleted = i < currentLegIndexResolved;
+              const isCurrent = i === currentLegIndexResolved && selectedBaggage.status === "in_transit";
               const isLastLeg = i === selectedBaggage.route.length - 1;
               const nextLeg = selectedBaggage.route[i + 1];
               

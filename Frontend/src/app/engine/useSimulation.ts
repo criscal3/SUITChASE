@@ -94,7 +94,7 @@ export function useSimulation() {
     setState(prev => {
       // Only update if we haven't started the simulation yet
       if (prev.hasStarted) return prev;
-      
+
       const updatedAirports: Record<string, any> = {};
       airportsList.forEach(a => {
         updatedAirports[a.code] = {
@@ -105,7 +105,7 @@ export function useSimulation() {
           outgoing: 0,
         };
       });
-      
+
       return {
         ...prev,
         airports: updatedAirports,
@@ -247,12 +247,12 @@ export function useSimulation() {
         try {
           const parts = String(msg.cursor).split(/[^0-9]/);
           if (parts.length >= 5) {
-            const year  = parseInt(parts[0], 10);
+            const year = parseInt(parts[0], 10);
             const month = parseInt(parts[1], 10) - 1;
-            const day   = parseInt(parts[2], 10);
-            const hour  = parseInt(parts[3], 10);
-            const min   = parseInt(parts[4], 10);
-            const sec   = parts[5] ? parseInt(parts[5], 10) : 0;
+            const day = parseInt(parts[2], 10);
+            const hour = parseInt(parts[3], 10);
+            const min = parseInt(parts[4], 10);
+            const sec = parts[5] ? parseInt(parts[5], 10) : 0;
             const parsed = Date.UTC(year, month, day, hour, min, sec);
             if (!isNaN(parsed)) cursorTime = parsed;
           }
@@ -263,7 +263,7 @@ export function useSimulation() {
       targetTimeRef.current = Math.max(targetTimeRef.current, cursorTime);
 
       let newGroups = prev.baggageGroups;
-      let newStats  = prev.stats;
+      let newStats = prev.stats;
       let newAirports = { ...prev.airports };
       let blockGroups: ReturnType<typeof mapBlockResultToBaggageGroups> = [];
       let collapsedShipmentsDetected = prev.collapsedShipmentsDetected || false;
@@ -285,29 +285,29 @@ export function useSimulation() {
           // Find the earliest registration time among collapsed shipments
           let earliestTime = Infinity;
           for (const collapsed of collapsedInThisBlock) {
-            const registrationTime = collapsed.fechaHoraRegistro 
+            const registrationTime = collapsed.fechaHoraRegistro
               ? (() => {
-                  try {
-                    const parts = String(collapsed.fechaHoraRegistro).split(/[^0-9]/);
-                    if (parts.length >= 5) {
-                      const year  = parseInt(parts[0], 10);
-                      const month = parseInt(parts[1], 10) - 1;
-                      const day   = parseInt(parts[2], 10);
-                      const hour  = parseInt(parts[3], 10);
-                      const min   = parseInt(parts[4], 10);
-                      const sec   = parts[5] ? parseInt(parts[5], 10) : 0;
-                      const parsed = Date.UTC(year, month, day, hour, min, sec);
-                      return !isNaN(parsed) ? parsed : Infinity;
-                    }
-                  } catch (e) {
-                    console.error("Error parsing registration time:", e);
+                try {
+                  const parts = String(collapsed.fechaHoraRegistro).split(/[^0-9]/);
+                  if (parts.length >= 5) {
+                    const year = parseInt(parts[0], 10);
+                    const month = parseInt(parts[1], 10) - 1;
+                    const day = parseInt(parts[2], 10);
+                    const hour = parseInt(parts[3], 10);
+                    const min = parseInt(parts[4], 10);
+                    const sec = parts[5] ? parseInt(parts[5], 10) : 0;
+                    const parsed = Date.UTC(year, month, day, hour, min, sec);
+                    return !isNaN(parsed) ? parsed : Infinity;
                   }
-                  return Infinity;
-                })()
+                } catch (e) {
+                  console.error("Error parsing registration time:", e);
+                }
+                return Infinity;
+              })()
               : Infinity;
             earliestTime = Math.min(earliestTime, registrationTime);
           }
-          
+
           if (earliestTime !== Infinity) {
             collapsedShipmentsDetected = true;
             firstCollapsedShipmentTime = earliestTime;
@@ -324,12 +324,44 @@ export function useSimulation() {
         for (const bg of blockGroups) {
           const existing = mergedMap.get(bg.id);
           if (existing) {
-            const isFlying = existing.route?.some(
+            // Get legs already completed by the package
+            const completedLegs = (existing.route || []).filter(
+              (leg: any) => smoothTime >= leg.arrivalTime
+            );
+
+            // Get the leg currently flying (if any)
+            const activeLeg = (existing.route || []).find(
               (leg: any) => smoothTime >= leg.departureTime && smoothTime < leg.arrivalTime
             );
-            if (isFlying) continue;
+
+            // Reference time is when the last completed leg or active flying leg ends
+            const referenceTime = activeLeg
+              ? activeLeg.arrivalTime
+              : (completedLegs.length > 0 ? completedLegs[completedLegs.length - 1].arrivalTime : smoothTime);
+
+            // Filter new legs from backend that start after our reference time
+            const newFutureLegs = (bg.route || []).filter(
+              (leg: any) => leg.departureTime >= referenceTime
+            );
+
+            // Merge completed + active + future legs
+            const mergedRoute = [...completedLegs];
+            if (activeLeg) {
+              mergedRoute.push(activeLeg);
+            }
+            mergedRoute.push(...newFutureLegs);
+
+            const isFlying = !!activeLeg;
+            const mergedStatus = isFlying ? "in_transit" : bg.status;
+
+            mergedMap.set(bg.id, {
+              ...existing,
+              route: mergedRoute,
+              status: mergedStatus,
+            });
+          } else {
+            mergedMap.set(bg.id, bg);
           }
-          mergedMap.set(bg.id, bg);
         }
         newGroups = Array.from(mergedMap.values());
       }
@@ -363,9 +395,9 @@ export function useSimulation() {
       );
       if (msg.metricas) {
         newStats = updateStatsFromMetrics(
-          msg.metricas, 
-          prev.stats, 
-          newAirports, 
+          msg.metricas,
+          prev.stats,
+          newAirports,
           msg.rutasResumen,
           flightOccupancyRef.current,
           flightCapacitiesRef.current,
@@ -483,12 +515,26 @@ export function useSimulation() {
         };
       }
 
+      const updatedBaggageGroups = prev.baggageGroups.map(bg => {
+        if (bg.status === "in_transit" && bg.route && bg.route.length > 0) {
+          const lastLeg = bg.route[bg.route.length - 1];
+          if (clampedTime >= lastLeg.arrivalTime && lastLeg.to !== bg.destination) {
+            return {
+              ...bg,
+              status: "waiting_replan" as const
+            };
+          }
+        }
+        return bg;
+      });
+
       return {
         ...prev,
         currentTime: clampedTime,
         day: Math.floor(diffHours / 24) + 1,
         hour: diffHours % 24,
         airports,
+        baggageGroups: updatedBaggageGroups,
         stats,
         cancelledFlights: prev.cancelledFlights,
         ...(reachedEnd
@@ -566,9 +612,41 @@ export function useSimulation() {
           if (flightKey) {
             newCancelledFlights.add(flightKey);
           }
+          const smoothTime = prev.currentTime;
           const newGroups = prev.baggageGroups.map(bg => {
             if (afectadosIds.includes(bg.id)) {
-              return { ...bg, status: "waiting" as const, route: [] }; // Set to "waiting" (En espera) until replanned by the next block
+              // Calculate dynamically if the bag is in transit or has completed previous legs
+              // since bg.currentLegIndex is always 0 for backend packages.
+              let activeLegIdx = -1;
+              const flyingLegIdx = (bg.route || []).findIndex(
+                (leg: any) => smoothTime >= leg.departureTime && smoothTime <= leg.arrivalTime
+              );
+
+              if (flyingLegIdx !== -1) {
+                activeLegIdx = flyingLegIdx;
+              } else {
+                // Find the last leg that has already arrived
+                for (let idx = (bg.route || []).length - 1; idx >= 0; idx--) {
+                  if (smoothTime >= bg.route[idx].arrivalTime) {
+                    activeLegIdx = idx;
+                    break;
+                  }
+                }
+              }
+
+              if (activeLegIdx !== -1) {
+                // Keep completed or current legs so it stays on the map
+                const routeUpToCurrent = bg.route.slice(0, activeLegIdx + 1);
+                const isStillFlying = smoothTime < routeUpToCurrent[routeUpToCurrent.length - 1].arrivalTime;
+                return {
+                  ...bg,
+                  route: routeUpToCurrent,
+                  status: isStillFlying ? bg.status : ("waiting_replan" as const)
+                };
+              }
+
+              // Waiting or delayed on the ground before first leg - clear route and wait for replan
+              return { ...bg, status: "waiting_replan" as const, route: [] };
             }
             return bg;
           });
@@ -586,10 +664,10 @@ export function useSimulation() {
         if (prev.scenario === "collapse" && prev.collapsePrePhase) {
           const received = (prev.collapsePreBlocksReceived || 0) + 1;
           const isDone = received >= (prev.collapsePreBlocks || COLLAPSE_PRE_BLOCKS);
-          
+
           queueMicrotask(() => {
             tryConsumeBlocksAtSimTimeRef.current(0, true);
-            
+
             queueMicrotask(() => {
               setState(innerPrev => {
                 if (innerPrev.collapsedShipmentsDetected) {
@@ -603,11 +681,11 @@ export function useSimulation() {
                   };
                 } else if (isDone) {
                   const visualStart = innerPrev.collapseVisualStartTime || innerPrev.startTime;
-                  
+
                   currentTimeRef.current = visualStart;
                   targetTimeRef.current = visualStart;
                   lastMinuteIdxRef.current = -1;
-                  
+
                   return {
                     ...innerPrev,
                     collapsePrePhase: false,
@@ -621,7 +699,7 @@ export function useSimulation() {
               });
             });
           });
-          
+
           return { ...prev, collapsePreBlocksReceived: received };
         } else {
           // Parsear inicioVentana del backend y adjuntarlo al mensaje para usarlo como trigger
@@ -804,7 +882,7 @@ export function useSimulation() {
 
       const startUtcMs = startDate.getTime();
       const visualStartMs = fechaInicio.getTime();
-      
+
       targetTimeRef.current = startUtcMs;
       startTimeRef.current = startUtcMs;
       blocksConsumedRef.current = 0;
@@ -995,7 +1073,7 @@ export function useSimulation() {
         if (token) {
           headers["Authorization"] = `Bearer ${token}`;
         }
-        
+
         // Use keepalive: true to ensure the request is sent even if the page unloads
         fetch(`/api/simulacion/${activeSimIdRef.current}/cancelar`, {
           method: "POST",
@@ -1021,8 +1099,8 @@ export function useSimulation() {
 
     if (activeSimIdRef.current && (state.running || state.hasStarted)) {
       // Enviar el primer latido inmediatamente al montar/iniciar
-      api.enviarHeartbeat(activeSimIdRef.current).catch(() => {});
-      
+      api.enviarHeartbeat(activeSimIdRef.current).catch(() => { });
+
       intervalId = setInterval(() => {
         if (activeSimIdRef.current) {
           api.enviarHeartbeat(activeSimIdRef.current).catch((err) => {
