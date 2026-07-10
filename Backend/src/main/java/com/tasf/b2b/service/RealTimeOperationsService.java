@@ -368,10 +368,25 @@ public class RealTimeOperationsService {
         
         var aeropuertos = aeropuertoRepository.findAll();
         for (var aero : aeropuertos) {
-            // Calcular stock actual: pedidos PENDIENTE + PLANIFICADO en origen
+            // Calcular stock actual: pedidos PENDIENTE/PLANIFICADO en origen + EN_RUTA en escalas + ENTREGADO recientemente
             long stockEnAlmacen = cache.values().stream()
-                .filter(p -> ("PENDIENTE".equalsIgnoreCase(p.estado()) || "PLANIFICADO".equalsIgnoreCase(p.estado())))
-                .filter(p -> p.origenOaci().equals(aero.getOaci()))
+                .filter(p -> {
+                    if ("PENDIENTE".equalsIgnoreCase(p.estado()) || "PLANIFICADO".equalsIgnoreCase(p.estado())) {
+                        return p.origenOaci().equals(aero.getOaci());
+                    } else if ("EN_RUTA".equalsIgnoreCase(p.estado())) {
+                        return p.ubicacionActual().equals(aero.getOaci());
+                    } else if ("ENTREGADO".equalsIgnoreCase(p.estado())) {
+                        if (p.ubicacionActual().equals(aero.getOaci())) {
+                            var tramos = p.tramos();
+                            if (tramos != null && !tramos.isEmpty()) {
+                                var lastTramo = tramos.get(tramos.size() - 1);
+                                return lastTramo.fechaLlegada() != null && 
+                                       LocalDateTime.now().isBefore(lastTramo.fechaLlegada().plusMinutes(15));
+                            }
+                        }
+                    }
+                    return false;
+                })
                 .mapToLong(PedidoRealDTO::cantidadMaletas)
                 .sum();
             

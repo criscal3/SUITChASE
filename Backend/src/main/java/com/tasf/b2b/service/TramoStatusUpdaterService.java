@@ -43,13 +43,12 @@ public class TramoStatusUpdaterService {
         if (!despegados.isEmpty()) {
             asignacionRepo.saveAllAndFlush(despegados);
             despegados.forEach(t -> {
-                // Si el pedido aún está PLANIFICADO, cambiarlo a EN_RUTA
                 pedidoRepo.findById(t.getPedidoId()).ifPresent(p -> {
+                    p.setUbicacionActual("EN_VUELO: " + t.getOrigenOaci() + " -> " + t.getDestinoOaci());
                     if (p.getEstado() == EstadoPedido.PLANIFICADO) {
                         p.setEstado(EstadoPedido.EN_RUTA);
-                        p.setUbicacionActual("EN_VUELO: " + t.getOrigenOaci() + " -> " + t.getDestinoOaci());
-                        pedidoRepo.save(p);
                     }
+                    pedidoRepo.save(p);
                 });
             });
         }
@@ -90,7 +89,7 @@ public class TramoStatusUpdaterService {
         } else {
             // Al menos un tramo completo o en vuelo → pedido EN_RUTA
             pedidoRepo.findById(pedidoId).ifPresent(p -> {
-                p.setUbicacionActual("EN_VUELO: " + tramoAterrizado.getOrigenOaci() + " -> " + tramoAterrizado.getDestinoOaci());
+                p.setUbicacionActual(tramoAterrizado.getDestinoOaci());
                 if (p.getEstado() == EstadoPedido.PLANIFICADO) {
                     p.setEstado(EstadoPedido.EN_RUTA);
                 }
