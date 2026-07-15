@@ -315,6 +315,7 @@ export function SimulationMap({
       load: number;
       capacity: number;
       utilization: number;
+      progress: number;
     }>();
     const failedRoutesMap = new Map<string, { from: typeof airportsList[0]; to: typeof airportsList[0]; qty: number; registeredAt: number }>();
 
@@ -375,6 +376,7 @@ export function SimulationMap({
             fromCode: leg.from,
             toCode: leg.to,
             intercontinental,
+            progress,
             ...metrics,
           });
         }
@@ -442,30 +444,59 @@ export function SimulationMap({
         }
 
         // Filter based on route type (intracontinental vs intercontinental)
-        if (val.intercontinental && activeFilters.routes.intercontinental) {
+        const shouldAdd = (val.intercontinental && activeFilters.routes.intercontinental) ||
+          (!val.intercontinental && activeFilters.routes.intracontinental);
+
+        if (shouldAdd) {
+          const arcColor = getArcColor(val.intercontinental, isDark, getIntraColor, getInterColor);
+          const arcStrokeWidth = 1 + Math.min(2, val.qty / 100);
+          const clampedProgress = Math.max(0, Math.min(1, val.progress ?? 0));
+
+          // Remaining path (from plane position to destination)
+          const remainingCoords: [number, number][] = [];
+          const remainingSteps = Math.max(2, Math.round(steps * (1 - clampedProgress)));
+          for (let idx = 0; idx <= remainingSteps; idx++) {
+            const t = clampedProgress + (idx / remainingSteps) * (1 - clampedProgress);
+            const pos = interpolateGreatCircle(val.from.lat, val.from.lng, val.to.lat, val.to.lng, t);
+            remainingCoords.push([pos.lng, pos.lat]);
+          }
           arcs.push({
             from: [val.from.lng, val.from.lat],
             to: [val.to.lng, val.to.lat],
-            coordinates: coords,
+            coordinates: remainingCoords,
             fromCode: val.fromCode,
             toCode: val.toCode,
-            color: getArcColor(val.intercontinental, isDark, getIntraColor, getInterColor),
-            strokeWidth: 1 + Math.min(2, val.qty / 100),
+            color: arcColor,
+            strokeWidth: arcStrokeWidth,
             isActive: true,
-            key: `act-${key}`,
+            isFlown: false,
+            key: `act-rem-${key}`,
           });
-        } else if (!val.intercontinental && activeFilters.routes.intracontinental) {
-          arcs.push({
-            from: [val.from.lng, val.from.lat],
-            to: [val.to.lng, val.to.lat],
-            coordinates: coords,
-            fromCode: val.fromCode,
-            toCode: val.toCode,
-            color: getArcColor(val.intercontinental, isDark, getIntraColor, getInterColor),
-            strokeWidth: 1 + Math.min(2, val.qty / 100),
-            isActive: true,
-            key: `act-${key}`,
-          });
+
+          // Flown path (from origin to plane position) — only if not hidden
+          if (settings.flownPathStyle !== "hidden" && clampedProgress > 0) {
+            const flownCoords: [number, number][] = [];
+            const flownSteps = Math.max(2, Math.round(steps * clampedProgress));
+            for (let idx = 0; idx <= flownSteps; idx++) {
+              const t = (idx / flownSteps) * clampedProgress;
+              const pos = interpolateGreatCircle(val.from.lat, val.from.lng, val.to.lat, val.to.lng, t);
+              flownCoords.push([pos.lng, pos.lat]);
+            }
+            arcs.push({
+              from: [val.from.lng, val.from.lat],
+              to: [val.to.lng, val.to.lat],
+              coordinates: flownCoords,
+              fromCode: val.fromCode,
+              toCode: val.toCode,
+              color: arcColor,
+              strokeWidth: arcStrokeWidth,
+              isActive: true,
+              isFlown: true,
+              isDashed: settings.flownPathStyle === "dashed",
+              isFaint: settings.flownPathStyle === "faint",
+              key: `act-flown-${key}`,
+            });
+          }
         }
       }
     }
@@ -494,7 +525,7 @@ export function SimulationMap({
     }
 
     return { arcsData: arcs, planesData: uniquePlanes };
-  }, [state.baggageGroups, state.currentTime, state.flightOccupancy, state.flightCapacities, selectedBaggage, isDark, airportsList, activeFilters, getIntraColor, getInterColor]);
+  }, [state.baggageGroups, state.currentTime, state.flightOccupancy, state.flightCapacities, selectedBaggage, isDark, airportsList, activeFilters, getIntraColor, getInterColor, settings.flownPathStyle]);
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative transition-colors duration-200" style={{ background: mapBg }}>
@@ -543,7 +574,7 @@ export function SimulationMap({
               // Show only arcs connected to the selected airport
               return arc.fromCode === selectedAirportCode || arc.toCode === selectedAirportCode;
             }
-            return !selectedFlightKey || selectedBaggage || arc.key === `act-${selectedFlightKey}`;
+            return !selectedFlightKey || selectedBaggage || arc.key === `act-rem-${selectedFlightKey}` || arc.key === `act-flown-${selectedFlightKey}`;
           }).map((arc) => (
             <Line
               key={arc.key}
@@ -553,8 +584,8 @@ export function SimulationMap({
               strokeLinecap="round"
               style={{
                 pointerEvents: "none",
-                ...(arc.isDashed ? { strokeDasharray: "4,4" } : {}),
-                opacity: arc.isBackground ? 0.3 : 0.8,
+                ...(arc.isDashed ? { strokeDasharray: `${3 * s},${3 * s}` } : {}),
+                opacity: arc.isFaint ? 0.2 : arc.isBackground ? 0.3 : 0.8,
               }}
             />
           ))}
@@ -607,6 +638,7 @@ export function SimulationMap({
                   onMouseLeave={() => setHovered(null)}
                 >
                   <AirportTower3D color={point.color} util={point.utilization} isDark={isDark} />
+                  {settings.showAirportLabels && (
                   <text
                     textAnchor="middle"
                     y={10}
@@ -614,6 +646,7 @@ export function SimulationMap({
                   >
                     {point.code}
                   </text>
+                  )}
                   </g>
                 </Marker>
               );

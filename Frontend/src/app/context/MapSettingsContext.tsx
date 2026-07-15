@@ -1,12 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useTheme } from "./ThemeContext";
 
+export type FlownPathStyle = "normal" | "dashed" | "faint" | "hidden";
+
 interface MapSettings {
   customOceanColor: string | null;
   customActiveCountryColor: string | null;
   showCountryNames: boolean;
   customIntraColor: string | null;
   customInterColor: string | null;
+  flownPathStyle: FlownPathStyle;
+  showAirportLabels: boolean;
+  showMainTitle: boolean;
 }
 
 interface MapSettingsContextValue {
@@ -29,6 +34,9 @@ const defaultSettings: MapSettings = {
   showCountryNames: false,
   customIntraColor: null,
   customInterColor: null,
+  flownPathStyle: "normal",
+  showAirportLabels: true,
+  showMainTitle: true,
 };
 
 const MapSettingsContext = createContext<MapSettingsContextValue | undefined>(undefined);

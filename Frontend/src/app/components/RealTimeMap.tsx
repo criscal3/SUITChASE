@@ -408,6 +408,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
             depTime,
             arrTime,
             progress: progress * 100,
+            progressRaw: progress,
             aerolinea: p.nombreAerolinea,
             cantMaletas: 0,
             pedidoIds: [] as string[],
@@ -452,41 +453,61 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           
           // Filter arcs based on flight occupancy level
           if (activeFilters[level].flight) {
-            const coords: [number, number][] = [];
-            const steps = 30;
-            if (fromAir && toAir) {
-              for (let idx = 0; idx <= steps; idx++) {
-                const t = idx / steps;
-                const pos = interpolateGreatCircle(fromAir.lat, fromAir.lng, toAir.lat, toAir.lng, t);
-                coords.push([pos.lng, pos.lat]);
-              }
-            } else {
-              coords.push(f.from as [number, number], f.to as [number, number]);
-            }
-
             // Filter based on route type (intracontinental vs intercontinental)
-            if (!sameContinent && activeFilters.routes.intercontinental) {
+            const shouldAdd = (!sameContinent && activeFilters.routes.intercontinental) ||
+              (sameContinent && activeFilters.routes.intracontinental);
+
+            if (shouldAdd) {
+              const clampedProgress = Math.max(0, Math.min(1, f.progressRaw ?? 0));
+              const steps = 30;
+
+              // Remaining arc (plane position → destination)
+              const remainingCoords: [number, number][] = [];
+              if (fromAir && toAir) {
+                const remainingSteps = Math.max(2, Math.round(steps * (1 - clampedProgress)));
+                for (let idx = 0; idx <= remainingSteps; idx++) {
+                  const t = clampedProgress + (idx / remainingSteps) * (1 - clampedProgress);
+                  const pos = interpolateGreatCircle(fromAir.lat, fromAir.lng, toAir.lat, toAir.lng, t);
+                  remainingCoords.push([pos.lng, pos.lat]);
+                }
+              } else {
+                remainingCoords.push(f.from as [number, number], f.to as [number, number]);
+              }
               arcs.push({
                 from: f.from,
                 to: f.to,
-                coordinates: coords,
+                coordinates: remainingCoords,
                 fromCode: f.fromCode,
                 toCode: f.toCode,
                 color: routeColor,
                 strokeWidth: 1.5,
-                key: `arc-${f.key}`,
+                isFlown: false,
+                key: `arc-rem-${f.key}`,
               });
-            } else if (sameContinent && activeFilters.routes.intracontinental) {
-              arcs.push({
-                from: f.from,
-                to: f.to,
-                coordinates: coords,
-                fromCode: f.fromCode,
-                toCode: f.toCode,
-                color: routeColor,
-                strokeWidth: 1.5,
-                key: `arc-${f.key}`,
-              });
+
+              // Flown arc (origin → plane position) — only if not hidden
+              if (settings.flownPathStyle !== "hidden" && clampedProgress > 0 && fromAir && toAir) {
+                const flownCoords: [number, number][] = [];
+                const flownSteps = Math.max(2, Math.round(steps * clampedProgress));
+                for (let idx = 0; idx <= flownSteps; idx++) {
+                  const t = (idx / flownSteps) * clampedProgress;
+                  const pos = interpolateGreatCircle(fromAir.lat, fromAir.lng, toAir.lat, toAir.lng, t);
+                  flownCoords.push([pos.lng, pos.lat]);
+                }
+                arcs.push({
+                  from: f.from,
+                  to: f.to,
+                  coordinates: flownCoords,
+                  fromCode: f.fromCode,
+                  toCode: f.toCode,
+                  color: routeColor,
+                  strokeWidth: 1.5,
+                  isFlown: true,
+                  isDashed: settings.flownPathStyle === "dashed",
+                  isFaint: settings.flownPathStyle === "faint",
+                  key: `arc-flown-${f.key}`,
+                });
+              }
             }
           }
         }
@@ -516,7 +537,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
       return true;
     });
     return { arcsData: arcs, planesData: activePlanes };
-  }, [pedidos, selectedPedido, airportsList, isDark, nowMs, flightsList, activeFilters, getIntraColor, getInterColor]);
+  }, [pedidos, selectedPedido, airportsList, isDark, nowMs, flightsList, activeFilters, getIntraColor, getInterColor, settings.flownPathStyle]);
 
   return (
     <div className="w-full h-full rounded-xl overflow-hidden relative transition-colors duration-200" style={{ background: mapBg }}>
@@ -564,7 +585,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
               // Show only arcs connected to the selected airport
               return arc.fromCode === selectedAirportCode || arc.toCode === selectedAirportCode;
             }
-            return !selectedFlightKey || selectedPedido || arc.key === `arc-${selectedFlightKey}`;
+            return !selectedFlightKey || selectedPedido || arc.key === `arc-rem-${selectedFlightKey}` || arc.key === `arc-flown-${selectedFlightKey}`;
           }).map((arc) => (
             <Line
               key={arc.key}
@@ -574,8 +595,8 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
               strokeLinecap="round"
               style={{
                 pointerEvents: "none",
-                ...(arc.isDashed ? { strokeDasharray: "4,4" } : {}),
-                opacity: 0.8,
+                ...(arc.isDashed ? { strokeDasharray: `${3 * s},${3 * s}` } : {}),
+                opacity: arc.isFaint ? 0.2 : 0.8,
               }}
             />
           ))}
@@ -591,7 +612,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
               });
             } else if (selectedFlightKey) {
               arcsData.forEach(arc => {
-                if (arc.key === `arc-${selectedFlightKey}`) {
+                if (arc.key === `arc-rem-${selectedFlightKey}` || arc.key === `arc-flown-${selectedFlightKey}`) {
                   visibleAirportCodes.add(arc.fromCode);
                   visibleAirportCodes.add(arc.toCode);
                 }
@@ -630,6 +651,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
                   onMouseLeave={() => setHovered(null)}
                 >
                   <AirportTower3D color={color} util={util} isDark={isDark} />
+                  {settings.showAirportLabels && (
                   <text
                     textAnchor="middle"
                     y={10}
@@ -637,6 +659,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
                   >
                     {point.code}
                   </text>
+                  )}
                   </g>
                 </Marker>
               );

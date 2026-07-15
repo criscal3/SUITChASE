@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import { useOutletContext } from "react-router";
 import { useSim } from "../context/SimContext";
 import { useTheme } from "../context/ThemeContext";
+import { useMapSettings } from "../context/MapSettingsContext";
 import { SimulationMap } from "./SimulationMap";
 import { BaggageTracking } from "./BaggageTracking";
 import { TrackingPage } from "./TrackingPage";
@@ -53,6 +54,7 @@ function formatDurationDHM(ms: number): string {
 export function SimulationPage() {
   const { state, start, startCollapse, pauseSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
   const { isDark } = useTheme();
+  const { settings: mapSettings } = useMapSettings();
   const context = useOutletContext<{ showTopPanel: boolean }>() || { showTopPanel: false };
   const showTopPanel = context.showTopPanel;
   const [selectedBaggage, setSelectedBaggage] = useState<BaggageGroup | null>(null);
@@ -192,7 +194,7 @@ export function SimulationPage() {
           const map = new Map(prev.map(p => [p.id, p]));
           const now = new Date();
           const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
-          
+
           lista.forEach(p => {
             // If the order has finished, check if it was delivered within last 4 hours
             if (["ENTREGADO", "SIN_RUTA", "COLAPSO"].includes(p.estado)) {
@@ -251,7 +253,7 @@ export function SimulationPage() {
         const timeParts = parts[1].split(":");
         return `${timeParts[0]}:${timeParts[1]}`;
       }
-    } catch (e) {}
+    } catch (e) { }
     return "";
   };
 
@@ -316,7 +318,7 @@ export function SimulationPage() {
       const id = `${f.fromCode}-${f.toCode}-${depTimeStr}`;
       const fromGmt = getGmt(f.fromCode);
       const toGmt = getGmt(f.toCode);
-      
+
       return {
         id,
         key: f.key,
@@ -510,7 +512,7 @@ export function SimulationPage() {
           if (fOrigin !== t.origenOaci.toUpperCase() || fDest !== t.destinoOaci.toUpperCase()) {
             return false;
           }
-          
+
           let matchTime = false;
           if (f.horaSalida && t.fechaSalida) {
             const parts = f.horaSalida.split(":");
@@ -563,9 +565,9 @@ export function SimulationPage() {
     return realTimeAirports
       .filter((a: any) => (a.warehouseCapacity ?? 0) > 0)
       .map((a: any) => {
-        const capacity     = a.warehouseCapacity ?? 0;
+        const capacity = a.warehouseCapacity ?? 0;
         const currentStock = a.currentStock ?? 0;
-        const utilization  = capacity > 0 ? (currentStock / capacity) * 100 : 0;
+        const utilization = capacity > 0 ? (currentStock / capacity) * 100 : 0;
 
         const shipmentsInWarehouse: WarehouseShipmentItem[] = realTimePedidos
           .filter((p: any) => {
@@ -637,23 +639,23 @@ export function SimulationPage() {
           tramos.forEach(leg => {
             if (!leg) return;
             const key = leg.claveVuelo || `${leg.origenOaci || ""}-${leg.destinoOaci || ""}-${leg.fechaSalida || ""}`;
-            
+
             if (leg.destinoOaci === a.code && (leg.estado === "PROGRAMADO" || leg.estado === "EN_VUELO")) {
               if (!incomingFlightsMap.has(key)) {
-                incomingFlightsMap.set(key, { 
-                  id: key, 
-                  airportCode: leg.origenOaci, 
-                  timeRaw: leg.fechaLlegada 
+                incomingFlightsMap.set(key, {
+                  id: key,
+                  airportCode: leg.origenOaci,
+                  timeRaw: leg.fechaLlegada
                 });
               }
             }
-            
+
             if (leg.origenOaci === a.code && leg.estado === "PROGRAMADO") {
               if (!outgoingFlightsMap.has(key)) {
-                outgoingFlightsMap.set(key, { 
-                  id: key, 
-                  airportCode: leg.destinoOaci, 
-                  timeRaw: leg.fechaSalida 
+                outgoingFlightsMap.set(key, {
+                  id: key,
+                  airportCode: leg.destinoOaci,
+                  timeRaw: leg.fechaSalida
                 });
               }
             }
@@ -694,14 +696,14 @@ export function SimulationPage() {
     return Object.values(airports)
       .filter(ap => (ap.capacity ?? 0) > 0)
       .map(ap => {
-        const capacity     = ap.capacity ?? 0;
+        const capacity = ap.capacity ?? 0;
         const currentStock = ap.currentStock ?? 0;
-        const utilization  = capacity > 0 ? (currentStock / capacity) * 100 : 0;
+        const utilization = capacity > 0 ? (currentStock / capacity) * 100 : 0;
 
         // Find city name and GMT from realTimeAirports
         const rtAp = realTimeAirports.find((a: any) => a.code === ap.code);
         const cityName = rtAp?.city ?? ap.code;
-        const gmt      = rtAp?.gmt  ?? 0;
+        const gmt = rtAp?.gmt ?? 0;
 
         // Shipments "waiting" at this airport in the simulation
         const shipmentsInWarehouse: WarehouseShipmentItem[] = baggageGroups
@@ -710,19 +712,19 @@ export function SimulationPage() {
             if (currentTime < bg.registeredAt) {
               return false;
             }
-            
+
             // Si no tiene ruta, está varado en el origen
             if (!bg.route || bg.route.length === 0) {
               if (bg.status === "delivered") return false;
               return bg.origin === ap.code;
             }
-            
+
             // Si todavía no sale su primer vuelo, está en el origen
             if (currentTime < bg.route[0].departureTime) {
               if (bg.status === "delivered") return false;
               return bg.origin === ap.code;
             }
-            
+
             // Si ya llegó a su destino final
             const lastLeg = bg.route[bg.route.length - 1];
             if (currentTime >= lastLeg.arrivalTime) {
@@ -733,7 +735,7 @@ export function SimulationPage() {
               }
               return lastLeg.to === ap.code;
             }
-            
+
             if (bg.status === "delivered") return false;
 
             // Entre vuelos o en vuelo
@@ -844,12 +846,12 @@ export function SimulationPage() {
   // Al completar sim: pausar y mostrar Highlights (una sola vez)
   useEffect(() => {
     if (!state.hasStarted || weeklyEndHandledRef.current) return;
-    
+
     let isEnd = false;
     if (state.scenario === "collapse") {
-       isEnd = hasReachedCollapseSimEnd(state);
+      isEnd = hasReachedCollapseSimEnd(state);
     } else {
-       isEnd = hasReachedWeeklySimEnd(state);
+      isEnd = hasReachedWeeklySimEnd(state);
     }
 
     if (isEnd) {
@@ -983,11 +985,13 @@ export function SimulationPage() {
   return (
     <div className={`${showTopPanel ? "h-[calc(100vh-3rem)]" : "h-[100vh]"} flex flex-col -m-4 relative transition-colors duration-200 ${rootBg}`}>
       {/* Barra de título */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center py-3 pointer-events-none">
-        <h1 className={`text-[18px] tracking-wider ${isDark ? "text-cyan-400" : "text-blue-800 font-bold"}`} style={{ textShadow: isDark ? "0 0 20px #00e5ff60" : "none" }}>
-          Panel de Simulación Logística Global
-        </h1>
-      </div>
+      {mapSettings.showMainTitle && (
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center py-3 pointer-events-none">
+          <h1 className={`text-[18px] tracking-wider ${isDark ? "text-cyan-400" : "text-blue-800 font-bold"}`} style={{ textShadow: isDark ? "0 0 20px #00e5ff60" : "none" }}>
+            {state.scenario === "tracking" ? "Panel de Día a Día de Logística Global" : "Panel de Simulación Logística Global"}
+          </h1>
+        </div>
+      )}
 
       <div className="flex-1 flex relative overflow-hidden">
         {/* Panel izquierdo - solo visible en modo simulación */}
@@ -1063,23 +1067,23 @@ export function SimulationPage() {
                 <div className="space-y-2">
                   <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos en Tránsito" value={activeFlightsCount.toLocaleString()} />
                   <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Total Envíos Acumulados" value={state.stats.totalRegistered.toLocaleString()} />
-                  <StatCard 
-                    isDark={isDark} 
-                    icon={<CheckCircle className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
-                    label="Porcentaje de Consumo de SLA" 
+                  <StatCard
+                    isDark={isDark}
+                    icon={<CheckCircle className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
+                    label="Porcentaje de Consumo de SLA"
                     value={`${state.stats.onTimeRate.toFixed(1)}%`}
                   />
-                  <StatCard 
-                    isDark={isDark} 
-                    icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
-                    label="Ocupación Global de Vuelos" 
+                  <StatCard
+                    isDark={isDark}
+                    icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
+                    label="Ocupación Global de Vuelos"
                     value={`${state.stats.flightUtilization.toFixed(1)}%`}
                     valueColor={getOccupancyColor(state.stats.flightUtilization)}
                   />
-                  <StatCard 
-                    isDark={isDark} 
-                    icon={<Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
-                    label="Ocupación Global de Almacenes" 
+                  <StatCard
+                    isDark={isDark}
+                    icon={<Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
+                    label="Ocupación Global de Almacenes"
                     value={`${state.stats.warehouseUtilization.toFixed(1)}%`}
                     valueColor={getOccupancyColor(state.stats.warehouseUtilization)}
                   />
@@ -1089,81 +1093,81 @@ export function SimulationPage() {
               {/* Controles */}
               {showSimLeftPanel && (
                 <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
-                <div className="flex justify-center items-center gap-2 mb-2">
-                  <button
-                    onClick={() => {
-                      if (!state.hasStarted) {
-                        if (state.scenario === "collapse") {
-                          startCollapse(pendingStartDate || new Date());
-                        } else {
-                          start(pendingStartDate);
-                        }
-                      } else if (!state.stopped) {
-                        togglePause();
-                      }
-                    }}
-                    className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${isDark ? "bg-cyan-500/20 border-cyan-500/40 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/30 hover:bg-blue-600/20"
-                      }`}
-                  >
-                    {state.running ? <Pause className={`w-5 h-5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} /> : <Play className={`w-5 h-5 ml-0.5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
-                  </button>
-                  <button
-                    onClick={() => void handleStopSimulation()}
-                    disabled={!state.hasStarted && !state.waitingForFirstBlock}
-                    className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-                  >
-                    <Square className="w-3 h-3 text-red-400" />
-                  </button>
-                </div>
-                {/* Export buttons */}
-                {state.scenario !== "weekly" && (
-                  <div className="flex items-center gap-1 mb-2">
+                  <div className="flex justify-center items-center gap-2 mb-2">
                     <button
-                      onClick={() => exportResults("json")}
-                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
+                      onClick={() => {
+                        if (!state.hasStarted) {
+                          if (state.scenario === "collapse") {
+                            startCollapse(pendingStartDate || new Date());
+                          } else {
+                            start(pendingStartDate);
+                          }
+                        } else if (!state.stopped) {
+                          togglePause();
+                        }
+                      }}
+                      className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${isDark ? "bg-cyan-500/20 border-cyan-500/40 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/30 hover:bg-blue-600/20"
+                        }`}
                     >
-                      <Download className="w-3 h-3" /> JSON
+                      {state.running ? <Pause className={`w-5 h-5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} /> : <Play className={`w-5 h-5 ml-0.5 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
                     </button>
                     <button
-                      onClick={() => exportResults("csv")}
-                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
+                      onClick={() => void handleStopSimulation()}
+                      disabled={!state.hasStarted && !state.waitingForFirstBlock}
+                      className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:pointer-events-none"
                     >
-                      <Download className="w-3 h-3" /> CSV
+                      <Square className="w-3 h-3 text-red-400" />
                     </button>
                   </div>
-                )}
-              </div>
+                  {/* Export buttons */}
+                  {state.scenario !== "weekly" && (
+                    <div className="flex items-center gap-1 mb-2">
+                      <button
+                        onClick={() => exportResults("json")}
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
+                      >
+                        <Download className="w-3 h-3" /> JSON
+                      </button>
+                      <button
+                        onClick={() => exportResults("csv")}
+                        className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[9px] border transition-colors ${isDark ? "border-[#1a2744] text-white/60 hover:text-cyan-400 hover:border-cyan-500/30" : "border-[#cbd5e1] text-[#64748b] hover:text-blue-700 hover:border-blue-400"}`}
+                      >
+                        <Download className="w-3 h-3" /> CSV
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* Escenarios */}
               {showSimLeftPanel && (
                 <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
-                <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
-                {([
-                  { key: "tracking", label: "Operaciones Día a Día" },
-                  { key: "weekly", label: "Simulación de 5 días" },
-                  { key: "collapse", label: "Simulación Hasta el Colapso" },
-                ] as const).map(s => (
-                  <button
-                    key={s.key}
-                    onClick={() => {
-                      if (s.key === "tracking") {
-                        setViewMode("tracking");
-                        setScenario("tracking");
-                      } else {
-                        setViewMode("simulation");
-                        setScenario(s.key);
-                      }
-                    }}
-                    className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${(s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
-                      ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
-                      : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
-                      }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
+                  <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
+                  {([
+                    { key: "tracking", label: "Operaciones Día a Día" },
+                    { key: "weekly", label: "Simulación de 5 días" },
+                    { key: "collapse", label: "Simulación Hasta el Colapso" },
+                  ] as const).map(s => (
+                    <button
+                      key={s.key}
+                      onClick={() => {
+                        if (s.key === "tracking") {
+                          setViewMode("tracking");
+                          setScenario("tracking");
+                        } else {
+                          setViewMode("simulation");
+                          setScenario(s.key);
+                        }
+                      }}
+                      className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${(s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
+                        ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
+                        : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
+                        }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               )}
 
               {/* Spacer bottom for centering */}
@@ -1207,17 +1211,17 @@ export function SimulationPage() {
                   <StatCard isDark={isDark} icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Vuelos En Tránsito" value={realTimeVuelosEnTransitoCount} />
                   <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos sin vuelos asignados" value={realTimeResumen?.pendientes ?? 0} />
                   <StatCard isDark={isDark} icon={<Package className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} label="Envíos con vuelos asignados" value={realTimeResumen?.planificados ?? 0} />
-                  <StatCard 
-                    isDark={isDark} 
-                    icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
-                    label="Ocupación Global de Vuelos" 
+                  <StatCard
+                    isDark={isDark}
+                    icon={<Plane className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
+                    label="Ocupación Global de Vuelos"
                     value={`${globalFlightOccupancy.toFixed(1)}%`}
                     valueColor={getOccupancyColor(globalFlightOccupancy)}
                   />
-                  <StatCard 
-                    isDark={isDark} 
-                    icon={<Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />} 
-                    label="Ocupación Global de Almacenes" 
+                  <StatCard
+                    isDark={isDark}
+                    icon={<Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-400" : "text-blue-700"}`} />}
+                    label="Ocupación Global de Almacenes"
                     value={`${globalWarehouseOccupancy.toFixed(1)}%`}
                     valueColor={getOccupancyColor(globalWarehouseOccupancy)}
                   />
@@ -1227,32 +1231,32 @@ export function SimulationPage() {
               {/* Escenarios */}
               {showRTLeftPanel && (
                 <div className={`border rounded-xl p-2 backdrop-blur-sm space-y-1 ${panelBg}`}>
-                <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
-                {([
-                  { key: "tracking", label: "Operaciones Día a Día" },
-                  { key: "weekly", label: "Simulación de 5 días" },
-                  { key: "collapse", label: "Simulación Hasta el Colapso" },
-                ] as const).map(s => (
-                  <button
-                    key={s.key}
-                    onClick={() => {
-                      if (s.key === "tracking") {
-                        setViewMode("tracking");
-                        setScenario("tracking");
-                      } else {
-                        setViewMode("simulation");
-                        setScenario(s.key);
-                      }
-                    }}
-                    className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${(s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
-                      ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
-                      : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
-                      }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
+                  <h4 className={`text-[11px] mb-1 px-1 font-semibold ${panelText}`}>Escenarios</h4>
+                  {([
+                    { key: "tracking", label: "Operaciones Día a Día" },
+                    { key: "weekly", label: "Simulación de 5 días" },
+                    { key: "collapse", label: "Simulación Hasta el Colapso" },
+                  ] as const).map(s => (
+                    <button
+                      key={s.key}
+                      onClick={() => {
+                        if (s.key === "tracking") {
+                          setViewMode("tracking");
+                          setScenario("tracking");
+                        } else {
+                          setViewMode("simulation");
+                          setScenario(s.key);
+                        }
+                      }}
+                      className={`w-full text-left px-2 py-1.5 rounded-lg text-[10px] transition-colors ${(s.key === "tracking" ? viewMode === "tracking" : viewMode === "simulation" && state.scenario === s.key)
+                        ? isDark ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/20" : "bg-blue-600/10 text-blue-700 border border-blue-600/20"
+                        : `${subText} border border-transparent ${isDark ? "hover:bg-[#0f172a] hover:text-cyan-500" : "hover:bg-[#dde6f0] hover:text-blue-700"}`
+                        }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               )}
               <div className="shrink-0 mb-auto" />
             </div>
@@ -1295,19 +1299,17 @@ export function SimulationPage() {
             {/* RealTime Right Panel */}
             {showRealTimeRightPanel && (
               <div className="absolute right-4 top-14 bottom-4 z-10 w-92 flex flex-col gap-2 pointer-events-none">
-                
+
                 {/* Contenedor 1: Envíos */}
-                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showRTEnvios ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
-                } ${panelBg}`}>
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showRTEnvios ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+                  } ${panelBg}`}>
                   <button
                     onClick={() => {
                       setShowRTEnvios(!showRTEnvios);
                       if (!showRTEnvios) { setShowRTVuelos(false); setShowRTAlmacenes(false); setShowRTCancelaciones(false); }
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                      showRTEnvios ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
-                    }`}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showRTEnvios ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
@@ -1331,9 +1333,8 @@ export function SimulationPage() {
                               setSelectedFlightPedidoIds(null);
                               setSelectedFlightKey(null);
                             }}
-                            className={`w-full rounded-lg text-[11px] pl-7 pr-7 py-1.5 border transition-colors focus:outline-none ${
-                              isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white placeholder:text-white/30" : "bg-white border-[#cbd5e1] text-[#111827] placeholder:text-[#9ca3af]"
-                            }`}
+                            className={`w-full rounded-lg text-[11px] pl-7 pr-7 py-1.5 border transition-colors focus:outline-none ${isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white placeholder:text-white/30" : "bg-white border-[#cbd5e1] text-[#111827] placeholder:text-[#9ca3af]"
+                              }`}
                           />
                           {realTimeSearch && (
                             <button
@@ -1354,9 +1355,8 @@ export function SimulationPage() {
                           <select
                             value={selectedRTOriginFilter}
                             onChange={e => setSelectedRTOriginFilter(e.target.value)}
-                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
-                              isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
-                            }`}
+                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                              }`}
                           >
                             <option value="ALL">Origen: Todos</option>
                             {Array.from(new Set(realTimePedidos.map(p => p.origenOaci))).sort().map(code => (
@@ -1367,9 +1367,8 @@ export function SimulationPage() {
                           <select
                             value={selectedRTDestFilter}
                             onChange={e => setSelectedRTDestFilter(e.target.value)}
-                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
-                              isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
-                            }`}
+                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                              }`}
                           >
                             <option value="ALL">Destino: Todos</option>
                             {Array.from(new Set(realTimePedidos.map(p => p.destinoOaci))).sort().map(code => (
@@ -1381,9 +1380,8 @@ export function SimulationPage() {
                           <select
                             value={selectedRTStatusFilter}
                             onChange={e => setSelectedRTStatusFilter(e.target.value)}
-                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
-                              isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
-                            }`}
+                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                              }`}
                           >
                             <option value="ALL">Estado: Todos</option>
                             <option value="PENDIENTE">Sin vuelo</option>
@@ -1398,9 +1396,8 @@ export function SimulationPage() {
 
                       {/* Indicador de filtro de vuelo */}
                       {selectedFlightKey && (
-                        <div className={`mx-3 my-2 p-2 rounded-lg flex items-center justify-between text-[10px] shrink-0 ${
-                          isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"
-                        }`}>
+                        <div className={`mx-3 my-2 p-2 rounded-lg flex items-center justify-between text-[10px] shrink-0 ${isDark ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-400" : "bg-blue-50 border border-blue-200 text-blue-800"
+                          }`}>
                           <span className="truncate">
                             Filtrando por vuelo: {activeRTFlights.find(f => f.key === selectedFlightKey)?.id || selectedFlightKey}
                           </span>
@@ -1490,11 +1487,11 @@ export function SimulationPage() {
                                       <div className="flex items-start gap-2">
                                         <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isCancelled ? "bg-red-500/50" :
                                           isCompleted ? "bg-green-500" :
-                                          isCurrent ? "bg-cyan-500 animate-pulse" : (isDark ? "bg-[#334155]" : "bg-[#a0aec0]")
-                                        }`} />
+                                            isCurrent ? "bg-cyan-500 animate-pulse" : (isDark ? "bg-[#334155]" : "bg-[#a0aec0]")
+                                          }`} />
                                         <div className="flex-1">
                                           <div className={`text-[10px] font-semibold ${isCancelled ? (isDark ? "text-red-400/70" : "text-red-600/70") : (isDark ? "text-white" : "text-[#111827]")
-                                          }`}>
+                                            }`}>
                                             {realTimeAirports.find(a => a.code === leg.destinoOaci)?.city || leg.destinoOaci} ({leg.destinoOaci})
                                             {isCancelled && <span className={`ml-1 text-[9px] ${isDark ? "text-red-400" : "text-red-600"}`}>[Cancelado]</span>}
                                           </div>
@@ -1520,43 +1517,43 @@ export function SimulationPage() {
                                 {tramos.length === 0 && (
                                   <div className={`pl-5 text-[10px] py-2 ${isDark ? "text-white/40" : "text-[#9ca3af]"}`}>Sin ruta planificada</div>
                                 )}
-                              {/* Plazo como nodo de la línea de tiempo */}
-                              <div className={`ml-[4px] w-[2px] h-3 ${isDark ? "bg-[#1e293b]" : "bg-[#c8d0d8]"}`} />
-                              <div className="flex items-start gap-2">
-                                {(() => {
-                                  const getAirportContinent = (code: string) => {
-                                    const ap = realTimeAirports.find((a: any) => a.code === code);
-                                    return ap?.continent || null;
-                                  };
-                                  const originCont = getAirportContinent(selectedRealTimePedido.origenOaci);
-                                  const destCont = getAirportContinent(selectedRealTimePedido.destinoOaci);
-                                  const isInter = originCont && destCont ? originCont !== destCont : false;
-                                  const deadlineHours = isInter ? 48 : 24;
-                                  const registeredTime = new Date(selectedRealTimePedido.fechaHoraRegistro.endsWith('Z') ? selectedRealTimePedido.fechaHoraRegistro : selectedRealTimePedido.fechaHoraRegistro + 'Z').getTime();
-                                  const deadlineTime = registeredTime + deadlineHours * 3600000;
-                                  const deadlineStr = fmtLocal(new Date(deadlineTime).toISOString(), getGmt(selectedRealTimePedido.destinoOaci));
+                                {/* Plazo como nodo de la línea de tiempo */}
+                                <div className={`ml-[4px] w-[2px] h-3 ${isDark ? "bg-[#1e293b]" : "bg-[#c8d0d8]"}`} />
+                                <div className="flex items-start gap-2">
+                                  {(() => {
+                                    const getAirportContinent = (code: string) => {
+                                      const ap = realTimeAirports.find((a: any) => a.code === code);
+                                      return ap?.continent || null;
+                                    };
+                                    const originCont = getAirportContinent(selectedRealTimePedido.origenOaci);
+                                    const destCont = getAirportContinent(selectedRealTimePedido.destinoOaci);
+                                    const isInter = originCont && destCont ? originCont !== destCont : false;
+                                    const deadlineHours = isInter ? 48 : 24;
+                                    const registeredTime = new Date(selectedRealTimePedido.fechaHoraRegistro.endsWith('Z') ? selectedRealTimePedido.fechaHoraRegistro : selectedRealTimePedido.fechaHoraRegistro + 'Z').getTime();
+                                    const deadlineTime = registeredTime + deadlineHours * 3600000;
+                                    const deadlineStr = fmtLocal(new Date(deadlineTime).toISOString(), getGmt(selectedRealTimePedido.destinoOaci));
 
-                                  const isDelivered = selectedRealTimePedido.estado === "ENTREGADO";
-                                  const isFailed = selectedRealTimePedido.estado === "FALLIDO" || (new Date().getTime() > deadlineTime && !isDelivered);
-                                  const dotColor = isDelivered ? "bg-green-500" : isFailed ? "bg-red-500" : (isDark ? "bg-[#334155]" : "bg-[#a0aec0]");
+                                    const isDelivered = selectedRealTimePedido.estado === "ENTREGADO";
+                                    const isFailed = selectedRealTimePedido.estado === "FALLIDO" || (new Date().getTime() > deadlineTime && !isDelivered);
+                                    const dotColor = isDelivered ? "bg-green-500" : isFailed ? "bg-red-500" : (isDark ? "bg-[#334155]" : "bg-[#a0aec0]");
 
-                                  return (
-                                    <>
-                                      <div
-                                        className={`w-2.5 h-2.5 shrink-0 mt-0.5 ${dotColor}`}
-                                        style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }}
-                                      />
-                                      <div className="flex-1">
-                                        <div className={`text-[9px] ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>
-                                          Plazo: {deadlineStr}
+                                    return (
+                                      <>
+                                        <div
+                                          className={`w-2.5 h-2.5 shrink-0 mt-0.5 ${dotColor}`}
+                                          style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }}
+                                        />
+                                        <div className="flex-1">
+                                          <div className={`text-[9px] ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>
+                                            Plazo: {deadlineStr}
+                                          </div>
                                         </div>
-                                      </div>
-                                    </>
-                                  );
-                                })()}
+                                      </>
+                                    );
+                                  })()}
+                                </div>
                               </div>
-                            </div>
-                          );
+                            );
                           })()}
 
                           <button
@@ -1608,9 +1605,8 @@ export function SimulationPage() {
                                       <button
                                         key={p.id}
                                         onClick={() => setSelectedRealTimePedido(isSelected ? null : p)}
-                                        className={`w-full text-left px-2 py-2 rounded-md flex items-center gap-2 transition-colors ${
-                                          isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${isDark ? "hover:bg-[#0f172a]" : "hover:bg-[#cfd6df]"} border border-transparent`
-                                        }`}
+                                        className={`w-full text-left px-2 py-2 rounded-md flex items-center gap-2 transition-colors ${isSelected ? (isDark ? "bg-cyan-500/10 border border-cyan-500/30" : "bg-blue-600/10 border border-blue-600/30") : `${isDark ? "hover:bg-[#0f172a]" : "hover:bg-[#cfd6df]"} border border-transparent`
+                                          }`}
                                       >
                                         <div className={`shrink-0 ${s.color}`}>{s.icon}</div>
                                         <div className="flex-1 min-w-0">
@@ -1632,15 +1628,14 @@ export function SimulationPage() {
                                     );
                                   })}
                                 </div>
-                                
+
                                 {totalRTPages > 1 && (
                                   <div className={`mt-2 px-2 py-1.5 border-t ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"} flex items-center justify-between text-[9.5px]`}>
                                     <button
                                       onClick={() => setRtPedidosPage(prev => Math.max(prev - 1, 1))}
                                       disabled={rtPedidosPage === 1}
-                                      className={`px-1.5 py-0.5 rounded border transition-colors ${
-                                        rtPedidosPage === 1 ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
-                                      }`}
+                                      className={`px-1.5 py-0.5 rounded border transition-colors ${rtPedidosPage === 1 ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+                                        }`}
                                     >
                                       Anterior
                                     </button>
@@ -1650,9 +1645,8 @@ export function SimulationPage() {
                                     <button
                                       onClick={() => setRtPedidosPage(prev => Math.min(prev + 1, totalRTPages))}
                                       disabled={rtPedidosPage === totalRTPages}
-                                      className={`px-1.5 py-0.5 rounded border transition-colors ${
-                                        rtPedidosPage === totalRTPages ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
-                                      }`}
+                                      className={`px-1.5 py-0.5 rounded border transition-colors ${rtPedidosPage === totalRTPages ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+                                        }`}
                                     >
                                       Siguiente
                                     </button>
@@ -1668,17 +1662,15 @@ export function SimulationPage() {
                 </div>
 
                 {/* Contenedor 2: Vuelos */}
-                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showRTVuelos ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
-                } ${panelBg}`}>
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showRTVuelos ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
+                  } ${panelBg}`}>
                   <button
                     onClick={() => {
                       setShowRTVuelos(!showRTVuelos);
                       if (!showRTVuelos) { setShowRTEnvios(false); setShowRTAlmacenes(false); setShowRTCancelaciones(false); }
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                      showRTVuelos ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
-                    }`}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showRTVuelos ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Plane className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
@@ -1703,17 +1695,15 @@ export function SimulationPage() {
                 </div>
 
                 {/* Contenedor 3: Almacenes (tracking mode) */}
-                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showRTAlmacenes ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
-                } ${panelBg}`}>
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showRTAlmacenes ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
+                  } ${panelBg}`}>
                   <button
                     onClick={() => {
                       setShowRTAlmacenes(!showRTAlmacenes);
                       if (!showRTAlmacenes) { setShowRTEnvios(false); setShowRTVuelos(false); setShowRTCancelaciones(false); }
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                      showRTAlmacenes ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
-                    }`}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showRTAlmacenes ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
@@ -1745,9 +1735,8 @@ export function SimulationPage() {
                 </div>
 
                 {/* Contenedor 4: Cancelación (tracking mode) */}
-                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showRTCancelaciones ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
-                } ${panelBg}`}>
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showRTCancelaciones ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
+                  } ${panelBg}`}>
                   <button
                     onClick={() => {
                       setShowRTCancelaciones(!showRTCancelaciones);
@@ -1760,9 +1749,8 @@ export function SimulationPage() {
                         setShowRTAlmacenes(false);
                       }
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                      showRTCancelaciones ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
-                    }`}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showRTCancelaciones ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <AlertTriangle className={`w-4 h-4 ${isDark ? "text-red-400" : "text-red-700"}`} />
@@ -1820,19 +1808,17 @@ export function SimulationPage() {
             {/* Panel derecho - Tracking & Cancelación */}
             {showTracking && (
               <div className="absolute right-4 top-14 bottom-4 z-10 w-92 flex flex-col gap-2 pointer-events-none">
-                
+
                 {/* Contenedor 1: Envíos */}
-                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showSimEnvios ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
-                } ${panelBg}`}>
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showSimEnvios ? "flex-1 min-h-[150px]" : "h-10 shrink-0"
+                  } ${panelBg}`}>
                   <button
                     onClick={() => {
                       setShowSimEnvios(!showSimEnvios);
                       if (!showSimEnvios) { setShowSimVuelos(false); setShowSimAlmacenes(false); }
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                      showSimEnvios ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
-                    }`}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showSimEnvios ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Package className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
@@ -1860,17 +1846,15 @@ export function SimulationPage() {
                 </div>
 
                 {/* Contenedor 2: Vuelos */}
-                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showSimVuelos ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
-                } ${panelBg}`}>
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showSimVuelos ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
+                  } ${panelBg}`}>
                   <button
                     onClick={() => {
                       setShowSimVuelos(!showSimVuelos);
                       if (!showSimVuelos) { setShowSimEnvios(false); setShowSimAlmacenes(false); }
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                      showSimVuelos ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
-                    }`}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showSimVuelos ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Plane className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
@@ -1895,17 +1879,15 @@ export function SimulationPage() {
                 </div>
 
                 {/* Contenedor 3: Almacenes (simulation mode) */}
-                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                  showSimAlmacenes ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
-                } ${panelBg}`}>
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showSimAlmacenes ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
+                  } ${panelBg}`}>
                   <button
                     onClick={() => {
                       setShowSimAlmacenes(!showSimAlmacenes);
                       if (!showSimAlmacenes) { setShowSimEnvios(false); setShowSimVuelos(false); }
                     }}
-                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                      showSimAlmacenes ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
-                    }`}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showSimAlmacenes ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                      }`}
                   >
                     <div className="flex items-center gap-2">
                       <Warehouse className={`w-4 h-4 ${isDark ? "text-cyan-500" : "text-blue-700"}`} />
@@ -1939,9 +1921,8 @@ export function SimulationPage() {
 
                 {/* Cancelación */}
                 {state.scenario !== "collapse" && (
-                  <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${
-                    showCancelaciones ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
-                  } ${panelBg}`}>
+                  <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showCancelaciones ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
+                    } ${panelBg}`}>
                     <button
                       onClick={() => {
                         setShowCancelaciones(!showCancelaciones);
@@ -1953,9 +1934,8 @@ export function SimulationPage() {
                           setShowSimVuelos(false);
                         }
                       }}
-                      className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${
-                        showCancelaciones ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
-                      }`}
+                      className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showCancelaciones ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                        }`}
                     >
                       <div className="flex items-center gap-2">
                         <AlertTriangle className={`w-4 h-4 ${isDark ? "text-red-400" : "text-red-700"}`} />
@@ -2185,11 +2165,11 @@ export function SimulationPage() {
               <button onClick={() => void handleStopSimulation()} className={`px-4 py-2 border rounded-lg text-[12px] ${isDark ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/30" : "bg-blue-600/10 border-blue-600/20 text-blue-700 hover:bg-blue-600/20"}`}>
                 Ver Highlights
               </button>
-              <button onClick={() => { 
-                weeklyEndHandledRef.current = false; 
-                collapseHandledRef.current = false; 
+              <button onClick={() => {
+                weeklyEndHandledRef.current = false;
+                collapseHandledRef.current = false;
                 setCollapseOverlayDismissed(false);
-                void reset(); 
+                void reset();
               }} className="px-4 py-2 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-[12px] hover:bg-red-500/30">
                 Reiniciar
               </button>
@@ -2304,18 +2284,18 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
           {/* Download Detailed Report Button */}
           {state.scenario === "weekly" && (
             <div className="flex justify-center mt-4">
-              <button 
+              <button
                 onClick={() => {
                   const lastBlockShipments = state.stats.lastBlockBaggageGroups || [];
-                  
+
                   const envios = lastBlockShipments.map(bg => {
                     let totalFlightTime = 0;
                     bg.route.forEach(leg => {
                       totalFlightTime += (leg.arrivalTime - leg.departureTime);
                     });
                     const flightTimeHrs = (totalFlightTime / 3600000).toFixed(2);
-                    
-                    const routeDetails = bg.route.map(leg => 
+
+                    const routeDetails = bg.route.map(leg =>
                       `${leg.from} -> ${leg.to} (Vuelo: ${leg.flightId || leg.claveVuelo || 'N/A'})`
                     ).join(" | ");
 
@@ -2330,18 +2310,18 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
                   });
 
                   const almacenesUsage: Record<string, any[]> = {};
-                  
+
                   lastBlockShipments.forEach(bg => {
                     if (!almacenesUsage[bg.origin]) almacenesUsage[bg.origin] = [];
                     almacenesUsage[bg.origin].push({ idEnvio: bg.id, maletas: bg.quantity, tipo: "Origen" });
-                    
+
                     bg.route.forEach((leg, index) => {
                       if (!almacenesUsage[leg.to]) almacenesUsage[leg.to] = [];
                       const isDestination = index === bg.route.length - 1;
-                      almacenesUsage[leg.to].push({ 
-                        idEnvio: bg.id, 
-                        maletas: bg.quantity, 
-                        tipo: isDestination ? "Destino Final" : "Escala" 
+                      almacenesUsage[leg.to].push({
+                        idEnvio: bg.id,
+                        maletas: bg.quantity,
+                        tipo: isDestination ? "Destino Final" : "Escala"
                       });
                     });
                   });
@@ -2351,7 +2331,7 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
 
                   reportContent += `ENVIOS PLANIFICADOS EN ESTE BLOQUE\n`;
                   reportContent += `----------------------------------\n`;
-                  
+
                   if (envios.length === 0) {
                     reportContent += `No se planificaron envios en este bloque.\n`;
                   } else {
@@ -2368,7 +2348,7 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
 
                   reportContent += `\nDETALLE DE USO DE ALMACENES\n`;
                   reportContent += `---------------------------\n`;
-                  
+
                   const almacenesKeys = Object.keys(almacenesUsage).sort();
                   if (almacenesKeys.length === 0) {
                     reportContent += `No hubo uso de almacenes registrado para los envios de este bloque.\n`;
@@ -2390,11 +2370,10 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className={`px-4 py-2 w-full flex items-center justify-center gap-2 rounded-lg text-[12px] font-semibold transition-colors ${
-                  isDark 
-                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30" 
+                className={`px-4 py-2 w-full flex items-center justify-center gap-2 rounded-lg text-[12px] font-semibold transition-colors ${isDark
+                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30"
                     : "bg-blue-600/10 text-blue-700 border border-blue-600/20 hover:bg-blue-600/20"
-                }`}
+                  }`}
               >
                 <Download className="w-4 h-4" />
                 Descargar reporte detallado
