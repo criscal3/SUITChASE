@@ -320,6 +320,12 @@ export function useSimulation() {
         for (const bg of prev.baggageGroups) {
           mergedMap.set(bg.id, bg);
         }
+        for (const bg of blockGroups) {
+          const parentMatch = String(bg.id).match(/^(.*)-\d+$/);
+          if (parentMatch) {
+            mergedMap.delete(parentMatch[1]);
+          }
+        }
         const smoothTime = prev.currentTime;
         for (const bg of blockGroups) {
           const existing = mergedMap.get(bg.id);

@@ -151,6 +151,10 @@ export function RealTimePage() {
           const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000);
 
           lista.forEach(p => {
+            const parentMatch = p.id.match(/^(.*)-\d+$/);
+            if (parentMatch) {
+              map.delete(parentMatch[1]);
+            }
             // If the order has finished, check if it was delivered within last 4 hours
             if (["ENTREGADO", "SIN_RUTA", "COLAPSO"].includes(p.estado)) {
               if (p.estado === "ENTREGADO") {

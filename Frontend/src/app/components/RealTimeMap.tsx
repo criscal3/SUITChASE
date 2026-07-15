@@ -349,9 +349,17 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
         const from = airportsList.find((a) => a.code === leg.origenOaci);
         const to = airportsList.find((a) => a.code === leg.destinoOaci);
         if (from && to) {
+          const coords: [number, number][] = [];
+          const steps = 30;
+          for (let idx = 0; idx <= steps; idx++) {
+            const t = idx / steps;
+            const pos = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, t);
+            coords.push([pos.lng, pos.lat]);
+          }
           arcs.push({
             from: [from.lng, from.lat],
             to: [to.lng, to.lat],
+            coordinates: coords,
             color: "#ff8800",
             strokeWidth: 2.5,
             isDashed: true,
@@ -444,11 +452,24 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           
           // Filter arcs based on flight occupancy level
           if (activeFilters[level].flight) {
+            const coords: [number, number][] = [];
+            const steps = 30;
+            if (fromAir && toAir) {
+              for (let idx = 0; idx <= steps; idx++) {
+                const t = idx / steps;
+                const pos = interpolateGreatCircle(fromAir.lat, fromAir.lng, toAir.lat, toAir.lng, t);
+                coords.push([pos.lng, pos.lat]);
+              }
+            } else {
+              coords.push(f.from as [number, number], f.to as [number, number]);
+            }
+
             // Filter based on route type (intracontinental vs intercontinental)
             if (!sameContinent && activeFilters.routes.intercontinental) {
               arcs.push({
                 from: f.from,
                 to: f.to,
+                coordinates: coords,
                 fromCode: f.fromCode,
                 toCode: f.toCode,
                 color: routeColor,
@@ -459,6 +480,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
               arcs.push({
                 from: f.from,
                 to: f.to,
+                coordinates: coords,
                 fromCode: f.fromCode,
                 toCode: f.toCode,
                 color: routeColor,
@@ -546,8 +568,7 @@ export function RealTimeMap({ pedidos, selectedPedido, onSelectPedido, airportsL
           }).map((arc) => (
             <Line
               key={arc.key}
-              from={arc.from as [number, number]}
-              to={arc.to as [number, number]}
+              coordinates={arc.coordinates}
               stroke={arc.color}
               strokeWidth={arc.strokeWidth * s}
               strokeLinecap="round"

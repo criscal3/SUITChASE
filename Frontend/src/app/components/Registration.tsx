@@ -364,7 +364,7 @@ export function Registration({ showBatchImport = true }: { showBatchImport?: boo
                 </SelectTrigger>
                 <SelectContent className={selectContentBg}>
                   {airportsList.map(a => (
-                    <SelectItem key={a.code} value={a.code} className={selectItemText}>{a.code} — {a.city}</SelectItem>
+                    <SelectItem key={a.code} value={a.code} className={selectItemText} disabled={a.code === origin}>{a.code} — {a.city}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -282,9 +282,17 @@ export function SimulationMap({
         const from = airportsList.find((a) => a.code === leg.from);
         const to = airportsList.find((a) => a.code === leg.to);
         if (from && to) {
+          const coords: [number, number][] = [];
+          const steps = 30;
+          for (let idx = 0; idx <= steps; idx++) {
+            const t = idx / steps;
+            const pos = interpolateGreatCircle(from.lat, from.lng, to.lat, to.lng, t);
+            coords.push([pos.lng, pos.lat]);
+          }
           arcs.push({
             from: [from.lng, from.lat],
             to: [to.lng, to.lat],
+            coordinates: coords,
             fromCode: leg.from,
             toCode: leg.to,
             color: "#ff8800",
@@ -425,11 +433,20 @@ export function SimulationMap({
       // Filter arcs based on flight occupancy level
       const routeLevel = getOccupancyLevel(val.utilization ?? 0);
       if (activeFilters[routeLevel].flight) {
+        const coords: [number, number][] = [];
+        const steps = 30;
+        for (let idx = 0; idx <= steps; idx++) {
+          const t = idx / steps;
+          const pos = interpolateGreatCircle(val.from.lat, val.from.lng, val.to.lat, val.to.lng, t);
+          coords.push([pos.lng, pos.lat]);
+        }
+
         // Filter based on route type (intracontinental vs intercontinental)
         if (val.intercontinental && activeFilters.routes.intercontinental) {
           arcs.push({
             from: [val.from.lng, val.from.lat],
             to: [val.to.lng, val.to.lat],
+            coordinates: coords,
             fromCode: val.fromCode,
             toCode: val.toCode,
             color: getArcColor(val.intercontinental, isDark, getIntraColor, getInterColor),
@@ -441,6 +458,7 @@ export function SimulationMap({
           arcs.push({
             from: [val.from.lng, val.from.lat],
             to: [val.to.lng, val.to.lat],
+            coordinates: coords,
             fromCode: val.fromCode,
             toCode: val.toCode,
             color: getArcColor(val.intercontinental, isDark, getIntraColor, getInterColor),
@@ -456,9 +474,18 @@ export function SimulationMap({
       const ageHours = (state.currentTime - val.registeredAt) / 3600000;
       if (ageHours > 6) continue;
 
+      const coords: [number, number][] = [];
+      const steps = 30;
+      for (let idx = 0; idx <= steps; idx++) {
+        const t = idx / steps;
+        const pos = interpolateGreatCircle(val.from.lat, val.from.lng, val.to.lat, val.to.lng, t);
+        coords.push([pos.lng, pos.lat]);
+      }
+
       arcs.push({
         from: [val.from.lng, val.from.lat],
         to: [val.to.lng, val.to.lat],
+        coordinates: coords,
         color: failedRouteColor,
         strokeWidth: 1.5,
         isDashed: true,
@@ -520,8 +547,7 @@ export function SimulationMap({
           }).map((arc) => (
             <Line
               key={arc.key}
-              from={arc.from as [number, number]}
-              to={arc.to as [number, number]}
+              coordinates={arc.coordinates}
               stroke={arc.color}
               strokeWidth={arc.strokeWidth * s}
               strokeLinecap="round"

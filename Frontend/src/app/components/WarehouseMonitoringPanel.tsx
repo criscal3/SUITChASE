@@ -210,9 +210,9 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
           return -1;
         } else {
           if (typeof aVal === "number" && typeof bVal === "number") {
-            cmp = bVal - aVal;
+            cmp = aVal - bVal;
           } else {
-            cmp = String(bVal).localeCompare(String(aVal));
+            cmp = String(aVal).localeCompare(String(bVal));
           }
         }
       } else {

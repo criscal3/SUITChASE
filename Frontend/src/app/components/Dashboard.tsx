@@ -261,7 +261,13 @@ export function Dashboard() {
       onPedidosActualizados: (lista: Pedido[]) => {
         setPedidos(prev => {
           const map = new Map(prev.map(p => [p.id, p]));
-          lista.forEach(p => map.set(p.id, p));
+          lista.forEach(p => {
+            const parentMatch = p.id.match(/^(.*)-\d+$/);
+            if (parentMatch) {
+              map.delete(parentMatch[1]);
+            }
+            map.set(p.id, p);
+          });
           return Array.from(map.values());
         });
         // Build activity events from status changes

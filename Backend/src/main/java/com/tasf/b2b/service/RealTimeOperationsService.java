@@ -64,6 +64,18 @@ public class RealTimeOperationsService {
 
     /** Registrar nuevo pedido — llamado por el controller del operario */
     public PedidoRealDTO registrarPedido(RegistroPedidoRequest req, Long operarioId) {
+        // Verificar capacidad del almacén origen
+        int capacidad = aeropuertoRepository.findById(req.origenOaci())
+                .map(com.tasf.b2b.domain.AeropuertoEntity::getCapacidadAlmacen)
+                .orElse(0);
+        int stockActual = getStockActualAlmacen(req.origenOaci());
+        if (stockActual + req.cantidadMaletas() > capacidad) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "El almacén de origen " + req.origenOaci() + " no tiene suficiente capacidad. Capacidad máxima: " + capacidad + ", Stock actual: " + stockActual + ", Maletas a registrar: " + req.cantidadMaletas()
+            );
+        }
+
         PedidoRealEntity p = new PedidoRealEntity();
         p.setId("PED-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
         p.setOrigenOaci(req.origenOaci());
@@ -94,6 +106,19 @@ public class RealTimeOperationsService {
 
     /** Registrar pedidos en lote (tiempo real) */
     public List<PedidoRealDTO> registrarPedidosEnLote(List<RegistroPedidoLoteItem> items, String origenOaci, Long operarioId) {
+        // Verificar capacidad del almacén origen para el lote completo
+        int capacidad = aeropuertoRepository.findById(origenOaci)
+                .map(com.tasf.b2b.domain.AeropuertoEntity::getCapacidadAlmacen)
+                .orElse(0);
+        int stockActual = getStockActualAlmacen(origenOaci);
+        int totalMaletasLote = items.stream().mapToInt(RegistroPedidoLoteItem::cantidadMaletas).sum();
+        if (stockActual + totalMaletasLote > capacidad) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST,
+                "El almacén de origen " + origenOaci + " no tiene suficiente capacidad para registrar este lote. Capacidad máxima: " + capacidad + ", Stock actual: " + stockActual + ", Maletas en lote: " + totalMaletasLote
+            );
+        }
+
         List<PedidoRealDTO> creados = new ArrayList<>();
         Set<Long> aerolineasAfectadas = new HashSet<>();
 
@@ -302,6 +327,35 @@ public class RealTimeOperationsService {
         if (cached != null) return cached;
         // Si no está en caché (histórico), buscar en DB
         return pedidoRepo.findById(id).map(p -> toDTO(p, cargarTramos(id))).orElse(null);
+    }
+
+    /** Eliminar pedido de caché al ser dividido */
+    public void eliminarPedidoDeCache(String id) {
+        cache.remove(id);
+    }
+
+    /** Obtener la ocupación actual (stock) del almacén de un aeropuerto específico */
+    public int getStockActualAlmacen(String oaci) {
+        return (int) cache.values().stream()
+            .filter(p -> {
+                if ("PENDIENTE".equalsIgnoreCase(p.estado()) || "PLANIFICADO".equalsIgnoreCase(p.estado())) {
+                    return p.origenOaci().equals(oaci);
+                } else if ("EN_RUTA".equalsIgnoreCase(p.estado())) {
+                    return p.ubicacionActual().equals(oaci);
+                } else if ("ENTREGADO".equalsIgnoreCase(p.estado())) {
+                    if (p.ubicacionActual().equals(oaci)) {
+                        var tramos = p.tramos();
+                        if (tramos != null && !tramos.isEmpty()) {
+                            var lastTramo = tramos.get(tramos.size() - 1);
+                            return lastTramo.fechaLlegada() != null && 
+                                   LocalDateTime.now().isBefore(lastTramo.fechaLlegada().plusMinutes(15));
+                        }
+                    }
+                }
+                return false;
+            })
+            .mapToLong(PedidoRealDTO::cantidadMaletas)
+            .sum();
     }
 
     /** Llamado por el scheduler tras planificar un lote */

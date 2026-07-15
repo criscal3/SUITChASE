@@ -690,6 +690,124 @@ if (almacenDest != null && TimeUtils.intervaloAlmacenValido(idxInicioDest, idxFi
                 long tiempoMs = (long) ta * 1000L;
                 solucion = ACSAdapter.planificar(subInput, tiempoMs);
 
+                // --- PROGRESSIVE SPLITTING LOGIC FOR SIMULATION ---
+                List<EnvioAlgoritmo> enviosParaDividir = new ArrayList<>();
+                for (EnvioAlgoritmo env : enviosBloque) {
+                    ResultadoRuta ruta = solucion.getRuta(env);
+                    boolean exitoso = false;
+                    if (ruta != null && !ruta.vuelosUsados.isEmpty()) {
+                        String destinoAlcanzado = ruta.vuelosUsados.get(ruta.vuelosUsados.size() - 1).getDestinoOaci();
+                        if (destinoAlcanzado.equals(env.getDestinoOaci())) {
+                            exitoso = true;
+                        }
+                    }
+                    if (!exitoso && env.getCantidadMaletas() > 1) {
+                        enviosParaDividir.add(env);
+                    }
+                }
+
+                if (!enviosParaDividir.isEmpty()) {
+                    log.info("Simulación {} - Se detectaron {} envíos que no pudieron planificarse completos y se intentarán dividir.", simulacionId, enviosParaDividir.size());
+                    enviosBloque.removeAll(enviosParaDividir);
+
+                    for (EnvioAlgoritmo env : enviosParaDividir) {
+                        String originalId = env.getId();
+                        int totalMaletas = env.getCantidadMaletas();
+                        boolean divisionExitosa = false;
+                        List<EnvioAlgoritmo> subEnviosAceptados = new ArrayList<>();
+                        PlanificationSolutionOutput solucionSubAceptada = null;
+
+                        // Intentar dividir en P partes, de P=2 hasta P=totalMaletas
+                        for (int p = 2; p <= totalMaletas; p++) {
+                            // Backup capacities
+                            Map<String, Integer> backupVuelos = new HashMap<>(inputMaestro.getOcupacionGlobalVuelos());
+                            Map<String, int[]> backupAlmacenes = new HashMap<>();
+                            for (Map.Entry<String, int[]> entry : inputMaestro.getOcupacionGlobalAlmacenes().entrySet()) {
+                                backupAlmacenes.put(entry.getKey(), entry.getValue().clone());
+                            }
+
+                            List<Integer> tamaños = partition(totalMaletas, p);
+                            List<EnvioAlgoritmo> subEnviosIntentar = new ArrayList<>();
+                            for (int i = 0; i < tamaños.size(); i++) {
+                                EnvioAlgoritmo subEnv = new EnvioAlgoritmo();
+                                subEnv.setId(originalId + "-" + (i + 1));
+                                subEnv.setOrigenOaci(env.getOrigenOaci());
+                                subEnv.setDestinoOaci(env.getDestinoOaci());
+                                subEnv.setFechaHoraRegistro(env.getFechaHoraRegistro());
+                                subEnv.setCantidadMaletas(tamaños.get(i));
+                                subEnv.setClienteId(env.getClienteId());
+                                subEnviosIntentar.add(subEnv);
+                            }
+
+                            PlanificationProblemInput subInputIntentar = inputMaestro.crearSubInput(subEnviosIntentar);
+                            PlanificationSolutionOutput solucionSubIntentar = ACSAdapter.planificar(subInputIntentar, tiempoMs);
+
+                            // Verificar si todos los sub-envíos se pudieron planificar
+                            boolean todosPlanificados = true;
+                            for (EnvioAlgoritmo subEnv : subEnviosIntentar) {
+                                ResultadoRuta rutaSub = solucionSubIntentar.getRuta(subEnv);
+                                boolean subExitoso = false;
+                                if (rutaSub != null && !rutaSub.vuelosUsados.isEmpty()) {
+                                    String destinoAlcanzado = rutaSub.vuelosUsados.get(rutaSub.vuelosUsados.size() - 1).getDestinoOaci();
+                                    if (destinoAlcanzado.equals(subEnv.getDestinoOaci())) {
+                                        subExitoso = true;
+                                    }
+                                }
+                                if (!subExitoso) {
+                                    todosPlanificados = false;
+                                    break;
+                                }
+                            }
+
+                            if (todosPlanificados) {
+                                // ¡Éxito! Encontramos la división óptima con menor número de subenvíos
+                                divisionExitosa = true;
+                                subEnviosAceptados = subEnviosIntentar;
+                                solucionSubAceptada = solucionSubIntentar;
+                                log.info("Simulación {} - Envio {} dividido exitosamente en {} partes.", simulacionId, originalId, p);
+                                break;
+                            } else {
+                                // Falló la planificación de esta partición
+                                // Restaurar capacities
+                                inputMaestro.getOcupacionGlobalVuelos().clear();
+                                inputMaestro.getOcupacionGlobalVuelos().putAll(backupVuelos);
+                                inputMaestro.getOcupacionGlobalAlmacenes().clear();
+                                inputMaestro.getOcupacionGlobalAlmacenes().putAll(backupAlmacenes);
+
+                                if (p == totalMaletas) {
+                                    // Llegamos al límite (1 maleta por subenvío). Debemos aceptar este resultado
+                                    subEnviosAceptados = subEnviosIntentar;
+                                    solucionSubAceptada = solucionSubIntentar;
+                                    log.info("Simulación {} - Envio {} no se pudo dividir exitosamente por completo. Se acepta división máxima de {} partes.", simulacionId, originalId, p);
+                                }
+                            }
+                        }
+
+                        // Persistir la división en DB si el envío original ya existía
+                        envioRepository.findById(originalId).ifPresent(envioOriginal -> {
+                            envioRepository.delete(envioOriginal);
+                        });
+
+                        // Agregar los sub-envíos a enviosBloque y a la solución principal
+                        for (EnvioAlgoritmo subEnv : subEnviosAceptados) {
+                            enviosBloque.add(subEnv);
+                            ResultadoRuta rutaSub = solucionSubAceptada.getRuta(subEnv);
+                            solucion.agregarRuta(subEnv, rutaSub);
+                        }
+
+                        // Remover el envío original de la solución principal
+                        solucion.getEnviosPlanificados().remove(env);
+                        solucion.getMapaRutas().remove(env.getOrigenOaci() + "-" + env.getId());
+                    }
+
+                    // Recalcular SLA promedio y ocupación del bloque con los nuevos envíos
+                    solucion.calcularPromedioConsumoSLA(inputMaestro.getMapaAeropuertos());
+                    int minutosVentana = (int) ChronoUnit.MINUTES.between(
+                            bloqueRes.getInicioVentana(), bloqueRes.getFinVentana());
+                    solucion.calcularEstadisticasOcupacion(
+                            indiceVuelos, mapaAeropuertos, bloqueRes.getInicioVentana(), minutosVentana);
+                }
+
                 // ¿Se pidió pausa o cancelación durante la ejecución del algoritmo?
                 paused = pauseFlags.get(simulacionId);
                 if (paused != null && paused) {
@@ -710,6 +828,7 @@ if (almacenDest != null && TimeUtils.intervaloAlmacenValido(idxInicioDest, idxFi
                         indiceVuelos, mapaAeropuertos, bloqueRes.getInicioVentana(), minutosVentana);
 
                 // 4. Guardar métricas del bloque
+                bloqueRes.setTotalEnvios(enviosBloque.size());
                 bloqueRes.setEnviosConRuta(solucion.enviosConRuta());
                 bloqueRes.setEnviosSinRuta(enviosBloque.size() - solucion.enviosConRuta());
                 bloqueRes.setPromedioSla(solucion.getPromedioConsumoSLA());
@@ -1101,5 +1220,15 @@ if (almacenDest != null && TimeUtils.intervaloAlmacenValido(idxInicioDest, idxFi
                 indice.put(clave, v);
             }
         }
+    }
+
+    private List<Integer> partition(int M, int P) {
+        List<Integer> parts = new ArrayList<>();
+        int base = M / P;
+        int remainder = M % P;
+        for (int i = 0; i < P; i++) {
+            parts.add(base + (i < remainder ? 1 : 0));
+        }
+        return parts;
     }
 }
