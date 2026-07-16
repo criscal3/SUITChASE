@@ -75,6 +75,8 @@ export const api = {
     request(`/aerolineas/${id}`, { method: "DELETE" }),
 
   getFlights: () => request<any[]>("/vuelos"),
+  clearFlights: () => request<void>("/vuelos", { method: "DELETE" }),
+  importFlights: (lines: string[]) => request<number>("/vuelos/importar", { method: "POST", body: lines }),
   getPedidosAfectadosHoy: (vueloId: string | number) =>
     request<any[]>(`/vuelos/${vueloId}/pedidos-afectados-hoy`),
   cancelarVueloHoy: (vueloId: string | number) =>

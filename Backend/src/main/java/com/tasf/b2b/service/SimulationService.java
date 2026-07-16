@@ -149,6 +149,65 @@ public class SimulationService {
     }
 
     // ========================================================
+    // REFRESCAR AEROPUERTOS (llamado desde AeropuertoController)
+    // ========================================================
+
+    /**
+     * Actualiza la capacidad de aeropuertos en todas las simulaciones activas.
+     * Se invoca de forma inmediata cuando se edita un aeropuerto en la pantalla de gestión,
+     * sin necesidad de esperar a que el bloque de simulación termine.
+     */
+    public void refrescarAeropuertosEnSimulacionesActivas() {
+        if (inputMaestroMap.isEmpty()) return;
+
+        List<com.tasf.b2b.core.AeropuertoAlgoritmo> aeropuertosActualizados =
+                aeropuertoRepository.findAll().stream()
+                        .map(dataMapper::toAeropuertoAlgoritmo)
+                        .collect(Collectors.toList());
+
+        for (Map.Entry<Long, PlanificationProblemInput> entry : inputMaestroMap.entrySet()) {
+            Long simId = entry.getKey();
+            PlanificationProblemInput im = entry.getValue();
+            for (com.tasf.b2b.core.AeropuertoAlgoritmo aero : aeropuertosActualizados) {
+                com.tasf.b2b.core.AeropuertoAlgoritmo existing = im.getAeropuerto(aero.getOaci());
+                if (existing == null || existing.getCapacidadAlmacen() != aero.getCapacidadAlmacen()) {
+                    im.agregarAeropuerto(aero);
+                    if (existing != null) {
+                        log.info("[Sim {}] Capacidad inmediata de {} actualizada: {} -> {}",
+                                simId, aero.getOaci(), existing.getCapacidadAlmacen(), aero.getCapacidadAlmacen());
+                    }
+                }
+            }
+        }
+        log.info("[Sim] Aeropuertos refrescados en {} simulaciones activas.", inputMaestroMap.size());
+    }
+
+    // ========================================================
+    // REFRESCAR VUELOS (llamado desde VueloController)
+    // ========================================================
+
+    /**
+     * Actualiza los vuelos en todas las simulaciones activas cargando la lista
+     * completa desde la BD. Se invoca cuando se importan, crean o eliminan vuelos
+     * en la pantalla de gestión, para que la planificación en curso los tome en cuenta.
+     * Preserva el estado de ocupación global acumulado entre bloques.
+     */
+    public void refrescarVuelosEnSimulacionesActivas() {
+        if (inputMaestroMap.isEmpty()) return;
+
+        List<com.tasf.b2b.core.VueloAlgoritmo> vuelosActualizados =
+                vueloRepository.findAll().stream()
+                        .map(dataMapper::toVueloAlgoritmo)
+                        .collect(Collectors.toList());
+
+        for (Map.Entry<Long, PlanificationProblemInput> entry : inputMaestroMap.entrySet()) {
+            Long simId = entry.getKey();
+            entry.getValue().resetearVuelos(vuelosActualizados);
+            log.info("[Sim {}] Vuelos refrescados: {} vuelos activos.", simId, vuelosActualizados.size());
+        }
+    }
+
+    // ========================================================
     // CANCELAR
     // ========================================================
     public void cancelarSimulacion(Long simulacionId) {
@@ -572,6 +631,21 @@ if (almacenDest != null && TimeUtils.intervaloAlmacenValido(idxInicioDest, idxFi
             indiceVuelosMap.put(simulacionId, indiceVuelos);
             log.info("InputMaestro creado para simulación {}", simulacionId);
         } else {
+            // Reanudación: refrescar capacidades de aeropuertos desde la BD para que
+            // los cambios hechos (ej. editar capacidad en pantalla de gestión) se reflejen.
+            List<AeropuertoAlgoritmo> aeropuertosActualizados = aeropuertoRepository.findAll().stream()
+                    .map(dataMapper::toAeropuertoAlgoritmo)
+                    .collect(Collectors.toList());
+            for (AeropuertoAlgoritmo aero : aeropuertosActualizados) {
+                AeropuertoAlgoritmo existing = inputMaestro.getAeropuerto(aero.getOaci());
+                if (existing == null || existing.getCapacidadAlmacen() != aero.getCapacidadAlmacen()) {
+                    inputMaestro.agregarAeropuerto(aero);
+                    if (existing != null) {
+                        log.info("[Sim {}] Capacidad de {} actualizada: {} -> {}",
+                                simulacionId, aero.getOaci(), existing.getCapacidadAlmacen(), aero.getCapacidadAlmacen());
+                    }
+                }
+            }
             log.info("InputMaestro reutilizado para simulación {} (continuando desde bloque {})", simulacionId, bloqueActual);
         }
 

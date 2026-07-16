@@ -14,6 +14,8 @@ import java.util.List;
 public class AeropuertoController {
 
     private final AeropuertoRepository aeropuertoRepository;
+    private final com.tasf.b2b.service.RealTimeSchedulerService rtSchedulerService;
+    private final com.tasf.b2b.service.SimulationService simulationService;
 
     @GetMapping
     public List<AeropuertoEntity> getAll() {
@@ -29,7 +31,10 @@ public class AeropuertoController {
 
     @PostMapping
     public AeropuertoEntity create(@RequestBody AeropuertoEntity aeropuerto) {
-        return aeropuertoRepository.save(aeropuerto);
+        AeropuertoEntity saved = aeropuertoRepository.save(aeropuerto);
+        rtSchedulerService.refrescarAeropuertos();
+        simulationService.refrescarAeropuertosEnSimulacionesActivas();
+        return saved;
     }
 
     @PutMapping("/{oaci}")
@@ -42,7 +47,11 @@ public class AeropuertoController {
             aeropuerto.setCapacidadAlmacen(details.getCapacidadAlmacen());
             aeropuerto.setLatitud(details.getLatitud());
             aeropuerto.setLongitud(details.getLongitud());
-            return ResponseEntity.ok(aeropuertoRepository.save(aeropuerto));
+            AeropuertoEntity saved = aeropuertoRepository.save(aeropuerto);
+            // Notificar al planificador y simulaciones para actualizar la capacidad en memoria
+            rtSchedulerService.refrescarAeropuertos();
+            simulationService.refrescarAeropuertosEnSimulacionesActivas();
+            return ResponseEntity.ok(saved);
         }).orElse(ResponseEntity.notFound().build());
     }
 

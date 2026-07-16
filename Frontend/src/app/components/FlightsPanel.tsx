@@ -81,12 +81,17 @@ export function FlightsPanel() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const text = ev.target?.result as string;
       const lines = text.split("\n").filter(l => l.trim().length > 0);
-      const count = batchImportFlights(lines);
-      setImportResult({ count, visible: true });
-      setTimeout(() => setImportResult(null), 5000);
+      try {
+        const count = await batchImportFlights(lines);
+        setImportResult({ count, visible: true });
+        setTimeout(() => setImportResult(null), 5000);
+        await fetchFlights();
+      } catch (err: any) {
+        toast.error(err?.message ?? "Error al importar vuelos");
+      }
     };
     reader.readAsText(file);
     e.target.value = "";
@@ -190,10 +195,16 @@ export function FlightsPanel() {
     setConfirmCancel(null);
   };
 
-  const doConfirmClearAll = () => {
-    clearFlights();
-    toast.success("Todos los vuelos han sido eliminados.");
-    setConfirmClearAll(false);
+  const doConfirmClearAll = async () => {
+    try {
+      await clearFlights();
+      toast.success("Todos los vuelos han sido eliminados.");
+      await fetchFlights();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Error al eliminar los vuelos");
+    } finally {
+      setConfirmClearAll(false);
+    }
   };
 
   const toggleSort = (field: SortField) => {
@@ -271,7 +282,7 @@ export function FlightsPanel() {
               <ArrowUpDown className="w-3 h-3" /> Capacidad
             </button>
             <button
-              onClick={() => { if (state.flights.length > 0) setConfirmClearAll(true); }}
+              onClick={() => { if (flightsList.length > 0) setConfirmClearAll(true); }}
               className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition-colors ${isDark ? "border-red-500/30 text-red-400 hover:bg-red-500/10" : "border-red-200 text-red-500 hover:bg-red-50"
                 }`}
             >
@@ -655,7 +666,7 @@ export function FlightsPanel() {
               </div>
               <h3 className={`text-[14px] mb-1 ${textPrimary}`}>Eliminar todos los vuelos</h3>
               <p className={`text-[12px] ${textSecondary}`}>
-                ¿Estás seguro de eliminar los <span className={textPrimary}>{state.flights.length} vuelos</span> cargados actualmente?
+                ¿Estás seguro de eliminar los <span className={textPrimary}>{flightsList.length} vuelos</span> cargados actualmente?
                 Esta acción no se puede deshacer y permite realizar una nueva carga masiva desde cero.
               </p>
             </div>

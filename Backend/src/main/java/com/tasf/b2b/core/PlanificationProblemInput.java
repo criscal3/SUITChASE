@@ -60,6 +60,19 @@ public class PlanificationProblemInput {
         vuelosPorOrigen.computeIfAbsent(v.getOrigenOaci(), k -> new ArrayList<>()).add(v);
     }
 
+    /**
+     * Reemplaza completamente la lista de vuelos en el inputMaestro sin tocar
+     * el estado de ocupación global. Útil para reflejar vuelos añadidos o
+     * eliminados desde la pantalla de gestión sin reinicializar todo el estado.
+     */
+    public void resetearVuelos(List<VueloAlgoritmo> nuevosVuelos) {
+        this.todosLosVuelos = new ArrayList<>(nuevosVuelos);
+        this.vuelosPorOrigen = new HashMap<>();
+        for (VueloAlgoritmo v : nuevosVuelos) {
+            vuelosPorOrigen.computeIfAbsent(v.getOrigenOaci(), k -> new ArrayList<>()).add(v);
+        }
+    }
+
     public List<VueloAlgoritmo> getTodosLosVuelos() {
         return todosLosVuelos;
     }

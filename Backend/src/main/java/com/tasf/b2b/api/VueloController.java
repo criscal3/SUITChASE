@@ -6,6 +6,9 @@ import com.tasf.b2b.domain.VueloEntity;
 import com.tasf.b2b.repository.AeropuertoRepository;
 import com.tasf.b2b.repository.VueloRepository;
 import com.tasf.b2b.service.RealTimeOperationsService;
+import com.tasf.b2b.service.RealTimeSchedulerService;
+import com.tasf.b2b.service.SimulationService;
+import com.tasf.b2b.service.VueloTransactionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,6 +26,8 @@ import com.tasf.b2b.domain.AsignacionRealEntity;
 import com.tasf.b2b.repository.CancelacionVueloRepository;
 import com.tasf.b2b.domain.CancelacionVueloEntity;
 import java.time.LocalDateTime;
+import com.tasf.b2b.repository.AsignacionEnvioRepository;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController
 @RequestMapping("/api/vuelos")
@@ -35,6 +40,10 @@ public class VueloController {
     private final RealTimeOperationsService rtService;
     private final AsignacionRealRepository asignacionRealRepository;
     private final CancelacionVueloRepository cancelacionVueloRepo;
+    private final AsignacionEnvioRepository asignacionEnvioRepository;
+    private final RealTimeSchedulerService rtSchedulerService;
+    private final SimulationService simulationService;
+    private final VueloTransactionService vueloTxService;
 
     @GetMapping("/cancelaciones-activas")
     @PreAuthorize("isAuthenticated()")
@@ -133,5 +142,77 @@ public class VueloController {
                         ? "No hay pedidos afectados por este vuelo hoy"
                         : pedidosAfectados + " pedido(s) regresado(s) a PENDIENTE para replanificación"
         ));
+    }
+
+    @DeleteMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteAllFlights() {
+        vueloTxService.borrarTodosLosVuelos();
+        // Notificar DESPUES del commit de la transaccion
+        rtSchedulerService.refrescarVuelos();
+        simulationService.refrescarVuelosEnSimulacionesActivas();
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/importar")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Integer> importarVuelos(@RequestBody List<String> lineas) {
+        Set<String> aeropuertosExistentes = aeropuertoRepository.findAll().stream()
+                .map(AeropuertoEntity::getOaci)
+                .collect(Collectors.toSet());
+
+        List<VueloEntity> nuevosVuelos = new java.util.ArrayList<>();
+        for (String linea : lineas) {
+            if (linea == null) continue;
+            linea = linea.trim();
+            if (linea.isEmpty()) continue;
+
+            String[] parts = linea.split("-");
+            if (parts.length >= 5) {
+                String origen = parts[0].trim().toUpperCase();
+                String destino = parts[1].trim().toUpperCase();
+                String salidaStr = parts[2].trim();
+                String llegadaStr = parts[3].trim();
+                String capStr = parts[4].trim();
+
+                if (!aeropuertosExistentes.contains(origen) || !aeropuertosExistentes.contains(destino)) {
+                    continue;
+                }
+
+                try {
+                    LocalTime horaSalida = parseTime(salidaStr);
+                    LocalTime horaLlegada = parseTime(llegadaStr);
+                    Integer capacidad = Integer.parseInt(capStr);
+
+                    VueloEntity vuelo = new VueloEntity();
+                    vuelo.setOrigenOaci(origen);
+                    vuelo.setDestinoOaci(destino);
+                    vuelo.setHoraSalida(horaSalida);
+                    vuelo.setHoraLlegada(horaLlegada);
+                    vuelo.setCapacidad(capacidad);
+
+                    nuevosVuelos.add(vuelo);
+                } catch (Exception e) {
+                    // Ignorar lineas invalidas
+                }
+            }
+        }
+
+        int count = vueloTxService.guardarVuelos(nuevosVuelos);
+        // Notificar DESPUES del commit de la transaccion
+        if (count > 0) {
+            rtSchedulerService.refrescarVuelos();
+            simulationService.refrescarVuelosEnSimulacionesActivas();
+        }
+        return ResponseEntity.ok(count);
+    }
+
+    private LocalTime parseTime(String timeStr) {
+        timeStr = timeStr.trim();
+        String[] parts = timeStr.split(":");
+        int hour = Integer.parseInt(parts[0]);
+        int minute = Integer.parseInt(parts[1]);
+        int second = parts.length > 2 ? Integer.parseInt(parts[2]) : 0;
+        return LocalTime.of(hour, minute, second);
     }
 }

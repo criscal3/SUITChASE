@@ -53,6 +53,10 @@ public class RealTimeSchedulerService {
 
         if (!initialized) {
             inicializarInputMaestro();
+        } else {
+            // Refrescar capacidades de aeropuertos desde la BD en cada ciclo,
+            // sin perder el estado de ocupación global acumulado.
+            actualizarCapacidadesAeropuertos();
         }
 
         // Actualizar cancelaciones activas
@@ -330,6 +334,61 @@ public class RealTimeSchedulerService {
         initialized = true;
         log.info("[TiempoReal] Input maestro inicializado: {} aeropuertos, {} vuelos",
                 aeropuertos.size(), vuelos.size());
+    }
+
+    /**
+     * Método público para refrescar los aeropuertos desde la BD de forma inmediata.
+     * Llamado por AeropuertoController tras crear o actualizar un aeropuerto.
+     */
+    public void refrescarAeropuertos() {
+        if (!initialized) {
+            return; // Todavía no se ha inicializado; la primera inicialización ya leerá los datos frescos
+        }
+        actualizarCapacidadesAeropuertos();
+        log.info("[TiempoReal] Aeropuertos refrescados desde BD por evento externo.");
+    }
+
+    /**
+     * Método público para refrescar los vuelos desde la BD de forma inmediata.
+     * Llamado por VueloController tras importar, crear o eliminar vuelos.
+     * Reemplaza la lista de vuelos en inputMaestro sin perder el estado de
+     * ocupación global acumulado entre ciclos.
+     */
+    public void refrescarVuelos() {
+        if (!initialized) {
+            return; // La primera inicialización ya leerá datos frescos
+        }
+        List<VueloAlgoritmo> vuelosActualizados = vueloRepository.findAll().stream()
+                .map(dataMapper::toVueloAlgoritmo)
+                .collect(Collectors.toList());
+        inputMaestro.resetearVuelos(vuelosActualizados);
+        log.info("[TiempoReal] Vuelos refrescados desde BD: {} vuelos activos.", vuelosActualizados.size());
+    }
+
+    /**
+     * Recarga las capacidades de todos los aeropuertos desde la base de datos
+     * y actualiza el mapa interno de inputMaestro. Se llama al inicio de cada
+     * ciclo de planificación para reflejar cambios hechos en la pantalla de
+     * gestión sin reinicializar el estado de ocupación global acumulado.
+     */
+    private void actualizarCapacidadesAeropuertos() {
+        List<AeropuertoAlgoritmo> aeropuertosActualizados = aeropuertoRepository.findAll().stream()
+                .map(dataMapper::toAeropuertoAlgoritmo)
+                .collect(Collectors.toList());
+
+        for (AeropuertoAlgoritmo aero : aeropuertosActualizados) {
+            AeropuertoAlgoritmo existing = inputMaestro.getAeropuerto(aero.getOaci());
+            if (existing == null) {
+                // Aeropuerto nuevo: agregarlo
+                inputMaestro.agregarAeropuerto(aero);
+                log.info("[TiempoReal] Nuevo aeropuerto detectado: {}", aero.getOaci());
+            } else if (existing.getCapacidadAlmacen() != aero.getCapacidadAlmacen()) {
+                // Capacidad modificada: reemplazar el objeto en el mapa
+                inputMaestro.agregarAeropuerto(aero);
+                log.info("[TiempoReal] Capacidad actualizada para {}: {} -> {}",
+                        aero.getOaci(), existing.getCapacidadAlmacen(), aero.getCapacidadAlmacen());
+            }
+        }
     }
 
     private Long buscarVueloId(VueloAlgoritmo vuelo) {

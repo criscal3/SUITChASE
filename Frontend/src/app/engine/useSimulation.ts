@@ -144,7 +144,27 @@ export function useSimulation() {
   const fetchFlightCapacities = useCallback(async () => {
     try {
       const data = await api.getFlights();
-      if (!data?.length) return;
+      if (!data?.length) {
+        flightTemplateCapacitiesRef.current = {};
+        setState(prev => ({ ...prev, flights: [] }));
+        return;
+      }
+
+      setState(prev => ({
+        ...prev,
+        flights: data.map((f: any) => ({
+          id: f.id,
+          origin: f.origin || f.origenOaci,
+          destination: f.destination || f.destinoOaci,
+          departureHour: f.departureHour,
+          transitHours: f.transitHours,
+          capacity: f.capacity || f.capacidad,
+          currentLoad: 0,
+          cancelled: f.cancelled || false,
+          intercontinental: f.intercontinental || false,
+        }))
+      }));
+
       const templateIndex: CapacidadesVuelosPorClave = {};
       for (const f of data) {
         const origen = String(f.origenOaci || f.origin || "").toUpperCase();
@@ -1188,7 +1208,15 @@ export function useSimulation() {
   const handleCancelFlight = useCallback((flightId: string) => { }, []);
   const registerBaggage = useCallback(() => { }, []);
   const batchImportBaggage = useCallback(() => 0, []);
-  const batchImportFlights = useCallback(() => 0, []);
+  const clearFlights = useCallback(async () => {
+    await api.clearFlights();
+    await fetchFlightCapacities();
+  }, [fetchFlightCapacities]);
+  const batchImportFlights = useCallback(async (lines: string[]) => {
+    const count = await api.importFlights(lines);
+    await fetchFlightCapacities();
+    return count;
+  }, [fetchFlightCapacities]);
   const batchImportAirports = useCallback(() => 0, []);
   const addAirport = useCallback(() => { }, []);
   const updateAirport = useCallback(() => { }, []);
@@ -1221,6 +1249,7 @@ export function useSimulation() {
     registerBaggage,
     batchImportBaggage,
     batchImportFlights,
+    clearFlights,
     batchImportAirports,
     addAirport,
     updateAirport,
