@@ -269,7 +269,7 @@ export function FlightCancellationCard({ isRealTime = false }: { isRealTime?: bo
         <div className="flex flex-col gap-1">
           <label className={`text-[10px] uppercase font-bold tracking-wider ${textSecondary}`}>Origen</label>
           <select 
-            className={`w-full text-xs p-1.5 rounded border outline-none ${isDark ? "bg-[#1e293b] border-[#334155] text-white" : "bg-white border-gray-300"}`}
+            className={`w-full text-xs p-1.5 rounded border outline-none ${isDark ? "bg-[#1e293b] border-[#334155] text-white" : "bg-white border-gray-300 text-[#0f172a]"}`}
             value={origin} 
             onChange={e => {
               setOrigin(e.target.value);
@@ -285,7 +285,7 @@ export function FlightCancellationCard({ isRealTime = false }: { isRealTime?: bo
         <div className="flex flex-col gap-1">
           <label className={`text-[10px] uppercase font-bold tracking-wider ${textSecondary}`}>Destino</label>
           <select 
-            className={`w-full text-xs p-1.5 rounded border outline-none ${isDark ? "bg-[#1e293b] border-[#334155] text-white" : "bg-white border-gray-300"}`}
+            className={`w-full text-xs p-1.5 rounded border outline-none ${isDark ? "bg-[#1e293b] border-[#334155] text-white" : "bg-white border-gray-300 text-[#0f172a]"}`}
             value={destination} 
             onChange={e => {
               setDestination(e.target.value);
@@ -301,7 +301,7 @@ export function FlightCancellationCard({ isRealTime = false }: { isRealTime?: bo
         <div className="flex flex-col gap-1">
           <label className={`text-[10px] uppercase font-bold tracking-wider ${textSecondary}`}>Hora de Salida (Próx. 24h)</label>
           <select 
-            className={`w-full text-xs p-1.5 rounded border outline-none ${isDark ? "bg-[#1e293b] border-[#334155] text-white" : "bg-white border-gray-300"}`}
+            className={`w-full text-xs p-1.5 rounded border outline-none ${isDark ? "bg-[#1e293b] border-[#334155] text-white" : "bg-white border-gray-300 text-[#0f172a]"}`}
             value={timeValue} 
             onChange={e => handleSelectTime(e.target.value)}
             disabled={!destination}
