@@ -174,12 +174,6 @@ export function AirlineTracking() {
 
   return (
     <div className={`h-full flex flex-col relative transition-colors duration-200 ${rootBg}`}>
-      {/* Título */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center py-3 pointer-events-none">
-        <h1 className={`text-[18px] tracking-wider ${isDark ? "text-cyan-400" : "text-blue-800 font-bold"}`} style={{ textShadow: isDark ? "0 0 20px #00e5ff60" : "none" }}>
-          Tracking de Equipaje — Aerolínea
-        </h1>
-      </div>
 
       <div className="flex-1 flex relative overflow-hidden">
         {/* Mapa */}
