@@ -49,6 +49,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/tiempo-real/mis-pedidos").hasRole("AEROLINEA")
                 .requestMatchers(HttpMethod.GET, "/api/tiempo-real/pedido/**").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/tiempo-real/pedidos").hasAnyRole("ADMIN", "OPERARIO")
+                .requestMatchers(HttpMethod.POST, "/api/tiempo-real/pedidos/lote").hasAnyRole("ADMIN", "OPERARIO")
 
                 // --- ADMIN solamente ---
                 .requestMatchers("/api/auth/registro").hasRole("ADMIN")
