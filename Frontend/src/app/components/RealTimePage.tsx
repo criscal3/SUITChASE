@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useOutletContext } from "react-router";
 import { useTheme } from "../context/ThemeContext";
-import { RealTimeMap, getRealTimeFlightCapacity } from "./RealTimeMap";
+import { getRealTimeFlightCapacity, RealTimeMap } from "./RealTimeMap";
+import { getOccupancyColor, computeUtilizationPercent } from "../engine/occupancyStatus";
 import { RealTimeWebSocketClient } from "../services/realTimeWebSocket";
 import { api } from "../services/api";
 import { ScrollArea } from "./ui/scroll-area";
@@ -10,7 +11,6 @@ import { Badge } from "./ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Search, Package, MapPin, Plane, CheckCircle, AlertTriangle, Clock, ChevronRight, X, Radio, Warehouse, ChevronUp, ChevronDown } from "lucide-react";
 import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
-import { computeUtilizationPercent, getOccupancyColor } from "../engine/occupancyStatus";
 import { FlightMonitoringPanel, type FlightItem } from "./FlightMonitoringPanel";
 import { WarehouseMonitoringPanel, type WarehouseItem, type WarehouseShipmentItem } from "./WarehouseMonitoringPanel";
 
@@ -808,8 +808,8 @@ export function RealTimePage() {
                                   </div>
                                   <div className="flex items-start gap-2">
                                     <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isCancelled ? "bg-red-500/50" :
-                                        isCompleted ? "bg-green-500" :
-                                          isCurrent ? "bg-cyan-500 animate-pulse" : dotInactive
+                                      isCompleted ? "bg-green-500" :
+                                        isCurrent ? "bg-cyan-500 animate-pulse" : dotInactive
                                       }`} />
                                     <div className="flex-1">
                                       <div className={`text-[10px] font-semibold ${isCancelled ? (isDark ? "text-red-400/70" : "text-red-600/70") : titleCls
@@ -899,10 +899,10 @@ export function RealTimePage() {
                         onClick={() => setPedidosPage(prev => Math.max(prev - 1, 1))}
                         disabled={pedidosPage === 1}
                         className={`px-2 py-1 rounded border transition-colors font-medium ${pedidosPage === 1
-                            ? "opacity-40 cursor-not-allowed border-transparent"
-                            : isDark
-                              ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
-                              : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+                          ? "opacity-40 cursor-not-allowed border-transparent"
+                          : isDark
+                            ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
+                            : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
                           }`}
                       >
                         Anterior
@@ -914,10 +914,10 @@ export function RealTimePage() {
                         onClick={() => setPedidosPage(prev => Math.min(prev + 1, totalPedidosPages))}
                         disabled={pedidosPage === totalPedidosPages}
                         className={`px-2 py-1 rounded border transition-colors font-medium ${pedidosPage === totalPedidosPages
-                            ? "opacity-40 cursor-not-allowed border-transparent"
-                            : isDark
-                              ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
-                              : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+                          ? "opacity-40 cursor-not-allowed border-transparent"
+                          : isDark
+                            ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
+                            : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
                           }`}
                       >
                         Siguiente

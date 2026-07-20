@@ -39,7 +39,7 @@ export function FlightMonitoringPanel({
 }: FlightMonitoringPanelProps) {
   // Search state (transient)
   const [search, setSearch] = useState("");
-  
+
   // Filter state (semi-permanent)
   const [showFilters, setShowFilters] = useState(false);
   const [filterOrigin, setFilterOrigin] = useState("all");
@@ -92,7 +92,7 @@ export function FlightMonitoringPanel({
     }
     if (filterShipment.trim()) {
       const q = filterShipment.toLowerCase().trim();
-      result = result.filter(f => 
+      result = result.filter(f =>
         f.id.toLowerCase().includes(q)
       );
     }
@@ -100,7 +100,7 @@ export function FlightMonitoringPanel({
     // 2. Apply search query (transient)
     if (search.trim()) {
       const q = search.toLowerCase().trim();
-      result = result.filter(f => 
+      result = result.filter(f =>
         f.id.toLowerCase().includes(q) ||
         f.fromCode.toLowerCase().includes(q) ||
         f.toCode.toLowerCase().includes(q) ||
@@ -147,7 +147,7 @@ export function FlightMonitoringPanel({
   }, [filterOrigin, filterDest, filterShipment, search, sortBy, sortOrder]);
 
   const totalPages = Math.ceil(processedFlights.length / pageSize);
-  
+
   const paginatedFlights = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     return processedFlights.slice(startIndex, startIndex + pageSize);
@@ -235,13 +235,12 @@ export function FlightMonitoringPanel({
 
       {/* Barra de Filtros y Ordenamiento */}
       <div className={`px-3 py-1.5 border-b ${headerBorder} bg-black/5 flex items-center justify-between gap-1`}>
-        <button 
+        <button
           onClick={() => setShowFilters(!showFilters)}
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors ${
-            showFilters || filterOrigin !== "all" || filterDest !== "all" || filterShipment
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors ${showFilters || filterOrigin !== "all" || filterDest !== "all" || filterShipment
               ? "border-cyan-500/50 text-cyan-400 bg-cyan-500/5"
               : isDark ? "border-[#1e293b] text-white/70 hover:text-white" : "border-[#cbd5e1] text-[#475569] hover:text-[#111827]"
-          }`}
+            }`}
         >
           <Filter className="w-3 h-3" />
           <span>Filtros</span>
@@ -321,9 +320,8 @@ export function FlightMonitoringPanel({
           {(filterOrigin !== "all" || filterDest !== "all" || filterShipment) && (
             <button
               onClick={handleClearFilters}
-              className={`w-full text-center py-1 mt-1 text-[9px] font-bold rounded transition-colors ${
-                isDark ? "bg-red-950/20 text-red-400 hover:bg-red-950/40" : "bg-red-50 text-red-600 hover:bg-red-100"
-              }`}
+              className={`w-full text-center py-1 mt-1 text-[9px] font-bold rounded transition-colors ${isDark ? "bg-red-950/20 text-red-400 hover:bg-red-950/40" : "bg-red-50 text-red-600 hover:bg-red-100"
+                }`}
             >
               Limpiar filtros
             </button>
@@ -338,9 +336,8 @@ export function FlightMonitoringPanel({
         return (
           <div className={`px-2 pt-2 pb-0 shrink-0 border-b ${headerBorder}`}>
             {/* Etiqueta de pinned */}
-            <div className={`mb-1 px-1.5 py-0.5 flex items-center gap-1 text-[9px] font-semibold rounded ${
-              isDark ? "text-cyan-400/80" : "text-blue-600/80"
-            }`}>
+            <div className={`mb-1 px-1.5 py-0.5 flex items-center gap-1 text-[9px] font-semibold rounded ${isDark ? "text-cyan-400/80" : "text-blue-600/80"
+              }`}>
               <MapPin className="w-2.5 h-2.5" />
               <span>Vuelo fijado</span>
               <button
@@ -433,9 +430,8 @@ export function FlightMonitoringPanel({
             return (
               <div
                 key={f.key}
-                className={`rounded-md mb-1.5 border transition-all overflow-hidden ${
-                  isSelected ? activeRow : `${hoverRow} border-transparent`
-                }`}
+                className={`rounded-md mb-1.5 border transition-all overflow-hidden ${isSelected ? activeRow : `${hoverRow} border-transparent`
+                  }`}
               >
                 {/* Cabecera del Vuelo */}
                 <button
@@ -519,13 +515,12 @@ export function FlightMonitoringPanel({
           <button
             onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
             disabled={currentPage === 1}
-            className={`px-2 py-1 rounded border transition-colors font-medium ${
-              currentPage === 1
+            className={`px-2 py-1 rounded border transition-colors font-medium ${currentPage === 1
                 ? "opacity-40 cursor-not-allowed border-transparent"
                 : isDark
                   ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
                   : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
-            }`}
+              }`}
           >
             Anterior
           </button>
@@ -535,13 +530,12 @@ export function FlightMonitoringPanel({
           <button
             onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
             disabled={currentPage === totalPages}
-            className={`px-2 py-1 rounded border transition-colors font-medium ${
-              currentPage === totalPages
+            className={`px-2 py-1 rounded border transition-colors font-medium ${currentPage === totalPages
                 ? "opacity-40 cursor-not-allowed border-transparent"
                 : isDark
                   ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
                   : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
-            }`}
+              }`}
           >
             Siguiente
           </button>

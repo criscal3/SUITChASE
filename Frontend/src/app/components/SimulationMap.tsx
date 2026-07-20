@@ -162,12 +162,12 @@ function AirportTower3D({ color, util, isDark }: { color: string; util: number; 
         {/* Shaft */}
         <path d={`M0,1 L-1.5,0 L-1.5,-${h} L0,-${h - 1} Z`} fill={color} opacity={0.8} />
         <path d={`M0,1 L1.5,0 L1.5,-${h} L0,-${h - 1} Z`} fill={color} opacity={0.6} />
-        
+
         {/* Cabin */}
         <path d={`M0,-${h - 1} L-3,-${h} L-3,-${h + 3.5} L0,-${h + 2.5} Z`} fill={color} opacity={0.9} />
         <path d={`M0,-${h - 1} L3,-${h} L3,-${h + 3.5} L0,-${h + 2.5} Z`} fill={color} opacity={0.7} />
         <path d={`M0,-${h + 2.5} L-3,-${h + 3.5} L0,-${h + 4.5} L3,-${h + 3.5} Z`} fill={color} />
-        
+
         {/* Antenna */}
         <line x1={0} y1={-(h + 3.5)} x2={0} y2={-(h + 7.5)} stroke={color} strokeWidth={0.8} />
         <circle cx={0} cy={-(h + 7.5)} r={1} fill={color} />
@@ -214,16 +214,16 @@ export function SimulationMap({
   const activeFilters = filters ?? defaultFilters;
 
   const s = 1 / position.zoom;
-  const mapBg      = getOceanColor();
-  const geoFill    = isDark ? "#0c1a30"  : "#b0c4d8"; // Default
-  const geoStroke  = isDark ? "#1a2744"  : "#8fafc8";
-  const geoHover   = isDark ? "#0f203d"  : "#9ab8cc";
+  const mapBg = getOceanColor();
+  const geoFill = isDark ? "#0c1a30" : "#b0c4d8"; // Default
+  const geoStroke = isDark ? "#1a2744" : "#8fafc8";
+  const geoHover = isDark ? "#0f203d" : "#9ab8cc";
   const activeGeoFill = getActiveCountryColor();
-  const tooltipBg  = isDark ? "bg-[#0a0f1ef0] border-[#1a2744]" : "bg-white/95 border-[#b0c4d8]";
+  const tooltipBg = isDark ? "bg-[#0a0f1ef0] border-[#1a2744]" : "bg-white/95 border-[#b0c4d8]";
   const tooltipTitle = isDark ? "text-cyan-400" : "text-blue-700";
   const tooltipSub = isDark ? "text-white/70" : "text-[#374151]";
   const tooltipVal = isDark ? "text-white" : "text-[#111827]";
-  const labelFill  = isDark ? "#fff" : "#1e3a5f";
+  const labelFill = isDark ? "#fff" : "#1e3a5f";
 
   useEffect(() => {
     if (selectedBaggage) {
@@ -357,10 +357,10 @@ export function SimulationMap({
         if (total <= 0) continue;
         const progress = (state.currentTime - leg.departureTime) / total;
         const routeKey = leg.claveVuelo || `${leg.from}-${leg.to}-${leg.departureTime}`;
-        
+
         // Skip cancelled flights
         if (state.cancelledFlights.has(routeKey)) continue;
-        
+
         const intercontinental = isIntercontinentalRoute(leg.from, leg.to, airportsList);
         const metrics = computeFlightMetrics(leg.claveVuelo, flightOccupancy, flightCapacities);
 
@@ -416,7 +416,7 @@ export function SimulationMap({
         planesMap.set(key, { ...p });
       }
     }
-    
+
     const uniquePlanes = Array.from(planesMap.values()).filter((plane) => {
       // Filter flights based on occupancy level and active filters
       const planeLevel = getOccupancyLevel(plane.utilization ?? 0);
@@ -545,9 +545,9 @@ export function SimulationMap({
                 const isCountryActive = airportsList.some(
                   (a) => checkCountryMatch(a.country, countryNameEn)
                 );
-                
+
                 const centroid = geoCentroid(geo);
-                
+
                 return (
                   <React.Fragment key={geo.rsmKey}>
                     <Geography
@@ -613,40 +613,40 @@ export function SimulationMap({
               if (!selectionMatch) return null;
 
               return (
-              <Marker key={point.code} coordinates={[point.lng, point.lat]}>
-                <g
-                  style={{ cursor: "pointer" }}
-                  transform={`scale(${s * WAREHOUSE_SCALE})`}
-                  onClick={() => {
-                    if (onSelectAirport) {
-                      onSelectAirport(point.code);
-                    }
-                  }}
-                  onMouseEnter={(e) => {
-                    const ap = state.airports[point.code];
-                    setHovered({
-                      kind: "airport",
-                      code: point.code,
-                      city: point.city,
-                      stock: ap?.currentStock || 0,
-                      capacity: ap?.capacity || 0,
-                      utilization: point.utilization,
-                      x: e.clientX,
-                      y: e.clientY,
-                    });
-                  }}
-                  onMouseLeave={() => setHovered(null)}
-                >
-                  <AirportTower3D color={point.color} util={point.utilization} isDark={isDark} />
-                  {settings.showAirportLabels && (
-                  <text
-                    textAnchor="middle"
-                    y={10}
-                    style={{ fill: labelFill, fontSize: `${Math.max(4, 3 + position.zoom * 0.8)}px`, pointerEvents: "none", textShadow: "0px 0px 2px rgba(0,0,0,0.5)" }}
+                <Marker key={point.code} coordinates={[point.lng, point.lat]}>
+                  <g
+                    style={{ cursor: "pointer" }}
+                    transform={`scale(${s * WAREHOUSE_SCALE})`}
+                    onClick={() => {
+                      if (onSelectAirport) {
+                        onSelectAirport(point.code);
+                      }
+                    }}
+                    onMouseEnter={(e) => {
+                      const ap = state.airports[point.code];
+                      setHovered({
+                        kind: "airport",
+                        code: point.code,
+                        city: point.city,
+                        stock: ap?.currentStock || 0,
+                        capacity: ap?.capacity || 0,
+                        utilization: point.utilization,
+                        x: e.clientX,
+                        y: e.clientY,
+                      });
+                    }}
+                    onMouseLeave={() => setHovered(null)}
                   >
-                    {point.code}
-                  </text>
-                  )}
+                    <AirportTower3D color={point.color} util={point.utilization} isDark={isDark} />
+                    {settings.showAirportLabels && (
+                      <text
+                        textAnchor="middle"
+                        y={10}
+                        style={{ fill: labelFill, fontSize: `${Math.max(4, 3 + position.zoom * 0.8)}px`, pointerEvents: "none", textShadow: "0px 0px 2px rgba(0,0,0,0.5)" }}
+                      >
+                        {point.code}
+                      </text>
+                    )}
                   </g>
                 </Marker>
               );
@@ -702,10 +702,10 @@ export function SimulationMap({
                 const isCountryActive = airportsList.some(
                   (a) => checkCountryMatch(a.country, countryNameEn)
                 );
-                
+
                 if (!settings.showCountryNames || !isCountryActive) return null;
                 const centroid = geoCentroid(geo);
-                
+
                 return (
                   <Marker key={`label-${geo.rsmKey}`} coordinates={centroid}>
                     <g transform={`scale(${s})`}>

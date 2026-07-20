@@ -2371,8 +2371,8 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
                   URL.revokeObjectURL(url);
                 }}
                 className={`px-4 py-2 w-full flex items-center justify-center gap-2 rounded-lg text-[12px] font-semibold transition-colors ${isDark
-                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30"
-                    : "bg-blue-600/10 text-blue-700 border border-blue-600/20 hover:bg-blue-600/20"
+                  ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30"
+                  : "bg-blue-600/10 text-blue-700 border border-blue-600/20 hover:bg-blue-600/20"
                   }`}
               >
                 <Download className="w-4 h-4" />

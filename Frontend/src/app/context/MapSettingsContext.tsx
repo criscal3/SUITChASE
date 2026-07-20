@@ -84,7 +84,7 @@ export function MapSettingsProvider({ children }: { children: React.ReactNode })
     try {
       const saved = localStorage.getItem("suit-map-settings");
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch { }
     return defaultSettings;
   });
 

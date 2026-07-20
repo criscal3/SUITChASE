@@ -43,8 +43,8 @@ export function MapSettingsPanel() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`p-2 rounded-full border shadow-md backdrop-blur-md transition-colors ${isDark
-            ? "bg-[#0f172a]/80 border-[#1e293b] hover:bg-[#1e293b] text-white"
-            : "bg-white/80 border-[#cbd5e1] hover:bg-slate-100 text-[#111827]"
+          ? "bg-[#0f172a]/80 border-[#1e293b] hover:bg-[#1e293b] text-white"
+          : "bg-white/80 border-[#cbd5e1] hover:bg-slate-100 text-[#111827]"
           }`}
         title="Configuración del Mapa"
       >
@@ -161,12 +161,12 @@ export function MapSettingsPanel() {
                       key={value}
                       onClick={() => updateSetting("flownPathStyle", value)}
                       className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all ${isSelected
-                          ? isDark
-                            ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300"
-                            : "bg-blue-100 border-blue-400 text-blue-700"
-                          : isDark
-                            ? "bg-transparent border-[#1e293b] text-white/50 hover:text-white/80 hover:border-white/20"
-                            : "bg-transparent border-[#cbd5e1] text-gray-400 hover:text-gray-600 hover:border-gray-400"
+                        ? isDark
+                          ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300"
+                          : "bg-blue-100 border-blue-400 text-blue-700"
+                        : isDark
+                          ? "bg-transparent border-[#1e293b] text-white/50 hover:text-white/80 hover:border-white/20"
+                          : "bg-transparent border-[#cbd5e1] text-gray-400 hover:text-gray-600 hover:border-gray-400"
                         }`}
                     >
                       <span className={isSelected ? (isDark ? "text-cyan-300" : "text-blue-600") : ""}>{icon}</span>
@@ -213,8 +213,8 @@ export function MapSettingsPanel() {
             <button
               onClick={resetToDefaults}
               className={`w-full mt-2 py-2 flex items-center justify-center gap-2 rounded-lg text-[12px] font-semibold transition-colors ${isDark
-                  ? "bg-red-950/30 text-red-400 hover:bg-red-950/50 border border-red-900/50"
-                  : "bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
+                ? "bg-red-950/30 text-red-400 hover:bg-red-950/50 border border-red-900/50"
+                : "bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
                 }`}
             >
               <RefreshCw className="w-3.5 h-3.5" />

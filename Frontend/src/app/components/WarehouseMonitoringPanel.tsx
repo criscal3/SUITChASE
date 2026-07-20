@@ -321,9 +321,8 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
         return (
           <div className={`px-2 pt-2 pb-0 shrink-0 border-b ${headerBorder}`}>
             {/* Etiqueta de pinned */}
-            <div className={`mb-1 px-1.5 py-0.5 flex items-center gap-1 text-[9px] font-semibold rounded ${
-              isDark ? "text-cyan-400/80" : "text-blue-600/80"
-            }`}>
+            <div className={`mb-1 px-1.5 py-0.5 flex items-center gap-1 text-[9px] font-semibold rounded ${isDark ? "text-cyan-400/80" : "text-blue-600/80"
+              }`}>
               <MapPin className="w-2.5 h-2.5" />
               <span>Almacén fijado</span>
               <button
@@ -340,11 +339,10 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
             </div>
 
             <div
-              className={`rounded-md mb-2 border transition-all overflow-hidden ${
-                isDark
+              className={`rounded-md mb-2 border transition-all overflow-hidden ${isDark
                   ? "border-cyan-400/70 bg-cyan-500/10 shadow-[0_0_8px_#00e5ff30]"
                   : "border-blue-500/60 bg-blue-50 shadow-sm"
-              }`}
+                }`}
             >
               {/* Cabecera del almacén fijado */}
               <div
@@ -406,11 +404,10 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                     </span>
                     <button
                       onClick={() => toggleAllSections(w.code)}
-                      className={`text-[8.5px] font-semibold not-italic px-1.5 py-0.5 rounded border transition-colors ${
-                        isDark 
-                          ? "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10" 
+                      className={`text-[8.5px] font-semibold not-italic px-1.5 py-0.5 rounded border transition-colors ${isDark
+                          ? "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
                           : "border-blue-400/40 text-blue-700 hover:bg-blue-50"
-                      }`}
+                        }`}
                     >
                       {areAllSectionsOpen(w.code) ? "Contraer todos" : "Expandir todos"}
                     </button>
@@ -575,13 +572,12 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
             return (
               <div
                 key={w.code}
-                className={`rounded-md mb-1.5 border transition-all overflow-hidden ${
-                  isShipmentMatch && searchTerm
+                className={`rounded-md mb-1.5 border transition-all overflow-hidden ${isShipmentMatch && searchTerm
                     ? isDark
                       ? "border-cyan-500/40 bg-cyan-500/5"
                       : "border-blue-400/50 bg-blue-50"
                     : "border-transparent"
-                }`}
+                  }`}
               >
                 {/* Cabecera del almacén */}
                 <div
@@ -646,11 +642,10 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
                       </span>
                       <button
                         onClick={() => toggleAllSections(w.code)}
-                        className={`text-[8.5px] font-semibold not-italic px-1.5 py-0.5 rounded border transition-colors ${
-                          isDark 
-                            ? "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10" 
+                        className={`text-[8.5px] font-semibold not-italic px-1.5 py-0.5 rounded border transition-colors ${isDark
+                            ? "border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
                             : "border-blue-400/40 text-blue-700 hover:bg-blue-50"
-                        }`}
+                          }`}
                       >
                         {areAllSectionsOpen(w.code) ? "Contraer todos" : "Expandir todos"}
                       </button>
@@ -817,10 +812,10 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
             onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
             disabled={currentPage === 1}
             className={`px-2 py-1 rounded border transition-colors font-medium ${currentPage === 1
-                ? "opacity-40 cursor-not-allowed border-transparent"
-                : isDark
-                  ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
-                  : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+              ? "opacity-40 cursor-not-allowed border-transparent"
+              : isDark
+                ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
+                : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
               }`}
           >
             Anterior
@@ -834,10 +829,10 @@ export function WarehouseMonitoringPanel({ warehouses, isDark, selectedCode, onD
             onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
             disabled={currentPage === totalPages}
             className={`px-2 py-1 rounded border transition-colors font-medium ${currentPage === totalPages
-                ? "opacity-40 cursor-not-allowed border-transparent"
-                : isDark
-                  ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
-                  : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+              ? "opacity-40 cursor-not-allowed border-transparent"
+              : isDark
+                ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]/50"
+                : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
               }`}
           >
             Siguiente

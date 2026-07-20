@@ -1,6 +1,6 @@
 /** Umbrales de ocupación (almacenes y vuelos) — alineados con la leyenda "Estado". */
-export const OCCUPANCY_NORMAL_MAX = 50;
-export const OCCUPANCY_SATURATED_MIN = 80;
+export const OCCUPANCY_NORMAL_MAX = 30;
+export const OCCUPANCY_SATURATED_MIN = 60;
 
 export type OccupancyLevel = "empty" | "normal" | "moderate" | "saturated";
 

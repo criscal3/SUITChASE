@@ -62,9 +62,9 @@ export function OccupancyLegend({
 
   const allOccupancySelected = useMemo(() => {
     return filters.empty.warehouse && filters.empty.flight &&
-           filters.normal.warehouse && filters.normal.flight &&
-           filters.moderate.warehouse && filters.moderate.flight &&
-           filters.saturated.warehouse && filters.saturated.flight;
+      filters.normal.warehouse && filters.normal.flight &&
+      filters.moderate.warehouse && filters.moderate.flight &&
+      filters.saturated.warehouse && filters.saturated.flight;
   }, [filters]);
 
   const allRoutesSelected = useMemo(() => {
@@ -109,11 +109,10 @@ export function OccupancyLegend({
               updated.saturated.flight = false;
               updateFilters(updated);
             }}
-            className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${
-              isDark
+            className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${isDark
                 ? "bg-[#2d3748] hover:bg-[#4a5568] text-[#cbd5e1]"
                 : "bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#475569]"
-            }`}
+              }`}
             title="Deseleccionar todas las opciones de ocupación"
           >
             Deseleccionar todas
@@ -132,11 +131,10 @@ export function OccupancyLegend({
               updated.saturated.flight = true;
               updateFilters(updated);
             }}
-            className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${
-              isDark
+            className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${isDark
                 ? "bg-[#2d3748] hover:bg-[#4a5568] text-[#cbd5e1]"
                 : "bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#475569]"
-            }`}
+              }`}
             title="Restablecer opciones de ocupación"
           >
             Restablecer
@@ -175,7 +173,7 @@ export function OccupancyLegend({
           className="w-3 h-3 rounded-sm shrink-0"
           style={{ backgroundColor: OCCUPANCY_COLORS.normal }}
         />
-        <span className={`text-[10px] ${subText}`}>Normal (&lt; 50%)</span>
+        <span className={`text-[10px] ${subText}`}>Normal (&lt; 30%)</span>
         <div className="ml-auto flex gap-1">
           <button
             onClick={() => toggleFilter("normal", "warehouse")}
@@ -200,7 +198,7 @@ export function OccupancyLegend({
           className="w-3 h-3 rounded-sm shrink-0"
           style={{ backgroundColor: OCCUPANCY_COLORS.moderate }}
         />
-        <span className={`text-[10px] ${subText}`}>Moderado (50-80%)</span>
+        <span className={`text-[10px] ${subText}`}>Moderado (30-60%)</span>
         <div className="ml-auto flex gap-1">
           <button
             onClick={() => toggleFilter("moderate", "warehouse")}
@@ -225,7 +223,7 @@ export function OccupancyLegend({
           className="w-3 h-3 rounded-sm shrink-0"
           style={{ backgroundColor: OCCUPANCY_COLORS.saturated }}
         />
-        <span className={`text-[10px] ${subText}`}>Saturado (≥ 80%)</span>
+        <span className={`text-[10px] ${subText}`}>Saturado (≥ 60%)</span>
         <div className="ml-auto flex gap-1">
           <button
             onClick={() => toggleFilter("saturated", "warehouse")}
@@ -256,11 +254,10 @@ export function OccupancyLegend({
                   updated.routes.intercontinental = false;
                   updateFilters(updated);
                 }}
-                className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${
-                  isDark
+                className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${isDark
                     ? "bg-[#2d3748] hover:bg-[#4a5568] text-[#cbd5e1]"
                     : "bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#475569]"
-                }`}
+                  }`}
                 title="Deseleccionar todas las rutas"
               >
                 Deseleccionar todas
@@ -273,11 +270,10 @@ export function OccupancyLegend({
                   updated.routes.intercontinental = true;
                   updateFilters(updated);
                 }}
-                className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${
-                  isDark
+                className={`text-[8px] px-1.5 py-0.5 rounded transition-colors ${isDark
                     ? "bg-[#2d3748] hover:bg-[#4a5568] text-[#cbd5e1]"
                     : "bg-[#e2e8f0] hover:bg-[#cbd5e1] text-[#475569]"
-                }`}
+                  }`}
                 title="Seleccionar todas las rutas"
               >
                 Restablecer
