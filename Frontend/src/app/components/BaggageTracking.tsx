@@ -255,61 +255,71 @@ export function BaggageTracking({
             className={`pl-7 h-7 text-[11px] ${searchBg}`}
           />
         </div>
-        <div className="flex gap-2">
-          <Select value={selectedOriginFilter} onValueChange={setSelectedOriginFilter}>
-            <SelectTrigger className={`h-7 text-[11px] flex-1 ${searchBg}`}>
-              <SelectValue placeholder="Origen" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todos los orígenes</SelectItem>
-              {Array.from(new Set(state.baggageGroups.map(bg => bg.origin))).sort().map(code => (
-                <SelectItem key={code} value={code}>
-                  {code} - {getCity(code)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col gap-2">
+          <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Filtrar por:</label>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Origen</label>
+              <select
+                value={selectedOriginFilter}
+                onChange={e => setSelectedOriginFilter(e.target.value)}
+                className={`w-full h-7 text-[11px] rounded px-2 border focus:outline-none mt-0.5 ${
+                  isDark ? "bg-[#0f172a] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                }`}
+              >
+                <option value="ALL">Todos</option>
+                {Array.from(new Set(state.baggageGroups.map(bg => bg.origin))).sort().map(code => (
+                  <option key={code} value={code}>{code} - {getCity(code)}</option>
+                ))}
+              </select>
+            </div>
 
-          <Select value={selectedDestFilter} onValueChange={setSelectedDestFilter}>
-            <SelectTrigger className={`h-7 text-[11px] flex-1 ${searchBg}`}>
-              <SelectValue placeholder="Destino" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todos los destinos</SelectItem>
-              {Array.from(new Set(state.baggageGroups.map(bg => bg.destination))).sort().map(code => (
-                <SelectItem key={code} value={code}>
-                  {code} - {getCity(code)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex gap-2">
-          <Select value={selectedStatusFilter} onValueChange={setSelectedStatusFilter}>
-            <SelectTrigger className={`h-7 text-[11px] flex-1 ${searchBg}`}>
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todos los estados</SelectItem>
+            <div className="flex-1">
+              <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Destino</label>
+              <select
+                value={selectedDestFilter}
+                onChange={e => setSelectedDestFilter(e.target.value)}
+                className={`w-full h-7 text-[11px] rounded px-2 border focus:outline-none mt-0.5 ${
+                  isDark ? "bg-[#0f172a] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                }`}
+              >
+                <option value="ALL">Todos</option>
+                {Array.from(new Set(state.baggageGroups.map(bg => bg.destination))).sort().map(code => (
+                  <option key={code} value={code}>{code} - {getCity(code)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex-1">
+            <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Estado</label>
+            <select
+              value={selectedStatusFilter}
+              onChange={e => setSelectedStatusFilter(e.target.value)}
+              className={`w-full h-7 text-[11px] rounded px-2 border focus:outline-none mt-0.5 ${
+                isDark ? "bg-[#0f172a] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+              }`}
+            >
+              <option value="ALL">Todos</option>
               {state.scenario === "daily" || state.scenario === "tracking" ? (
                 <>
-                  <SelectItem value="waiting">En espera</SelectItem>
-                  <SelectItem value="in_transit">En tránsito</SelectItem>
-                  <SelectItem value="delayed">Retrasado</SelectItem>
-                  <SelectItem value="delivered">Entregado</SelectItem>
-                  <SelectItem value="failed">Fallido</SelectItem>
+                  <option value="waiting">En espera</option>
+                  <option value="in_transit">En tránsito</option>
+                  <option value="delayed">Retrasado</option>
+                  <option value="delivered">Entregado</option>
+                  <option value="failed">Fallido</option>
                 </>
               ) : (
                 <>
-                  <SelectItem value="scheduled">Programado</SelectItem>
-                  <SelectItem value="in_transit">En tránsito</SelectItem>
-                  <SelectItem value="waiting_replan">Esperando replanificación</SelectItem>
-                  <SelectItem value="delivered">Entregado</SelectItem>
-                  <SelectItem value="failed">Fuera de plazo</SelectItem>
+                  <option value="scheduled">Programado</option>
+                  <option value="in_transit">En tránsito</option>
+                  <option value="waiting_replan">Esperando replanificación</option>
+                  <option value="delivered">Entregado</option>
+                  <option value="failed">Fuera de plazo</option>
                 </>
               )}
-            </SelectContent>
-          </Select>
+            </select>
+          </div>
         </div>
       </div>
 

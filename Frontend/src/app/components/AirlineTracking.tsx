@@ -32,12 +32,12 @@ interface Pedido {
 }
 
 const statusConfig: Record<string, { color: string; bg: string; lightBg: string; lightColor: string; label: string; icon: React.ReactNode }> = {
-  PENDIENTE:   { color: "text-amber-500",  bg: "bg-amber-500/20",  lightBg: "bg-amber-100", lightColor: "text-amber-700", label: "Sin vuelo",   icon: <Clock className="w-3 h-3" /> },
-  PLANIFICADO: { color: "text-blue-500",   bg: "bg-blue-500/20",   lightBg: "bg-blue-100",  lightColor: "text-blue-800",  label: "Asignado",    icon: <CheckCircle className="w-3 h-3" /> },
-  EN_RUTA:     { color: "text-cyan-500",   bg: "bg-cyan-500/20",   lightBg: "bg-cyan-100",  lightColor: "text-cyan-800",  label: "En ruta",     icon: <Plane className="w-3 h-3" /> },
-  ENTREGADO:   { color: "text-green-500",  bg: "bg-green-500/20",  lightBg: "bg-green-100", lightColor: "text-green-700", label: "Entregado",   icon: <CheckCircle className="w-3 h-3" /> },
-  SIN_RUTA:    { color: "text-red-500",    bg: "bg-red-500/20",    lightBg: "bg-red-100",   lightColor: "text-red-700",   label: "Sin ruta",    icon: <AlertTriangle className="w-3 h-3" /> },
-  COLAPSO:     { color: "text-red-500",    bg: "bg-red-500/20",    lightBg: "bg-red-100",   lightColor: "text-red-700",   label: "Colapso",     icon: <AlertTriangle className="w-3 h-3" /> },
+  PENDIENTE: { color: "text-amber-500", bg: "bg-amber-500/20", lightBg: "bg-amber-100", lightColor: "text-amber-700", label: "Sin vuelo", icon: <Clock className="w-3 h-3" /> },
+  PLANIFICADO: { color: "text-blue-500", bg: "bg-blue-500/20", lightBg: "bg-blue-100", lightColor: "text-blue-800", label: "Asignado", icon: <CheckCircle className="w-3 h-3" /> },
+  EN_RUTA: { color: "text-cyan-500", bg: "bg-cyan-500/20", lightBg: "bg-cyan-100", lightColor: "text-cyan-800", label: "En ruta", icon: <Plane className="w-3 h-3" /> },
+  ENTREGADO: { color: "text-green-500", bg: "bg-green-500/20", lightBg: "bg-green-100", lightColor: "text-green-700", label: "Entregado", icon: <CheckCircle className="w-3 h-3" /> },
+  SIN_RUTA: { color: "text-red-500", bg: "bg-red-500/20", lightBg: "bg-red-100", lightColor: "text-red-700", label: "Sin ruta", icon: <AlertTriangle className="w-3 h-3" /> },
+  COLAPSO: { color: "text-red-500", bg: "bg-red-500/20", lightBg: "bg-red-100", lightColor: "text-red-700", label: "Colapso", icon: <AlertTriangle className="w-3 h-3" /> },
 };
 
 function formatTimestamp(isoStr: string): string {
@@ -219,50 +219,57 @@ export function AirlineTracking() {
               </div>
 
               {/* Filtros de origen, destino y estado */}
-              <div className="flex gap-2">
-                <select
-                  value={selectedOriginFilter}
-                  onChange={e => setSelectedOriginFilter(e.target.value)}
-                  className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
-                    isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
-                  }`}
-                >
-                  <option value="ALL">Origen: Todos</option>
-                  {Array.from(new Set(pedidos.map(p => p.origenOaci))).sort().map(code => (
-                    <option key={code} value={code}>{code}</option>
-                  ))}
-                </select>
+              <div className="flex flex-col gap-2 mt-2">
+                <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Filtrar por:</label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Origen</label>
+                    <select
+                      value={selectedOriginFilter}
+                      onChange={e => setSelectedOriginFilter(e.target.value)}
+                      className={`w-full h-7 text-[11px] rounded px-2 border focus:outline-none mt-0.5 ${isDark ? "bg-[#0f172a] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                        }`}
+                    >
+                      <option value="ALL">Todos</option>
+                      {Array.from(new Set(pedidos.map(p => p.origenOaci))).sort().map(code => (
+                        <option key={code} value={code}>{code}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                <select
-                  value={selectedDestFilter}
-                  onChange={e => setSelectedDestFilter(e.target.value)}
-                  className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
-                    isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
-                  }`}
-                >
-                  <option value="ALL">Destino: Todos</option>
-                  {Array.from(new Set(pedidos.map(p => p.destinoOaci))).sort().map(code => (
-                    <option key={code} value={code}>{code}</option>
-                  ))}
-                </select>
-              </div>
+                  <div className="flex-1">
+                    <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Destino</label>
+                    <select
+                      value={selectedDestFilter}
+                      onChange={e => setSelectedDestFilter(e.target.value)}
+                      className={`w-full h-7 text-[11px] rounded px-2 border focus:outline-none mt-0.5 ${isDark ? "bg-[#0f172a] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                        }`}
+                    >
+                      <option value="ALL">Todos</option>
+                      {Array.from(new Set(pedidos.map(p => p.destinoOaci))).sort().map(code => (
+                        <option key={code} value={code}>{code}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-              <div className="flex gap-2">
-                <select
-                  value={selectedStatusFilter}
-                  onChange={e => setSelectedStatusFilter(e.target.value)}
-                  className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${
-                    isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
-                  }`}
-                >
-                  <option value="ALL">Estado: Todos</option>
-                  <option value="PENDIENTE">Sin vuelo</option>
-                  <option value="PLANIFICADO">Asignado</option>
-                  <option value="EN_RUTA">En ruta</option>
-                  <option value="ENTREGADO">Entregado</option>
-                  <option value="SIN_RUTA">Sin ruta</option>
-                  <option value="COLAPSO">Colapso</option>
-                </select>
+                <div className="flex-1">
+                  <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Estado</label>
+                  <select
+                    value={selectedStatusFilter}
+                    onChange={e => setSelectedStatusFilter(e.target.value)}
+                    className={`w-full h-7 text-[11px] rounded px-2 border focus:outline-none mt-0.5 ${isDark ? "bg-[#0f172a] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                      }`}
+                  >
+                    <option value="ALL">Todos</option>
+                    <option value="PENDIENTE">Sin vuelo</option>
+                    <option value="PLANIFICADO">Asignado</option>
+                    <option value="EN_RUTA">En ruta</option>
+                    <option value="ENTREGADO">Entregado</option>
+                    <option value="SIN_RUTA">Sin ruta</option>
+                    <option value="COLAPSO">Colapso</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -273,9 +280,8 @@ export function AirlineTracking() {
                   <span className={`text-[12px] font-bold ${titleCls}`}>{selectedPedido.id}</span>
                   <div className="flex items-center gap-1.5">
                     {detailLoading && (
-                      <span className={`w-3 h-3 rounded-full border-2 border-t-transparent animate-spin ${
-                        isDark ? "border-cyan-400" : "border-blue-600"
-                      }`} />
+                      <span className={`w-3 h-3 rounded-full border-2 border-t-transparent animate-spin ${isDark ? "border-cyan-400" : "border-blue-600"
+                        }`} />
                     )}
                     <Badge className={`text-[9px] ${isDark ? sc.bg : sc.lightBg} ${isDark ? sc.color : sc.lightColor}`}>
                       {sc.icon} <span className="ml-1">{sc.label}</span>
@@ -295,7 +301,7 @@ export function AirlineTracking() {
                       const utc = isoStr.endsWith('Z') ? isoStr : isoStr + 'Z';
                       const ms = new Date(utc).getTime() + gmtOffset * 3600_000;
                       const d = new Date(ms);
-                      return `${String(d.getUTCDate()).padStart(2,"0")}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
+                      return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
                     } catch { return "—"; }
                   };
                   const getGmt = (oaci: string) => airportsList.find((a: any) => a.code === oaci)?.gmt ?? 0;
@@ -326,7 +332,7 @@ export function AirlineTracking() {
                       {/* Nodos intermedios y final */}
                       {tramos.map((leg: any, i: number) => {
                         const isCompleted = leg.estado === "COMPLETADO";
-                        const isCurrent   = leg.estado === "EN_VUELO";
+                        const isCurrent = leg.estado === "EN_VUELO";
                         const isCancelled = leg.estado === "CANCELADO";
                         const isLast = i === tramos.length - 1;
                         const arriGmt = getGmt(leg.destinoOaci);
@@ -339,15 +345,13 @@ export function AirlineTracking() {
                               )}
                             </div>
                             <div className="flex items-start gap-2">
-                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${
-                                isCancelled ? "bg-red-500/50" :
-                                isCompleted ? "bg-green-500" :
-                                isCurrent   ? "bg-cyan-500 animate-pulse" : dotInactive
-                              }`} />
+                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${isCancelled ? "bg-red-500/50" :
+                                  isCompleted ? "bg-green-500" :
+                                    isCurrent ? "bg-cyan-500 animate-pulse" : dotInactive
+                                }`} />
                               <div className="flex-1">
-                                <div className={`text-[10px] font-semibold ${
-                                  isCancelled ? (isDark ? "text-red-400/70" : "text-red-600/70") : titleCls
-                                }`}>
+                                <div className={`text-[10px] font-semibold ${isCancelled ? (isDark ? "text-red-400/70" : "text-red-600/70") : titleCls
+                                  }`}>
                                   {getCity(leg.destinoOaci)} ({leg.destinoOaci})
                                   {isCancelled && <span className={`ml-1 text-[9px] ${isDark ? "text-red-400" : "text-red-600"}`}>[Cancelado]</span>}
                                 </div>
@@ -463,9 +467,8 @@ export function AirlineTracking() {
                 <button
                   onClick={() => setPage(prev => Math.max(prev - 1, 1))}
                   disabled={page === 1}
-                  className={`px-1.5 py-0.5 text-[8px] rounded border transition-colors ${
-                    page === 1 ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
-                  }`}
+                  className={`px-1.5 py-0.5 text-[8px] rounded border transition-colors ${page === 1 ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+                    }`}
                 >
                   Anterior
                 </button>
@@ -475,9 +478,8 @@ export function AirlineTracking() {
                 <button
                   onClick={() => setPage(prev => Math.min(prev + 1, totalPages))}
                   disabled={page === totalPages}
-                  className={`px-1.5 py-0.5 text-[8px] rounded border transition-colors ${
-                    page === totalPages ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
-                  }`}
+                  className={`px-1.5 py-0.5 text-[8px] rounded border transition-colors ${page === totalPages ? "opacity-35 cursor-not-allowed border-transparent" : isDark ? "border-[#1e293b] text-cyan-400 hover:bg-[#1e293b]" : "border-[#cbd5e1] text-blue-700 hover:bg-slate-100"
+                    }`}
                 >
                   Siguiente
                 </button>

@@ -1351,46 +1351,57 @@ export function SimulationPage() {
                           )}
                         </div>
                         {/* Filtros de origen, destino y estado */}
-                        <div className="flex gap-2">
-                          <select
-                            value={selectedRTOriginFilter}
-                            onChange={e => setSelectedRTOriginFilter(e.target.value)}
-                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
-                              }`}
-                          >
-                            <option value="ALL">Origen: Todos</option>
-                            {Array.from(new Set(realTimePedidos.map(p => p.origenOaci))).sort().map(code => (
-                              <option key={code} value={code}>{code}</option>
-                            ))}
-                          </select>
+                        <div className="flex flex-col gap-2 mt-2">
+                          <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Filtrar por:</label>
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Origen</label>
+                              <select
+                                value={selectedRTOriginFilter}
+                                onChange={e => setSelectedRTOriginFilter(e.target.value)}
+                                className={`w-full h-7 text-[11px] rounded px-2 border focus:outline-none mt-0.5 ${isDark ? "bg-[#0f172a] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                                  }`}
+                              >
+                                <option value="ALL">Todos</option>
+                                {Array.from(new Set(realTimePedidos.map(p => p.origenOaci))).sort().map(code => (
+                                  <option key={code} value={code}>{code}</option>
+                                ))}
+                              </select>
+                            </div>
 
-                          <select
-                            value={selectedRTDestFilter}
-                            onChange={e => setSelectedRTDestFilter(e.target.value)}
-                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
-                              }`}
-                          >
-                            <option value="ALL">Destino: Todos</option>
-                            {Array.from(new Set(realTimePedidos.map(p => p.destinoOaci))).sort().map(code => (
-                              <option key={code} value={code}>{code}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="flex gap-2">
-                          <select
-                            value={selectedRTStatusFilter}
-                            onChange={e => setSelectedRTStatusFilter(e.target.value)}
-                            className={`h-7 text-[11px] flex-1 rounded-lg border px-2 focus:outline-none ${isDark ? "bg-[#0a0f1e] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
-                              }`}
-                          >
-                            <option value="ALL">Estado: Todos</option>
-                            <option value="PENDIENTE">Sin vuelo</option>
-                            <option value="PLANIFICADO">Asignado</option>
-                            <option value="EN_RUTA">En ruta</option>
-                            <option value="ENTREGADO">Entregado</option>
-                            <option value="SIN_RUTA">Sin ruta</option>
-                            <option value="COLAPSO">Colapso</option>
-                          </select>
+                            <div className="flex-1">
+                              <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Destino</label>
+                              <select
+                                value={selectedRTDestFilter}
+                                onChange={e => setSelectedRTDestFilter(e.target.value)}
+                                className={`w-full h-7 text-[11px] rounded px-2 border focus:outline-none mt-0.5 ${isDark ? "bg-[#0f172a] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                                  }`}
+                              >
+                                <option value="ALL">Todos</option>
+                                {Array.from(new Set(realTimePedidos.map(p => p.destinoOaci))).sort().map(code => (
+                                  <option key={code} value={code}>{code}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex-1">
+                            <label className={`text-[9px] uppercase font-semibold ${isDark ? "text-white/50" : "text-[#6b7280]"}`}>Estado</label>
+                            <select
+                              value={selectedRTStatusFilter}
+                              onChange={e => setSelectedRTStatusFilter(e.target.value)}
+                              className={`w-full h-7 text-[11px] rounded px-2 border focus:outline-none mt-0.5 ${isDark ? "bg-[#0f172a] border-[#1e293b] text-white" : "bg-white border-[#cbd5e1] text-[#111827]"
+                                }`}
+                            >
+                              <option value="ALL">Todos</option>
+                              <option value="PENDIENTE">Sin vuelo</option>
+                              <option value="PLANIFICADO">Asignado</option>
+                              <option value="EN_RUTA">En ruta</option>
+                              <option value="ENTREGADO">Entregado</option>
+                              <option value="SIN_RUTA">Sin ruta</option>
+                              <option value="COLAPSO">Colapso</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
 
