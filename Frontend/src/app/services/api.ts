@@ -33,8 +33,9 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ mensaje: "Error desconocido" }));
-    throw new Error(error.mensaje || error.error || "Error en la petición");
+    const error = await response.json().catch(() => null) || {};
+    const msg = error.mensaje || error.message || error.error || (`Error HTTP ${response.status}`);
+    throw new Error(msg);
   }
 
   if (response.status === 204) return {} as T;
@@ -103,6 +104,22 @@ export const api = {
     request(`/simulacion/${simId}/cancelar-vuelo`, { method: "POST", body: { origen, destino, fechaSalida } }),
   getVuelosCanceladosSimulacion: (simId) =>
     request<string[]>(`/simulacion/${simId}/vuelos-cancelados`),
+
+  // Envíos Simulados
+  getCarpetaEnviosSimulados: () =>
+    request<{ carpetaActual: string; cantidadArchivos: number; totalEnvios: number; simulacionesActivas: number; carpetasDisponibles?: string[] }>("/envios-simulados/actual"),
+  iniciarCargaCarpetaEnvios: (nombreCarpeta: string) =>
+    request<{ mensaje: string; simulacionesCanceladas: number }>("/envios-simulados/iniciar-carga", { method: "POST", body: { nombreCarpeta } }),
+  cargarArchivoEnviosIndividual: (formData: FormData) =>
+    request<{ mensaje: string }>("/envios-simulados/cargar-archivo-individual", { method: "POST", body: formData }),
+  finalizarCargaCarpetaEnvios: (nombreCarpeta: string) =>
+    request<{ mensaje: string; carpetaActual: string; cantidadArchivos: number; totalEnvios: number }>("/envios-simulados/finalizar-carga", { method: "POST", body: { nombreCarpeta } }),
+  cargarCarpetaEnviosSimuladosFormData: (formData: FormData) =>
+    request<{ mensaje: string; carpetaActual: string; cantidadArchivos: number; totalEnvios: number; simulacionesCanceladas: number }>("/envios-simulados/cargar-carpeta-multipart", { method: "POST", body: formData }),
+  cargarCarpetaEnviosSimulados: (data: { nombreCarpeta: string; archivos: { nombre: string; contenido: string }[] }) =>
+    request<{ mensaje: string; carpetaActual: string; cantidadArchivos: number; totalEnvios: number; simulacionesCanceladas: number }>("/envios-simulados/cargar-carpeta", { method: "POST", body: data }),
+  seleccionarCarpetaEnviosSimulados: (nombreCarpeta: string) =>
+    request<{ mensaje: string; carpetaActual: string; cantidadArchivos: number; totalEnvios: number; simulacionesCanceladas: number }>("/envios-simulados/seleccionar-carpeta", { method: "POST", body: { nombreCarpeta } }),
 
   // Operarios
   getOperarios: () => request<any[]>("/usuarios/operarios"),

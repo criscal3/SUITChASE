@@ -33,6 +33,8 @@ public class EnvioSinteticoFileReader {
     @Value("${suitchase.envios.path:Planificador/_envios_preliminar_}")
     private String enviosBasePath;
 
+    private String nombreCarpetaActual = "_envios_preliminar_";
+
     private List<Path> archivosSinteticos = new ArrayList<>();
     private Map<String, Integer> gmtPorOaci = new HashMap<>();
 
@@ -51,18 +53,62 @@ public class EnvioSinteticoFileReader {
 
     @PostConstruct
     public void init() {
-        Path basePath = Paths.get(enviosBasePath);
-        if (!Files.exists(basePath)) {
-            basePath = Paths.get("..").resolve(enviosBasePath);
+        recargarArchivos();
+        recargarCacheGmt();
+    }
+
+    public Path resolverRutaCarpeta(String rawPath) {
+        if (rawPath == null || rawPath.isBlank()) {
+            rawPath = "Planificador/_envios_preliminar_";
         }
 
-        if (!Files.exists(basePath)) {
-            log.warn("Directorio de envíos sintéticos no encontrado: {}. "
-                    + "La simulación con datos de archivo no funcionará.", enviosBasePath);
+        Path p = Paths.get(rawPath);
+        if (Files.exists(p) && Files.isDirectory(p)) {
+            return p;
+        }
+
+        String folderName = p.getFileName() != null ? p.getFileName().toString() : rawPath;
+
+        List<Path> candidateBases = List.of(
+                Paths.get("Planificador"),
+                Paths.get("..", "Planificador"),
+                Paths.get("../Planificador"),
+                Paths.get("../../Planificador"),
+                Paths.get("."),
+                Paths.get("..")
+        );
+
+        for (Path base : candidateBases) {
+            if (Files.exists(base) && Files.isDirectory(base)) {
+                if (base.getFileName() != null && base.getFileName().toString().equalsIgnoreCase(folderName)) {
+                    return base;
+                }
+                Path child = base.resolve(folderName);
+                if (Files.exists(child) && Files.isDirectory(child)) {
+                    return child;
+                }
+            }
+        }
+        return p;
+    }
+
+    public synchronized void recargarArchivos() {
+        this.totalEnviosCache = null;
+        Path basePath = resolverRutaCarpeta(enviosBasePath);
+
+        if (!Files.exists(basePath) || !Files.isDirectory(basePath)) {
+            log.warn("Directorio de envíos sintéticos no encontrado: {} (resuelto: {}). "
+                    + "La simulación con datos de archivo no funcionará.", enviosBasePath, basePath.toAbsolutePath());
+            archivosSinteticos = new ArrayList<>();
             return;
         }
 
         try {
+            if (basePath.getFileName() != null) {
+                this.nombreCarpetaActual = basePath.getFileName().toString();
+            }
+            this.enviosBasePath = basePath.toAbsolutePath().toString();
+
             archivosSinteticos = Files.list(basePath)
                     .filter(p -> p.getFileName().toString().startsWith("_envios_")
                             && p.getFileName().toString().endsWith(".txt"))
@@ -74,8 +120,6 @@ public class EnvioSinteticoFileReader {
         } catch (IOException e) {
             log.error("Error listando archivos de envíos sintéticos: {}", e.getMessage());
         }
-
-        recargarCacheGmt();
     }
 
     private void recargarCacheGmt() {
@@ -186,8 +230,12 @@ public class EnvioSinteticoFileReader {
     }
 
     private String extraerOrigenDeArchivo(String fileName) {
-        if (fileName.startsWith("_envios_") && fileName.endsWith("_.txt")) {
-            return fileName.substring(8, fileName.length() - 5);
+        if (fileName.startsWith("_envios_")) {
+            if (fileName.endsWith("_.txt")) {
+                return fileName.substring(8, fileName.length() - 5);
+            } else if (fileName.endsWith(".txt")) {
+                return fileName.substring(8, fileName.length() - 4);
+            }
         }
         return null;
     }
@@ -226,11 +274,172 @@ public class EnvioSinteticoFileReader {
         }
     }
 
+    private Long totalEnviosCache = null;
+
     public boolean tieneArchivos() {
         return !archivosSinteticos.isEmpty();
     }
 
     public int cantidadArchivos() {
         return archivosSinteticos.size();
+    }
+
+    public String getNombreCarpetaActual() {
+        return nombreCarpetaActual;
+    }
+
+    public synchronized long contarTotalEnvios() {
+        if (totalEnviosCache != null) {
+            return totalEnviosCache;
+        }
+        long total = 0;
+        for (Path archivo : archivosSinteticos) {
+            try (BufferedReader reader = Files.newBufferedReader(archivo, java.nio.charset.StandardCharsets.ISO_8859_1)) {
+                String linea;
+                while ((linea = reader.readLine()) != null) {
+                    if (!linea.trim().isEmpty()) {
+                        total++;
+                    }
+                }
+            } catch (Throwable e) {
+                log.error("Error contando líneas en {}: {}", archivo.getFileName(), e.getMessage());
+            }
+        }
+        this.totalEnviosCache = total;
+        return total;
+    }
+
+    public synchronized void cargarNuevaCarpeta(String nombreCarpeta, Map<String, String> archivosMap) throws IOException {
+        String sanitizedName = nombreCarpeta.replaceAll("[^a-zA-Z0-9_\\-]", "_");
+        if (sanitizedName.isBlank()) sanitizedName = "envios_cargados";
+
+        Path basePlanificador = resolverRutaCarpeta("Planificador");
+        if (!Files.exists(basePlanificador)) {
+            basePlanificador = Paths.get("Planificador");
+            Files.createDirectories(basePlanificador);
+        }
+
+        Path destinationDir = basePlanificador.resolve(sanitizedName);
+        if (!Files.exists(destinationDir)) {
+            Files.createDirectories(destinationDir);
+        }
+
+        for (Map.Entry<String, String> entry : archivosMap.entrySet()) {
+            String fileName = entry.getKey();
+            if (fileName.startsWith("_envios_") && fileName.endsWith(".txt")) {
+                Path filePath = destinationDir.resolve(fileName);
+                Files.writeString(filePath, entry.getValue(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            }
+        }
+
+        this.enviosBasePath = destinationDir.toAbsolutePath().toString();
+        this.nombreCarpetaActual = sanitizedName;
+        this.estadoPorSimulacion.clear();
+        recargarArchivos();
+    }
+
+    public synchronized void cargarNuevaCarpetaMultipart(String nombreCarpeta, org.springframework.web.multipart.MultipartFile[] archivos) throws IOException {
+        String sanitizedName = nombreCarpeta.replaceAll("[^a-zA-Z0-9_\\-]", "_");
+        if (sanitizedName.isBlank()) sanitizedName = "envios_cargados";
+
+        Path basePlanificador = resolverRutaCarpeta("Planificador");
+        if (!Files.exists(basePlanificador)) {
+            basePlanificador = Paths.get("Planificador");
+            Files.createDirectories(basePlanificador);
+        }
+
+        Path destinationDir = basePlanificador.resolve(sanitizedName);
+        if (!Files.exists(destinationDir)) {
+            Files.createDirectories(destinationDir);
+        }
+
+        if (archivos != null) {
+            for (org.springframework.web.multipart.MultipartFile file : archivos) {
+                String originalName = file.getOriginalFilename();
+                if (originalName != null) {
+                    Path fileObj = Paths.get(originalName);
+                    String fileName = fileObj.getFileName().toString();
+                    if (fileName.startsWith("_envios_") && fileName.endsWith(".txt")) {
+                        Path targetPath = destinationDir.resolve(fileName).toAbsolutePath();
+                        Files.createDirectories(targetPath.getParent());
+                        try (InputStream is = file.getInputStream()) {
+                            Files.copy(is, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                        }
+                    }
+                }
+            }
+        }
+
+        this.enviosBasePath = destinationDir.toAbsolutePath().toString();
+        this.nombreCarpetaActual = sanitizedName;
+        this.estadoPorSimulacion.clear();
+        recargarArchivos();
+    }
+
+    public synchronized void prepararCarpetaParaCarga(String nombreCarpeta) throws IOException {
+        String sanitizedName = nombreCarpeta.replaceAll("[^a-zA-Z0-9_\\-]", "_");
+        if (sanitizedName.isBlank()) sanitizedName = "envios_cargados";
+
+        Path basePlanificador = resolverRutaCarpeta("Planificador");
+        if (!Files.exists(basePlanificador)) {
+            basePlanificador = Paths.get("Planificador");
+            Files.createDirectories(basePlanificador);
+        }
+
+        Path destinationDir = basePlanificador.resolve(sanitizedName);
+        if (!Files.exists(destinationDir)) {
+            Files.createDirectories(destinationDir);
+        }
+    }
+
+    public synchronized void guardarArchivoIndividual(String nombreCarpeta, org.springframework.web.multipart.MultipartFile file) throws IOException {
+        String sanitizedName = nombreCarpeta.replaceAll("[^a-zA-Z0-9_\\-]", "_");
+        if (sanitizedName.isBlank()) sanitizedName = "envios_cargados";
+
+        Path basePlanificador = resolverRutaCarpeta("Planificador");
+        Path destinationDir = basePlanificador.resolve(sanitizedName);
+        if (!Files.exists(destinationDir)) {
+            Files.createDirectories(destinationDir);
+        }
+
+        String originalName = file.getOriginalFilename();
+        if (originalName != null) {
+            Path fileObj = Paths.get(originalName);
+            String fileName = fileObj.getFileName().toString();
+            if (fileName.startsWith("_envios_") && fileName.endsWith(".txt")) {
+                Path targetPath = destinationDir.resolve(fileName).toAbsolutePath();
+                Files.createDirectories(targetPath.getParent());
+                try (InputStream is = file.getInputStream()) {
+                    Files.copy(is, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+    }
+
+    public List<String> listarCarpetasDisponibles() {
+        Set<String> carpetas = new LinkedHashSet<>();
+        if (nombreCarpetaActual != null) carpetas.add(nombreCarpetaActual);
+
+        Path planificadorBase = resolverRutaCarpeta("Planificador");
+        if (Files.exists(planificadorBase) && Files.isDirectory(planificadorBase)) {
+            try (var stream = Files.list(planificadorBase)) {
+                stream.filter(Files::isDirectory)
+                        .map(p -> p.getFileName().toString())
+                        .forEach(carpetas::add);
+            } catch (Exception ignored) {}
+        }
+        return new ArrayList<>(carpetas);
+    }
+
+    public synchronized boolean seleccionarCarpetaExistente(String nombreCarpeta) {
+        Path targetFolder = resolverRutaCarpeta(nombreCarpeta);
+        if (Files.exists(targetFolder) && Files.isDirectory(targetFolder)) {
+            this.enviosBasePath = targetFolder.toAbsolutePath().toString();
+            this.nombreCarpetaActual = targetFolder.getFileName().toString();
+            this.estadoPorSimulacion.clear();
+            recargarArchivos();
+            return true;
+        }
+        return false;
     }
 }

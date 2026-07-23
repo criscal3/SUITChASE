@@ -14,7 +14,7 @@ function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-export function createInitialState(scenario: "daily" | "weekly" | "collapse", turnaroundHours: number): SimulationState {
+export function createInitialState(scenario: "daily" | "weekly" | "tracking", turnaroundHours: number): SimulationState {
   const airports: Record<string, AirportState> = {};
   for (const a of AIRPORTS) {
     airports[a.code] = {
@@ -133,11 +133,8 @@ export function simulateStep(state: SimulationState, dt: number): { state: Simul
   newState.airports = { ...state.airports };
   newState.stats = { ...state.stats };
 
-  // Generate demand based on scenario
-  let scaleFactor = 1;
-  if (state.scenario === "collapse") {
-    scaleFactor = 1 + (newTime / 24) * 0.15; // Growing demand
-  }
+  // Generate demand
+  const scaleFactor = 1;
 
   // Generate new demand every ~2 hours sim time
   if (Math.floor(newTime / 2) > Math.floor(state.currentTime / 2)) {
@@ -190,12 +187,6 @@ export function simulateStep(state: SimulationState, dt: number): { state: Simul
           type: "collapse",
           description: `PLAZO VENCIDO: ${bg.id} (${bg.origin}→${bg.destination})`,
         });
-        // Collapse for "collapse" scenario when deadline is missed
-        if (state.scenario === "collapse") {
-          newState.collapsed = true;
-          newState.running = false;
-          newState.collapseReason = `Colapso en día ${newState.day}: maletas ${bg.id} no pudieron ser entregadas a tiempo (${bg.origin}→${bg.destination}). Plazo excedido.`;
-        }
       }
       continue;
     }

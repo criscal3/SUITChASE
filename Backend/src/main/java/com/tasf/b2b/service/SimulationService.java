@@ -222,6 +222,28 @@ public class SimulationService {
         log.info("Simulación {} cancelada", simulacionId);
     }
 
+    public int contarSimulacionesActivas() {
+        return (int) simulacionRepository.findByEstadoIn(
+                List.of(EstadoSimulacion.EJECUTANDO, EstadoSimulacion.PAUSADA)
+        ).size();
+    }
+
+    public int cancelarTodasSimulacionesActivas() {
+        List<SimulacionEntity> activas = simulacionRepository.findByEstadoIn(
+                List.of(EstadoSimulacion.EJECUTANDO, EstadoSimulacion.PAUSADA)
+        );
+        int canceladas = 0;
+        for (SimulacionEntity s : activas) {
+            try {
+                cancelarSimulacion(s.getId());
+                canceladas++;
+            } catch (Exception e) {
+                log.error("Error cancelando simulación {}: {}", s.getId(), e.getMessage());
+            }
+        }
+        return canceladas;
+    }
+
     // ========================================================
     // ACTUALIZAR K EN CALIENTE
     // ========================================================

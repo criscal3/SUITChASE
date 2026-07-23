@@ -8,7 +8,7 @@ import { BaggageTracking } from "./BaggageTracking";
 import { TrackingPage } from "./TrackingPage";
 import { FlightCancellationCard } from "./FlightCancellationCard";
 import type { BaggageGroup } from "../engine/types";
-import { hasReachedWeeklySimEnd, hasReachedCollapseSimEnd } from "../engine/types";
+import { hasReachedWeeklySimEnd } from "../engine/types";
 import { INITIAL_WAIT_SECONDS } from "../engine/useSimulation";
 import { OccupancyLegend, type OccupancyFilters } from "./OccupancyLegend";
 import { getOccupancyColor, getOccupancyLevel, computeUtilizationPercent } from "../engine/occupancyStatus";
@@ -52,7 +52,7 @@ function formatDurationDHM(ms: number): string {
 }
 
 export function SimulationPage() {
-  const { state, start, startCollapse, pauseSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
+  const { state, start, pauseSimulation, cancelSimulation, togglePause, updateSpeed, reset, setScenario, confirmFastForward, cancelFastForward, pendingStartDate, waitCountdown } = useSim();
   const { isDark } = useTheme();
   const { settings: mapSettings } = useMapSettings();
   const context = useOutletContext<{ showTopPanel: boolean }>() || { showTopPanel: false };
@@ -847,12 +847,7 @@ export function SimulationPage() {
   useEffect(() => {
     if (!state.hasStarted || weeklyEndHandledRef.current) return;
 
-    let isEnd = false;
-    if (state.scenario === "collapse") {
-      isEnd = hasReachedCollapseSimEnd(state);
-    } else {
-      isEnd = hasReachedWeeklySimEnd(state);
-    }
+    const isEnd = hasReachedWeeklySimEnd(state);
 
     if (isEnd) {
       weeklyEndHandledRef.current = true;
@@ -864,7 +859,6 @@ export function SimulationPage() {
     state.hasStarted,
     state.stopped,
     state.scenario,
-    state.collapseVisualStartTime,
     handleStopSimulation,
   ]);
 
@@ -1030,7 +1024,7 @@ export function SimulationPage() {
               )}
 
               {/* Línea de tiempo */}
-              {showSimLeftPanel && viewMode === "simulation" && state.scenario !== "collapse" && (
+              {showSimLeftPanel && viewMode === "simulation" && (
                 <div className={`border rounded-xl p-3 backdrop-blur-sm ${panelBg}`}>
                   <div className={`text-[14px] font-semibold mb-3 ${panelText}`}>
                     Simulación {state.scenario === "weekly" ? "5 Días" : "1 Día"}
@@ -1097,11 +1091,7 @@ export function SimulationPage() {
                     <button
                       onClick={() => {
                         if (!state.hasStarted) {
-                          if (state.scenario === "collapse") {
-                            startCollapse(pendingStartDate || new Date());
-                          } else {
-                            start(pendingStartDate);
-                          }
+                          start(pendingStartDate);
                         } else if (!state.stopped) {
                           togglePause();
                         }
@@ -1146,7 +1136,6 @@ export function SimulationPage() {
                   {([
                     { key: "tracking", label: "Operaciones Día a Día" },
                     { key: "weekly", label: "Simulación de 5 días" },
-                    { key: "collapse", label: "Simulación Hasta el Colapso" },
                   ] as const).map(s => (
                     <button
                       key={s.key}
@@ -1235,7 +1224,6 @@ export function SimulationPage() {
                   {([
                     { key: "tracking", label: "Operaciones Día a Día" },
                     { key: "weekly", label: "Simulación de 5 días" },
-                    { key: "collapse", label: "Simulación Hasta el Colapso" },
                   ] as const).map(s => (
                     <button
                       key={s.key}
@@ -1931,37 +1919,35 @@ export function SimulationPage() {
                 </div>
 
                 {/* Cancelación */}
-                {state.scenario !== "collapse" && (
-                  <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showCancelaciones ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
-                    } ${panelBg}`}>
-                    <button
-                      onClick={() => {
-                        setShowCancelaciones(!showCancelaciones);
-                        if (!showCancelaciones) {
-                          // Allow collapse
-                        } else {
-                          // Collapse others to give space
-                          setShowSimEnvios(false);
-                          setShowSimVuelos(false);
-                        }
-                      }}
-                      className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showCancelaciones ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
-                        }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className={`w-4 h-4 ${isDark ? "text-red-400" : "text-red-700"}`} />
-                        <span className={`text-[13px] ${isDark ? "text-white" : "text-[#111827]"}`}>Cancelación de Vuelos</span>
-                      </div>
-                      {showCancelaciones ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
+                <div className={`flex flex-col border rounded-xl backdrop-blur-sm overflow-hidden transition-all duration-300 pointer-events-auto ${showCancelaciones ? "flex-shrink min-h-[150px] max-h-full" : "h-10 shrink-0"
+                  } ${panelBg}`}>
+                  <button
+                    onClick={() => {
+                      setShowCancelaciones(!showCancelaciones);
+                      if (!showCancelaciones) {
+                        // Allow collapse
+                      } else {
+                        // Collapse others to give space
+                        setShowSimEnvios(false);
+                        setShowSimVuelos(false);
+                      }
+                    }}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 font-semibold text-[12px] hover:bg-black/5 shrink-0 ${showCancelaciones ? `border-b ${isDark ? "border-[#1e293b]" : "border-[#cbd5e1]"}` : ""
+                      }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className={`w-4 h-4 ${isDark ? "text-red-400" : "text-red-700"}`} />
+                      <span className={`text-[13px] ${isDark ? "text-white" : "text-[#111827]"}`}>Cancelación de Vuelos</span>
+                    </div>
+                    {showCancelaciones ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
 
-                    {showCancelaciones && (
-                      <div className="flex-grow flex flex-col min-h-0 overflow-y-auto">
-                        <FlightCancellationCard />
-                      </div>
-                    )}
-                  </div>
-                )}
+                  {showCancelaciones && (
+                    <div className="flex-grow flex flex-col min-h-0 overflow-y-auto">
+                      <FlightCancellationCard />
+                    </div>
+                  )}
+                </div>
 
               </div>
             )}
@@ -2041,55 +2027,7 @@ export function SimulationPage() {
         </div>
       )}
 
-      {/* Collapse pre-heating popup */}
-      {state.collapsePrePhase && (
-        <div className="absolute inset-0 z-50 bg-black/60 flex items-center justify-center">
-          <div className={`border rounded-2xl w-full max-w-md mx-4 overflow-hidden ${isDark ? "bg-[#0f172a] border-[#1e293b]" : "bg-white border-[#cbd5e1]"}`}>
-            {/* Header */}
-            <div className={`flex items-center gap-3 px-6 py-4 border-b ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
-              <div className={`w-5 h-5 rounded-full border-2 border-t-transparent animate-spin ${isDark ? "border-cyan-400" : "border-blue-600"}`} />
-              <h2 className={`text-[16px] font-medium ${isDark ? "text-[#e2e8f0]" : "text-[#0f172a]"}`}>
-                Preparando simulación hasta el colapso...
-              </h2>
-            </div>
 
-            {/* Content */}
-            <div className="px-6 py-5 space-y-4">
-              <p className={`text-[13px] ${isDark ? "text-[#94a3b8]" : "text-[#475569]"}`}>
-                Calculando operaciones de los 5 días previos a la fecha inicial... ({state.collapsePreBlocksReceived || 0} / {state.collapsePreBlocks || 25})
-              </p>
-
-              {/* Progress bar */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[11px] ${isDark ? "text-[#64748b]" : "text-[#94a3b8]"}`}>
-                    Progreso de bloques
-                  </span>
-                  <span className={`text-[12px] font-mono ${isDark ? "text-cyan-400" : "text-blue-600"}`}>
-                    {Math.round(((state.collapsePreBlocksReceived || 0) / (state.collapsePreBlocks || 25)) * 100)}%
-                  </span>
-                </div>
-                <div className={`w-full h-3 rounded-full overflow-hidden ${isDark ? "bg-[#1e293b]" : "bg-[#e2e8f0]"}`}>
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ease-out ${isDark ? "bg-gradient-to-r from-cyan-600 to-cyan-400" : "bg-gradient-to-r from-blue-500 to-blue-400"}`}
-                    style={{ width: `${((state.collapsePreBlocksReceived || 0) / (state.collapsePreBlocks || 25)) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className={`flex items-center justify-end px-6 py-3 border-t ${isDark ? "border-[#1e293b]" : "border-[#e2e8f0]"}`}>
-              <button
-                onClick={cancelSimulation}
-                className={`px-4 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${isDark ? "text-[#94a3b8] hover:text-[#e2e8f0] hover:bg-[#1e293b]" : "text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9]"}`}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Highlights overlay (RF70) — al terminar, detener o colapsar; Cerrar solo oculta el panel */}
       {showHighlights && (
@@ -2229,7 +2167,7 @@ function HighlightsPanel({ state, isDark, onClose, onReset }: {
           <div className="flex items-center gap-2">
             <Trophy className={`w-5 h-5 ${isDark ? "text-amber-400" : "text-amber-600"}`} />
             <h2 className={`text-[16px] ${textPrimary}`}>Highlights de Simulación</h2>
-            {state.scenario === "collapse" && (state.collapsedShipmentsDetected || state.collapsed) && (
+            {(state.collapsedShipmentsDetected || state.collapsed) && (
               <span className={`text-[10px] ml-2 px-2 py-0.5 rounded-full ${isDark ? "bg-red-500/20 text-red-400" : "bg-red-100 text-red-700"}`}>
                 Colapso
               </span>

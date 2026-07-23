@@ -15,7 +15,7 @@ import { SIM_BASE_DATE } from "../engine/types";
 export function SimControls() {
   const { state, start, reset, togglePause, updateSpeed, startFastForward } = useSim();
   const { isDark } = useTheme();
-  const [scenario, setScenario] = useState<"daily" | "weekly" | "collapse">("weekly");
+  const [scenario, setScenario] = useState<"daily" | "weekly">("weekly");
   const [turnaround, setTurnaround] = useState(1);
   const defaultTarget = new Date(SIM_BASE_DATE);
   defaultTarget.setDate(defaultTarget.getDate() + 1);
@@ -64,7 +64,6 @@ export function SimControls() {
             <SelectContent className={selectBg}>
               <SelectItem value="daily">Día a Día (Tiempo Real)</SelectItem>
               <SelectItem value="weekly">Simulación Semanal (5 días)</SelectItem>
-              <SelectItem value="collapse">Simulación hasta Colapso</SelectItem>
             </SelectContent>
           </Select>
         </div>

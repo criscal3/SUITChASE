@@ -9,5 +9,6 @@ import java.util.List;
 @Repository
 public interface SimulacionRepository extends JpaRepository<SimulacionEntity, Long> {
     List<SimulacionEntity> findByEstadoOrderByCreatedAtDesc(EstadoSimulacion estado);
+    List<SimulacionEntity> findByEstadoIn(java.util.Collection<EstadoSimulacion> estados);
     List<SimulacionEntity> findAllByOrderByCreatedAtDesc();
 }

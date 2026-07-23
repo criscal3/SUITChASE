@@ -15,6 +15,7 @@ const NAV = [
   { to: "/simulacion", label: "Escenarios", icon: Activity },
   { to: "/vuelos", label: "Vuelos", icon: Plane },
   { to: "/aeropuertos", label: "Aeropuertos", icon: Warehouse },
+  { to: "/envios-simulados", label: "Envíos Simulados", icon: Package },
   { to: "/aerolineas", label: "Aerolíneas", icon: Building2 },
   { to: "/operarios", label: "Operarios", icon: Users },
 ];

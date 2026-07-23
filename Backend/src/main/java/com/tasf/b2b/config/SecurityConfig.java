@@ -55,6 +55,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/registro").hasRole("ADMIN")
                 .requestMatchers("/api/usuarios/**").hasRole("ADMIN")
                 .requestMatchers("/api/simulacion/**").hasRole("ADMIN")
+                .requestMatchers("/api/envios-simulados/**").hasRole("ADMIN")
                 .requestMatchers("/api/datos-sinteticos/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/vuelos/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/aerolineas/**").hasRole("ADMIN")

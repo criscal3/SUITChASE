@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { createEmptyStats } from "./simulation";
 import { AIRPORTS as DEFAULT_AIRPORTS, type Airport } from "../data/airports";
 import type { SimulationState, SimEvent, Airline } from "./types";
-import { SIM_BASE_DATE, SIM_WEEKLY_DURATION_MS, SIM_COLLAPSE_DURATION_MS, COLLAPSE_PRE_DAYS, COLLAPSE_PRE_BLOCKS, hasReachedWeeklySimEnd, hasReachedCollapseSimEnd } from "./types";
+import { SIM_BASE_DATE, SIM_WEEKLY_DURATION_MS, hasReachedWeeklySimEnd } from "./types";
 import { toast } from "sonner";
 import { api } from "../services/api";
 import { SimulationWebSocketClient } from "../services/websocket";
@@ -507,23 +507,12 @@ export function useSimulation() {
     let rafId = 0;
 
     const commitClock = (nextTime: number, prev: SimulationState) => {
-      let maxTime = prev.startTime + SIM_WEEKLY_DURATION_MS;
-      let reachedEnd = false;
-
-      if (prev.scenario === "collapse") {
-        maxTime = (prev.collapseVisualStartTime || prev.startTime) + SIM_COLLAPSE_DURATION_MS;
-        reachedEnd = hasReachedCollapseSimEnd({
-          hasStarted: prev.hasStarted,
-          collapseVisualStartTime: prev.collapseVisualStartTime,
-          currentTime: nextTime
-        });
-      } else {
-        reachedEnd = hasReachedWeeklySimEnd({
-          hasStarted: prev.hasStarted,
-          startTime: prev.startTime,
-          currentTime: nextTime
-        });
-      }
+      const maxTime = prev.startTime + SIM_WEEKLY_DURATION_MS;
+      const reachedEnd = hasReachedWeeklySimEnd({
+        hasStarted: prev.hasStarted,
+        startTime: prev.startTime,
+        currentTime: nextTime
+      });
 
       const clampedTime = reachedEnd ? maxTime : nextTime;
 
@@ -750,77 +739,35 @@ export function useSimulation() {
       }
 
       setState(prev => {
-        if (prev.scenario === "collapse" && prev.collapsePrePhase) {
-          const received = (prev.collapsePreBlocksReceived || 0) + 1;
-          const isDone = received >= (prev.collapsePreBlocks || COLLAPSE_PRE_BLOCKS);
-
-          queueMicrotask(() => {
-            tryConsumeBlocksAtSimTimeRef.current(0, true);
-
-            queueMicrotask(() => {
-              setState(innerPrev => {
-                if (innerPrev.collapsedShipmentsDetected) {
-                  return {
-                    ...innerPrev,
-                    collapsePrePhase: false,
-                    collapsePreBlocksReceived: received,
-                    running: false,
-                    stopped: true,
-                    shouldShowCollapseHighlights: true
-                  };
-                } else if (isDone) {
-                  const visualStart = innerPrev.collapseVisualStartTime || innerPrev.startTime;
-
-                  currentTimeRef.current = visualStart;
-                  targetTimeRef.current = visualStart;
-                  lastMinuteIdxRef.current = -1;
-
-                  return {
-                    ...innerPrev,
-                    collapsePrePhase: false,
-                    collapsePreBlocksReceived: received,
-                    currentTime: visualStart,
-                    running: true,
-                    waitingForFirstBlock: false
-                  };
-                }
-                return innerPrev;
-              });
-            });
-          });
-
-          return { ...prev, collapsePreBlocksReceived: received };
-        } else {
-          // Parsear inicioVentana del backend y adjuntarlo al mensaje para usarlo como trigger
-          let inicioVentanaMs: number | undefined = undefined;
-          if (msg.inicioVentana) {
-            try {
-              const parts = String(msg.inicioVentana).split(/[^0-9]/);
-              if (parts.length >= 5) {
-                inicioVentanaMs = Date.UTC(
-                  parseInt(parts[0], 10),
-                  parseInt(parts[1], 10) - 1,
-                  parseInt(parts[2], 10),
-                  parseInt(parts[3], 10),
-                  parseInt(parts[4], 10),
-                  parts[5] ? parseInt(parts[5], 10) : 0
-                );
-              }
-            } catch (e) {
-              console.warn("Error parsing inicioVentana:", e);
+        // Parsear inicioVentana del backend y adjuntarlo al mensaje para usarlo como trigger
+        let inicioVentanaMs: number | undefined = undefined;
+        if (msg.inicioVentana) {
+          try {
+            const parts = String(msg.inicioVentana).split(/[^0-9]/);
+            if (parts.length >= 5) {
+              inicioVentanaMs = Date.UTC(
+                parseInt(parts[0], 10),
+                parseInt(parts[1], 10) - 1,
+                parseInt(parts[2], 10),
+                parseInt(parts[3], 10),
+                parseInt(parts[4], 10),
+                parts[5] ? parseInt(parts[5], 10) : 0
+              );
             }
+          } catch (e) {
+            console.warn("Error parsing inicioVentana:", e);
           }
-          // Attach the window start timestamp to the message for boundary-based consumption
-          const msgWithBoundary = inicioVentanaMs != null
-            ? { ...msg, _inicioVentanaMs: inicioVentanaMs }
-            : msg;
-          blockQueueRef.current.push(msgWithBoundary);
-          console.log(`Block ${msg.bloqueActual} queued (inicioVentana=${msg.inicioVentana}). Queue size: ${blockQueueRef.current.length}`);
-          if (runningRef.current && !waitingForFirstBlockRef.current) {
-            tryConsumeBlocksAtSimTimeRef.current(currentTimeRef.current);
-          }
-          return prev;
         }
+        // Attach the window start timestamp to the message for boundary-based consumption
+        const msgWithBoundary = inicioVentanaMs != null
+          ? { ...msg, _inicioVentanaMs: inicioVentanaMs }
+          : msg;
+        blockQueueRef.current.push(msgWithBoundary);
+        console.log(`Block ${msg.bloqueActual} queued (inicioVentana=${msg.inicioVentana}). Queue size: ${blockQueueRef.current.length}`);
+        if (runningRef.current && !waitingForFirstBlockRef.current) {
+          tryConsumeBlocksAtSimTimeRef.current(currentTimeRef.current);
+        }
+        return prev;
       });
     });
 
@@ -917,98 +864,7 @@ export function useSimulation() {
     }
   }, [speed, connectWebSocket, airportsList]);
 
-  const startCollapse = useCallback(async (fechaInicio: Date) => {
-    if (wsClientRef.current) {
-      wsClientRef.current.disconnect();
-      wsClientRef.current = null;
-    }
-    activeSimIdRef.current = null;
-    blockQueueRef.current = [];
-    blocksConsumedRef.current = 0;
-    occupancyByAirportRef.current = {};
-    flightOccupancyRef.current = {};
-    flightCapacitiesRef.current = {};
 
-    // 5 days before the visual start
-    const startDate = new Date(fechaInicio.getTime());
-    startDate.setUTCDate(startDate.getUTCDate() - COLLAPSE_PRE_DAYS);
-
-    // End date is 1 day after the visual start
-    const endDate = new Date(fechaInicio.getTime());
-    endDate.setUTCDate(endDate.getUTCDate() + 1);
-
-    const formatLocalISO = (d: Date) => {
-      const year = d.getUTCFullYear();
-      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
-      const day = String(d.getUTCDate()).padStart(2, "0");
-      const hours = String(d.getUTCHours()).padStart(2, "0");
-      const minutes = String(d.getUTCMinutes()).padStart(2, "0");
-      const seconds = String(d.getUTCSeconds()).padStart(2, "0");
-      return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-    };
-
-    const fechaInicioStr = formatLocalISO(startDate);
-    const fechaFinStr = formatLocalISO(endDate);
-
-    try {
-      const res = await api.iniciarSimulacion({
-        nombre: `Simulación Colapso ${fechaInicioStr}`,
-        fechaInicio: fechaInicioStr,
-        fechaFin: fechaFinStr,
-        sa: SA_MINUTES,
-        k: K_DEFAULT,
-        ta: TA_SECONDS,
-        skipSleepUntilBlock: COLLAPSE_PRE_BLOCKS
-      });
-
-      const simId = res.simulacionId;
-      activeSimIdRef.current = simId;
-
-      const initialAirports: Record<string, any> = {};
-      airportsList.forEach(a => {
-        initialAirports[a.code] = { code: a.code, currentStock: 0, capacity: a.warehouseCapacity, incoming: 0, outgoing: 0 };
-      });
-
-      const startUtcMs = startDate.getTime();
-      const visualStartMs = fechaInicio.getTime();
-
-      targetTimeRef.current = startUtcMs;
-      startTimeRef.current = startUtcMs;
-      blocksConsumedRef.current = 0;
-
-      setState({
-        scenario: "collapse",
-        turnaroundHours: 1,
-        currentTime: startUtcMs,
-        startTime: startUtcMs,
-        day: 1,
-        hour: 0,
-        airports: initialAirports,
-        flights: [],
-        flightOccupancy: {},
-        flightCapacities: { ...flightTemplateCapacitiesRef.current },
-        baggageGroups: [],
-        cancelledFlights: new Set<string>(),
-        stats: createEmptyStats(),
-        collapsed: false,
-        collapseReason: "",
-        running: false,
-        stopped: false,
-        hasStarted: true,
-        waitingForFirstBlock: false,
-        speed: K_DEFAULT,
-        collapsePreBlocks: COLLAPSE_PRE_BLOCKS,
-        collapsePreBlocksReceived: 0,
-        collapsePrePhase: true,
-        collapseVisualStartTime: visualStartMs
-      });
-      setEvents([]);
-
-      connectWebSocket(simId);
-    } catch (error: any) {
-      toast.error(`Error iniciando simulación de colapso: ${error.message}`);
-    }
-  }, [speed, connectWebSocket, airportsList]);
 
   const teardownActiveSimulation = useCallback(async (cancelBackend: boolean) => {
     if (cancelBackend && activeSimIdRef.current) {
@@ -1224,7 +1080,7 @@ export function useSimulation() {
   const addAirline = useCallback(() => { }, []);
   const updateAirline = useCallback(() => { }, []);
   const removeAirline = useCallback(() => { }, []);
-  const setScenario = useCallback((sc: "daily" | "weekly" | "collapse" | "tracking") => {
+  const setScenario = useCallback((sc: "daily" | "weekly" | "tracking") => {
     setState(prev => ({ ...prev, scenario: sc, cancelledFlights: prev.cancelledFlights || new Set<string>() }));
   }, []);
   const confirmFastForward = useCallback(() => { }, []);
@@ -1236,7 +1092,6 @@ export function useSimulation() {
     airportsList,
     airlines,
     start,
-    startCollapse,
     endSimulation,
     pauseSimulation,
     cancelSimulation,
